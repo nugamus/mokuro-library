@@ -13,9 +13,6 @@ yarn-error.log*
 # Database
 backend/prisma/library.db
 backend/prisma/library.db-journal
-backend/node_modules
-backend/.env
-backend/src/generated/prisma
 
 # SvelteKit
 frontend/.svelte-kit/
