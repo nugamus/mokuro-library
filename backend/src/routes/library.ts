@@ -26,6 +26,12 @@ interface SeriesParams {
   id: string; // This 'id' is the seriesId
 }
 
+interface MokuroPage {
+}
+interface MokuroData {
+  pages: MokuroPage[];
+}
+
 /**
  * Drains a readable stream completely by resuming it and waiting for the 'end' event.
  * This is used to discard file contents we don't want to save.
@@ -372,7 +378,7 @@ const libraryRoutes: FastifyPluginAsync = async (
         }
 
         // Case 3: Parse the file content as JSON
-        let mokuroJson: unknown;
+        let mokuroJson: MokuroData;
         try {
           mokuroJson = JSON.parse(mokuroContent);
         } catch (parseError) {
@@ -387,9 +393,34 @@ const libraryRoutes: FastifyPluginAsync = async (
             message: 'Failed to parse volume data. The file may be corrupted.',
           });
         }
+        // --- THIS IS THE NEW SANITY CHECK ---
+        if (
+          !mokuroJson.pages ||
+          !Array.isArray(mokuroJson.pages) ||
+          volume.pageCount !== mokuroJson.pages.length
+        ) {
+          fastify.log.warn(
+            {
+              volumeId: volume.id,
+              dbPageCount: volume.pageCount,
+              mokuroPagesLength: mokuroJson.pages?.length ?? 'undefined',
+            },
+            'Page count mismatch: DB record and .mokuro file disagree.'
+          );
+          // We don't stop the request, just log the warning.
+        }
+        // Case 4: Success. create and send reply.
+        const responseData = {
+          id: volume.id,
+          title: volume.title,
+          seriesId: volume.seriesId,
+          pageCount: volume.pageCount,
+          coverImageName: volume.coverImageName,
 
-        // Case 4: Success. Send the parsed JSON.
-        return reply.status(200).send(mokuroJson);
+          mokuroData: mokuroJson,
+        };
+
+        return reply.status(200).send(responseData);
 
       } catch (error) {
         fastify.log.error(error);
@@ -412,19 +443,19 @@ const libraryRoutes: FastifyPluginAsync = async (
       const { id: volumeId } = request.params;
       const userId = request.user.id;
 
-      // The new OCR data from the client
-      const newOcrData = request.body as Prisma.InputJsonValue;
+      // 1. The request body should be the NEW, complete "pages" array
+      const newPagesArray = request.body as Prisma.InputJsonValue;
 
-      if (!newOcrData) {
+      if (!Array.isArray(newPagesArray)) {
         return reply.status(400).send({
           statusCode: 400,
           error: 'Bad Request',
-          message: 'Request body is empty or invalid.',
+          message: 'Request body must be an array of page data.',
         });
       }
 
       try {
-        // 1. Find the volume and verify ownership
+        // 2. Find the volume and verify ownership
         const volume = await fastify.prisma.volume.findFirst({
           where: {
             id: volumeId,
@@ -442,7 +473,7 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
-        // 2. Read the existing .mokuro file
+        // 3. Read the existing .mokuro file
         let mokuroContent: string;
         try {
           mokuroContent = await fs.promises.readFile(volume.mokuroPath, 'utf-8');
@@ -458,10 +489,10 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
-        // 3. Parse the file and update the 'ocr' key
-        let mokuroJson: any; // Use 'any' to allow dynamic key assignment
+        // 4. Parse the file
+        let mokuroData: any; // Use 'any' to allow dynamic key assignment
         try {
-          mokuroJson = JSON.parse(mokuroContent);
+          mokuroData = JSON.parse(mokuroContent);
         } catch (parseError) {
           fastify.log.error(
             { err: parseError },
@@ -474,15 +505,18 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
-        // Replace the 'ocr' key with the new data.
-        // This assumes the .mokuro file has a top-level "ocr" key.
-        mokuroJson.ocr = newOcrData;
+        // 5. Replace the 'pages' key with the new array from the request.
+        mokuroData.pages = newPagesArray;
 
-        // 4. Stringify and write the updated JSON back to the file
-        const updatedMokuroContent = JSON.stringify(mokuroJson, null, 2); // Pretty-print
+        // 6. Stringify and write the updated JSON back to the file
+        const updatedMokuroContent = JSON.stringify(mokuroData); // No pretty-print, save space
 
         try {
-          await fs.promises.writeFile(volume.mokuroPath, updatedMokuroContent, 'utf-8');
+          await fs.promises.writeFile(
+            volume.mokuroPath,
+            updatedMokuroContent,
+            'utf-8'
+          );
         } catch (writeError) {
           fastify.log.error(
             { err: writeError },
@@ -495,9 +529,8 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
-        // 5. Success
+        // 7. Success
         return reply.status(200).send({ message: 'OCR data updated successfully.' });
-
       } catch (error) {
         fastify.log.error(
           { err: error },
