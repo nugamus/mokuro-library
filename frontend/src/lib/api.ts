@@ -24,14 +24,27 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
   if (
     options.body &&
     typeof options.body === 'object' &&
-    options.method !== 'GET'
+    options.method !== 'GET' &&
+    !(options.body instanceof FormData)
   ) {
     body = JSON.stringify(options.body);
   }
 
+  // --- Conditionally build headers ---
+  const finalHeaders: Record<string, string> = {
+    ...defaultHeaders,
+    ...(options.headers as Record<string, string>),
+  };
+
+  if (options.body instanceof FormData) {
+    // If body is FormData, delete the 'Content-Type' header
+    // so the browser can set it automatically.
+    delete finalHeaders['Content-Type'];
+  }
+
   const response = await fetch(path, {
     ...options,
-    headers: { ...defaultHeaders, ...options.headers },
+    headers: finalHeaders,
     body,
   });
 

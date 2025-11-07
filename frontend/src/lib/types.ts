@@ -3,6 +3,9 @@ export interface MokuroBlock {
   box: [number, number, number, number];
   lines_coords: [[number, number], [number, number], [number, number], [number, number]][];
   lines: string[];
+  vertical?: boolean;
+  font_size?: number;
+  domElement?: HTMLDivElement;
 }
 export interface MokuroPage {
   img_width: number;
