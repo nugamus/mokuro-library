@@ -1,18 +1,29 @@
 <script lang="ts">
 	import type { MokuroPage, MokuroBlock } from '$lib/types';
 	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
+
 	let {
 		page,
 		isEditMode,
 		isBoxEditMode,
 		showTriggerOutline,
+		isSliderInteracting,
+		isSliderHovered,
 		onOcrChange,
+		onLineFocus
+	} = $props<{
 		page: MokuroPage;
 		isEditMode: boolean;
 		isBoxEditMode: boolean;
 		showTriggerOutline: boolean;
+		isSliderInteracting: boolean;
+		isSliderHovered: boolean;
 		onOcrChange: () => void; // callback to indicate orc data change
+		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void; // callback to update the focused block state
 	}>();
+
+	// current focused mokuroBlock for hovering behavior
+	let focusedBlock = $state<MokuroBlock | null>(null);
 
 	const wrapDotSequences = (text: string) => {
 		const ellipsisGlyph = '\u2026';
@@ -514,13 +525,25 @@
 		}
 	};
 
+	/**
+	 * Handles clicks on the empty overlay background.
+	 */
+	const handleOverlayClick = (e: MouseEvent) => {
+		// Check if in text edit mode, a line is focused,
+		// and the click was on the background (target === currentTarget)
+		if (isEditMode && focusedLineElement && e.target === e.currentTarget) {
+			focusedLineElement.blur();
+		}
+	};
 </script>
 
 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div
 	class="absolute top-0 left-0 h-full w-full ocr-top-layer"
 	bind:this={overlayRootElement}
+	onclick={handleOverlayClick}
 	oncontextmenu={openOverlayContextMenu}
+>
 	{#each page.blocks as block, blockIndex}
 		{@const box_x_min = (block.box[0] / page.img_width) * 100}
 		{@const box_y_min = (block.box[1] / page.img_height) * 100}
@@ -599,7 +622,7 @@
 			>
 				<div
 					class={`
-            ${false ? 'opacity-100' : 'opacity-0 group-hover/block:opacity-100'}
+            ${(isSliderInteracting || isSliderHovered) && focusedBlock === block ? 'opacity-100' : 'opacity-0 group-hover/block:opacity-100'}
             ${isBoxEditMode ? 'bg-transparent' : 'bg-white'}
             relative h-full w-full
           `}
@@ -698,10 +721,16 @@
 									block.lines[lineIndex] = newText;
 									onOcrChange();
 
+									if (!isSliderInteracting) {
+										onLineFocus(null, null);
 										focusedLineElement = null;
+										focusedBlock = null;
+									}
 								}}
 								onfocus={(e) => {
 									focusedLineElement = e.currentTarget;
+									focusedBlock = block;
+									onLineFocus(block, page);
 								}}
 							>
 								{isEditMode ? line : wrapDotSequences(line)}

@@ -30,6 +30,10 @@
 	let isEditMode = $state(false); // Controls visibility of lines_coords
 	let showTriggerOutline = $state(false); // Controls visibility of the main block.box
 	let isBoxEditMode = $state(false);
+	let focusedBlock = $state<MokuroBlock | null>(null);
+	let focusedPage = $state<MokuroPage | null>(null);
+	let isSliderInteracting = $state(false);
+	let isSliderHovered = $state(false);
 
 	// --- OCR save states
 	let isSaving = $state(false);
@@ -135,6 +139,15 @@
 	const totalPages = $derived(volumeResponse?.mokuroData.pages.length ?? 0);
 	const mokuroData = $derived(volumeResponse?.mokuroData);
 
+	// compute values for font slider
+	const focusedBlockFontSize = $derived(
+		focusedBlock?.font_size ?? 16 // Default to 16 if null
+	);
+
+	// Dynamic max value for font slider
+	const sliderMax = $derived(
+		focusedPage ? Math.floor(Math.min(focusedPage.img_height, focusedPage.img_width) / 3) : 100 // Default max 100
+	);
 	// This rune calculates the page(s) to display in the current view
 	const currentPages = $derived.by(() => {
 		if (!mokuroData) return []; // Return empty array if no data
@@ -206,10 +219,14 @@
 
 	const toggleEditMode = () => {
 		isEditMode = !isEditMode;
+		focusedBlock = null; // Clear focused block on mode switch
+		isBoxEditMode = isBoxEditMode && !isEditMode; // Both cannot be active at the same time
 	};
 
 	const toggleBoxEditMode = () => {
 		isBoxEditMode = !isBoxEditMode;
+		focusedBlock = null; // Clear focused block on mode switch
+		isEditMode = isEditMode && !isBoxEditMode; // Both cannot be active at the same time
 	};
 
 	const toggleTriggerOutline = () => {
@@ -219,6 +236,21 @@
 	// Callback for OcrOverlay
 	const onOcrChange = () => {
 		hasUnsavedChanges = true;
+	};
+
+	// Callback for OcrOverlay
+	const onLineFocus = (block: MokuroBlock | null, page: MokuroPage | null) => {
+		focusedBlock = block;
+		focusedPage = page;
+	};
+
+	// Handler for the font slider
+	const handleFontSizeInput = (e: Event) => {
+		if (focusedBlock) {
+			const newSize = parseFloat((e.target as HTMLInputElement).value);
+			focusedBlock.font_size = newSize;
+			onOcrChange();
+		}
 	};
 
 	const nextPage = () => {
@@ -381,10 +413,38 @@
 			</a>
 
 			<div class="flex-1 text-center">
-				{#if isSaving}
-					<span class="text-sm text-blue-300">Saving...</span>
+				{#if isEditMode && focusedBlock}
+					<!-- Font Size Slider -->
+					<div
+						class="mx-auto flex w-48 items-center gap-2"
+						role="toolbar"
+						tabindex="-1"
+						onpointerdown={() => (isSliderInteracting = true)}
+						onpointerup={() => (isSliderInteracting = false)}
+						onmouseenter={() => (isSliderHovered = true)}
+						onmouseleave={() => (isSliderHovered = false)}
+					>
+						<label for="headerFontSizeSlider" class="text-xs font-medium">
+							Size: {focusedBlockFontSize.toFixed(0)}
+						</label>
+						<input
+							id="headerFontSizeSlider"
+							type="range"
+							min="8"
+							max={sliderMax}
+							step="1"
+							value={focusedBlockFontSize}
+							oninput={handleFontSizeInput}
+							class="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-gray-500/50 accent-indigo-500"
+							aria-valuemin="8"
+							aria-valuemax="200"
+							aria-valuenow={focusedBlockFontSize}
+						/>
+					</div>
+				{:else if isSaving}
+					<span class="text-sm bg-gray-900 rounded text-blue-300">Saving...</span>
 				{:else if saveSuccess}
-					<span class="text-sm text-green-300">Saved!</span>
+					<span class="text-sm bg-gray-900 rounded text-green-300">Saved!</span>
 				{/if}
 			</div>
 
@@ -460,7 +520,16 @@
 							class="h-full w-full object-contain"
 							draggable="false"
 						/>
-						<OcrOverlay {page} {isEditMode} {isBoxEditMode} {showTriggerOutline} {onOcrChange} />
+						<OcrOverlay
+							{page}
+							{isEditMode}
+							{isBoxEditMode}
+							{showTriggerOutline}
+							{isSliderInteracting}
+							{isSliderHovered}
+							{onOcrChange}
+							{onLineFocus}
+						/>
 					</div>
 				{/each}
 			</div>
