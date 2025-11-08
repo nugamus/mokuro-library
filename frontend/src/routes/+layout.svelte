@@ -5,6 +5,7 @@
 	import { onMount } from 'svelte';
 	import { checkAuth } from '$lib/authStore';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
+	import ConfirmationModal from '$lib/components/ConfirmationModal.svelte';
 
 	let { children } = $props();
 
@@ -19,3 +20,4 @@
 
 {@render children()}
 <ContextMenu />
+<ConfirmationModal />

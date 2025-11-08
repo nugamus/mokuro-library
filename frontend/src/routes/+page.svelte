@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { apiFetch } from '$lib/api';
+	import { confirmation } from '$lib/confirmationStore';
 	import UploadModal from '$lib/components/UploadModal.svelte';
 
 	// --- Type definitions ---
@@ -54,6 +55,29 @@
 		} finally {
 			isLoadingLibrary = false;
 		}
+	};
+
+	// --- Opens confirmation to delete a series ---
+	const handleDeleteSeries = (seriesId: string, seriesTitle: string) => {
+		confirmation.open(
+			'Delete Series?',
+			`Are you sure you want to permanently delete "${seriesTitle}" and all ${
+				library.find((s) => s.id === seriesId)?.volumes.length ?? 'its'
+			} volumes? This action cannot be undone.`,
+			async () => {
+				// This is the onConfirm callback
+				try {
+					await apiFetch(`/api/library/series/${seriesId}`, {
+						method: 'DELETE'
+					});
+					// Refresh the library list
+					await fetchLibrary();
+				} catch (e) {
+					// Show error in the main UI
+					libraryError = `Failed to delete series: ${(e as Error).message}`;
+				}
+			}
+		);
 	};
 
 	// --- Logout Handler  ---
@@ -127,6 +151,26 @@
 									{series.volumes.length === 1 ? 'volume' : 'volumes'}
 								</p>
 							</div>
+
+							<!-- Delete Button -->
+							<button
+								type="button"
+								aria-label="Delete series"
+								onclick={(e) => {
+									e.preventDefault(); // Stop navigation
+									e.stopPropagation(); // Stop group click
+									handleDeleteSeries(series.id, series.title);
+								}}
+								class="absolute top-2 right-2 z-10 rounded-full bg-black/30 p-1 text-white/70 opacity-0 transition-opacity hover:bg-red-600 hover:text-white group-hover:opacity-100"
+							>
+								<!-- Trash Icon -->
+								<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+									<path
+										fill="currentColor"
+										d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12l1.41 1.41L13.41 14l2.12 2.12l-1.41 1.41L12 15.41l-2.12 2.12l-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"
+									/>
+								</svg>
+							</button>
 						</div>
 					{/each}
 				</div>

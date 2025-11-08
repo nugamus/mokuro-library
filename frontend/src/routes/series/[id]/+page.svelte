@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { apiFetch } from '$lib/api';
 	import { user } from '$lib/authStore';
+	import { confirmation } from '$lib/confirmationStore';
 
 	// --- Type definitions ---
 	interface Volume {
@@ -47,6 +48,27 @@
 		} finally {
 			isLoading = false;
 		}
+	};
+
+	// --- Opens confirmation to delete a volume
+	const handleDeleteVolume = (volumeId: string, volumeTitle: string) => {
+		confirmation.open(
+			'Delete Volume?',
+			`Are you sure you want to permanently delete "${volumeTitle}"? This action cannot be undone.`,
+			async () => {
+				// This is the onConfirm callback
+				try {
+					await apiFetch(`/api/library/volume/${volumeId}`, {
+						method: 'DELETE'
+					});
+					// Refresh the series data
+					await fetchSeriesData(params.id);
+				} catch (e) {
+					// Show error in the main UI
+					error = `Failed to delete volume: ${(e as Error).message}`;
+				}
+			}
+		);
 	};
 </script>
 
@@ -95,6 +117,26 @@
 							</a>
 						</h3>
 					</div>
+
+					<!-- Delete Button -->
+					<button
+						type="button"
+						aria-label="Delete volume"
+						onclick={(e) => {
+							e.preventDefault(); // Stop navigation
+							e.stopPropagation(); // Stop group click
+							handleDeleteVolume(volume.id, volume.title);
+						}}
+						class="absolute top-2 right-2 z-10 rounded-full bg-black/30 p-1 text-white/70 opacity-0 transition-opacity hover:bg-red-600 hover:text-white group-hover:opacity-100"
+					>
+						<!-- Trash Icon -->
+						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+							<path
+								fill="currentColor"
+								d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12l1.41 1.41L13.41 14l2.12 2.12l-1.41 1.41L12 15.41l-2.12 2.12l-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"
+							/>
+						</svg>
+					</button>
 				</div>
 			{/each}
 		</div>
