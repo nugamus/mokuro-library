@@ -36,7 +36,7 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     ...(options.headers as Record<string, string>),
   };
 
-  if (options.body instanceof FormData) {
+  if (options.body instanceof FormData || options.method === 'DELETE') {
     // If body is FormData, delete the 'Content-Type' header
     // so the browser can set it automatically.
     delete finalHeaders['Content-Type'];
