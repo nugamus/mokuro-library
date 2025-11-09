@@ -8,12 +8,12 @@ Mokuro Library is a self-hosted, multi-user web application designed to run on a
 
 For more details, read [the specification](specification.md):
 * **Multi-User Authentication:** Separate accounts for different users, with progress and settings saved per-user.
-* **Server-Side Library:** Upload entire Mokuro-processed directories. The server parses the structure and populates the database.
-* **Persistent, Per-User Progress:** Reading progress, page, and completion status are saved to the database for each user/+page.svelte].
+* **Server-Side Library:** Upload entire Mokuro-processed directories. All files are managed by the server.
+* **Persistent, Per-User Progress:** Reading progress, page, and completion status are saved to the database for each user.
 * **Persistent Reader Settings:** All reader preferences (layout, direction, etc.) are saved to your account.
 * **Live OCR Editing:** Edit and correct OCR text blocks directly in the reader UI. Changes are saved back to the `.mokuro` file on the server.
 * **Dockerized Deployment:** A single Docker container runs the entire application, making setup and maintenance simple.
-* **Volume & Series Management:** Upload series covers, delete individual volumes, or remove entire series from your library/+page.svelte].
+* **Volume & Series Management:** Upload series covers, delete individual volumes, or remove entire series from your library.
 
 ## 💻 Technology Stack
 
