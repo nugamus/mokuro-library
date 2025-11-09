@@ -18,5 +18,5 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
-      # Ensure the DB file is stored in the mounted /app/prisma volume
+      # Ensure the DB file is stored in the mounted /app/data volume
       - DATABASE_URL=file:/app/data/library.db

@@ -17,6 +17,15 @@ if [ ! -f "$DB_FILE" ]; then
 else
   echo "Database file already exists. Skipping copy."
 fi
+# ---
+# DATABASE MIGRATION ---
+# ---
+echo "Running database schema push to ensure schema is up to date..."
+# This command connects to the persistent database and applies
+# any pending schema changes from schema.prisma.
+npx prisma db push
+echo "Schema is up to date."
+# ---
 
 # 'exec "$@"' is the most important part.
 # It replaces the script process with the command you passed
