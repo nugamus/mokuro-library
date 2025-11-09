@@ -17,6 +17,14 @@ import progressRoutes from './routes/progress';
 import libraryRoutes from './routes/library';
 import filesRoutes from './routes/files';
 
+// Define the absolute project root, /app, in both environments:
+// In dev: __dirname is /app/backend/src. Root is two levels up.
+// In prod: __dirname is /app/dist. Root is one level up.
+const projectRoot = path.resolve(
+  __dirname,
+  process.env.NODE_ENV === 'production' ? '..' : '../..'
+);
+
 // Initialize the Prisma Client
 const prisma = new PrismaClient();
 
@@ -43,13 +51,15 @@ fastify.register(fastifyMultipart, {
 });
 fastify.register(fastifyStatic, {
   serve: false, // Does not automatically serve any folder
-  // No 'root' defined here means it defaults to '/', allowing
-  // API routes to pass absolute paths to reply.sendFile().
+  // Set the root for all file operations
+  // root: projectRoot,
 });
 
 // Decorate Fastify instance with Prisma Client
 // This makes 'fastify.prisma' available in all routes
 fastify.decorate('prisma', prisma);
+// Make projectRoot available to routes for fs.access checks
+fastify.decorate('projectRoot', projectRoot);
 
 // --- Register Routes ---
 // Register auth routes with a prefix
@@ -86,7 +96,7 @@ fastify.setNotFoundHandler(async (request, reply) => {
   }
 
   // 2. Prepare paths for frontend assets
-  const buildPath = path.join(__dirname, '../frontend/build');
+  const buildPath = path.join(fastify.projectRoot, 'frontend/build');
   const urlPath = request.raw.url?.split('?')[0] || ''; // ignore query params
   const potentialFilePath = path.join(buildPath, urlPath);
 
@@ -118,6 +128,7 @@ const start = async () => {
     await fastify.ready();
     // Print the routing tree to the console
     console.log(fastify.printRoutes());
+    console.log(projectRoot);
     // Listen on 0.0.0.0:3001
     await fastify.listen({ port: 3001, host: '0.0.0.0' });
   } catch (err) {

@@ -137,7 +137,7 @@ const libraryRoutes: FastifyPluginAsync = async (
 
     try {
       // Define the base temp path relative to permanent storage root
-      const tempBaseDir = path.join('uploads', '.tmp');
+      const tempBaseDir = path.join(fastify.projectRoot, 'uploads', '.tmp');
 
       // Ensure the base temporary directory exists before making a unique one
       await fs.promises.mkdir(tempBaseDir, { recursive: true });
@@ -276,11 +276,15 @@ const libraryRoutes: FastifyPluginAsync = async (
         // the series is new or existing.
         if (seriesCoverMap.has(volume.seriesTitle)) {
           const coverFile = seriesCoverMap.get(volume.seriesTitle)!;
-          const seriesDir = path.join('uploads', userId, series.title);
+          const seriesDir = path.join(
+            fastify.projectRoot,
+            'uploads',
+            userId,
+            series.title
+          );
           const ext = path.extname(coverFile.originalPath);
           const newCoverName = `${volume.seriesTitle}${ext}`;
           const newCoverPath = path.join(seriesDir, newCoverName);
-          const normalizedCoverPath = newCoverPath.replace(/\\/g, '/');
 
           // Ensure directory exists and move the file
           await fs.promises.mkdir(seriesDir, { recursive: true });
@@ -290,14 +294,17 @@ const libraryRoutes: FastifyPluginAsync = async (
           seriesCoverMap.delete(volume.seriesTitle);
 
           // 3. Update the series in the DB if the path is new
-          if (series.coverPath !== normalizedCoverPath) {
+          const relativeCoverPath = path
+            .join('uploads', userId, series.title, newCoverName)
+            .replace(/\\/g, '/');
+          if (series.coverPath !== relativeCoverPath) {
             // use 'series.id' to update the record we just found or created
             await fastify.prisma.series.update({
               where: { id: series.id },
-              data: { coverPath: normalizedCoverPath }
+              data: { coverPath: relativeCoverPath }
             });
             // Update local 'series' object
-            series.coverPath = normalizedCoverPath;
+            series.coverPath = relativeCoverPath;
           }
         }
 
@@ -317,20 +324,32 @@ const libraryRoutes: FastifyPluginAsync = async (
         }
 
         // --- 7. Move Files from Temp to Permanent Storage ---
-        const seriesDir = path.join('uploads', userId, series.title);
-        const volumeDir = path.join(seriesDir, volume.volumeTitle);
-        const mokuroPath = path.join(seriesDir, `${volume.volumeTitle}.mokuro`);
+        const seriesDirRelative = path.join('uploads', userId, series.title);
+        const seriesDirAbsolute = path.join(
+          fastify.projectRoot,
+          seriesDirRelative
+        );
+        const volumeDirRelative = path.join(seriesDirRelative, volume.volumeTitle);
+        const volumeDirAbsolute = path.join(seriesDirAbsolute, volume.volumeTitle);
+        const mokuroPathRelative = path.join(
+          seriesDirRelative,
+          `${volume.volumeTitle}.mokuro`
+        );
+        const mokuroPathAbsolute = path.join(
+          seriesDirAbsolute,
+          `${volume.volumeTitle}.mokuro`
+        );
 
-        await fs.promises.mkdir(volumeDir, { recursive: true });
+        await fs.promises.mkdir(volumeDirAbsolute, { recursive: true });
 
         // Move .mokuro file
-        await fs.promises.rename(volume.mokuroFile.tempPath, mokuroPath);
+        await fs.promises.rename(volume.mokuroFile.tempPath, mokuroPathAbsolute);
 
         // Move all image files
         for (const imageFile of volume.imageFiles) {
           const imageName = path.basename(imageFile.originalPath); // Get 001.jpg
-          const imagePath = path.join(volumeDir, imageName);
-          await fs.promises.rename(imageFile.tempPath, imagePath);
+          const imagePathAbsolute = path.join(volumeDirAbsolute, imageName);
+          await fs.promises.rename(imageFile.tempPath, imagePathAbsolute);
         }
 
         // --- Find the cover image name ---
@@ -350,8 +369,8 @@ const libraryRoutes: FastifyPluginAsync = async (
             title: volume.volumeTitle,
             seriesId: series.id,
             pageCount: volume.imageFiles.length,
-            filePath: volumeDir.replace(/\\/g, '/'),
-            mokuroPath: mokuroPath.replace(/\\/g, '/'),
+            filePath: volumeDirRelative.replace(/\\/g, '/'),
+            mokuroPath: mokuroPathRelative.replace(/\\/g, '/'),
             coverImageName: coverName,
           },
         });
@@ -412,24 +431,29 @@ const libraryRoutes: FastifyPluginAsync = async (
         // 2. Determine paths
         // We need to find the series root directory. We can infer it.
         // Based on upload logic, it's 'uploads/<userId>/<seriesTitle>/'
-        const seriesDir = path.join('uploads', userId, series.title);
+        const seriesDirRelative = path.join('uploads', userId, series.title);
+        const seriesDirAbsolute = path.join(
+          fastify.projectRoot,
+          seriesDirRelative
+        );
 
         // Ensure directory exists (it should, but good practice)
-        await fs.promises.mkdir(seriesDir, { recursive: true });
+        await fs.promises.mkdir(seriesDirAbsolute, { recursive: true });
 
         // 3. Construct new filename: <seriesTitle>.<ext>
         const ext = path.extname(data.filename).toLowerCase() || '.jpg';
         const newFileName = `${series.title}${ext}`;
-        const filePath = path.join(seriesDir, newFileName);
+        const filePathAbsolute = path.join(seriesDirAbsolute, newFileName);
+        const filePathRelative = path.join(seriesDirRelative, newFileName);
 
         // 4. Save file
-        await pump(data.file, fs.createWriteStream(filePath));
+        await pump(data.file, fs.createWriteStream(filePathAbsolute));
 
         // 5. Update DB with absolute path (or relative if you prefer consistent storage)
         // Storing absolute path for consistency with volume.filePath
         await fastify.prisma.series.update({
           where: { id: seriesId },
-          data: { coverPath: filePath }
+          data: { coverPath: filePathRelative.replace(/\\/g, '/') }
         });
 
         return reply.status(200).send({ message: 'Cover updated successfully.' });
@@ -547,14 +571,18 @@ const libraryRoutes: FastifyPluginAsync = async (
         }
 
         // Case 2: Volume found, read the .mokuro file
+        const absoluteMokuroPath = path.join(
+          fastify.projectRoot,
+          volume.mokuroPath
+        );
         let mokuroContent: string;
         try {
-          mokuroContent = await fs.promises.readFile(volume.mokuroPath, 'utf-8');
+          mokuroContent = await fs.promises.readFile(absoluteMokuroPath, 'utf-8');
         } catch (fileError) {
           // Handle file system errors (e.g., file deleted)
           fastify.log.error(
             { err: fileError }, // 1. Pass the error object here
-            `File not found for volume ${volume.id}: ${volume.mokuroPath}` // 2. Pass the message here
+            `File not found for volume ${volume.id}: ${absoluteMokuroPath}` // 2. Pass the message here
           );
           return reply.status(500).send({
             statusCode: 500,
@@ -571,7 +599,7 @@ const libraryRoutes: FastifyPluginAsync = async (
           // Handle corrupted or malformed JSON
           fastify.log.error(
             { err: parseError }, // 1. Pass the error object here
-            `Malformed JSON for volume ${volume.id}: ${volume.mokuroPath}` // 2. Pass the message here
+            `Malformed JSON for volume ${volume.id}: ${absoluteMokuroPath}` // 2. Pass the message here
           );
           return reply.status(500).send({
             statusCode: 500,
@@ -656,10 +684,15 @@ const libraryRoutes: FastifyPluginAsync = async (
       });
 
       // Add the volume directory (images)
-      archive.directory(path.resolve(volume.filePath), volume.title);
+      const absoluteVolumePath = path.join(fastify.projectRoot, volume.filePath);
+      archive.directory(absoluteVolumePath, volume.title);
 
       // Add the .mokuro file
-      archive.file(path.resolve(volume.mokuroPath), { name: `${volume.title}.mokuro` });
+      const absoluteMokuroPath = path.join(
+        fastify.projectRoot,
+        volume.mokuroPath
+      );
+      archive.file(absoluteMokuroPath, { name: `${volume.title}.mokuro` });
 
       archive.finalize();
       return reply.send(archive);
@@ -690,9 +723,13 @@ const libraryRoutes: FastifyPluginAsync = async (
       }
 
       // Find the series root directory from the first volume's path
-      const seriesDir = path.dirname(series.volumes[0].mokuroPath);
+      const seriesDirRelative = path.dirname(series.volumes[0].mokuroPath);
+      const seriesDirAbsolute = path.join(
+        fastify.projectRoot,
+        seriesDirRelative
+      );
 
-      return streamZip(path.resolve(seriesDir), series.title, reply);
+      return streamZip(seriesDirAbsolute, series.title, reply);
     }
   );
 
@@ -705,7 +742,11 @@ const libraryRoutes: FastifyPluginAsync = async (
     // The user's library root is 'uploads/<userId>'
     // We need to resolve this relative to the project root.
     // Assuming the server runs from the project root or 'backend' folder:
-    const userLibraryDir = path.resolve('uploads', userId);
+    const userLibraryDir = path.join(
+      fastify.projectRoot,
+      'uploads',
+      userId
+    );
 
     try {
       await fs.promises.access(userLibraryDir, fs.constants.R_OK);
@@ -757,13 +798,17 @@ const libraryRoutes: FastifyPluginAsync = async (
         }
 
         // 3. Read the existing .mokuro file
+        const absoluteMokuroPath = path.join(
+          fastify.projectRoot,
+          volume.mokuroPath
+        );
         let mokuroContent: string;
         try {
-          mokuroContent = await fs.promises.readFile(volume.mokuroPath, 'utf-8');
+          mokuroContent = await fs.promises.readFile(absoluteMokuroPath, 'utf-8');
         } catch (readError) {
           fastify.log.error(
             { err: readError },
-            `File not found for volume ${volume.id}: ${volume.mokuroPath}`
+            `File not found for volume ${volume.id}: ${absoluteMokuroPath}`
           );
           return reply.status(500).send({
             statusCode: 500,
@@ -779,7 +824,7 @@ const libraryRoutes: FastifyPluginAsync = async (
         } catch (parseError) {
           fastify.log.error(
             { err: parseError },
-            `Malformed JSON for volume ${volume.id}: ${volume.mokuroPath}`
+            `Malformed JSON for volume ${volume.id}: ${absoluteMokuroPath}`
           );
           return reply.status(500).send({
             statusCode: 500,
@@ -796,14 +841,14 @@ const libraryRoutes: FastifyPluginAsync = async (
 
         try {
           await fs.promises.writeFile(
-            volume.mokuroPath,
+            absoluteMokuroPath,
             updatedMokuroContent,
             'utf-8'
           );
         } catch (writeError) {
           fastify.log.error(
             { err: writeError },
-            `Failed to write updates to ${volume.mokuroPath}`
+            `Failed to write updates to ${absoluteMokuroPath}`
           );
           return reply.status(500).send({
             statusCode: 500,
@@ -862,12 +907,26 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
+        let seriesDirRelative: string | null = null;
         // 2. Delete all files from disk
         if (series.volumes.length > 0) {
           // All volumes share the same parent (series) directory.
           // mokuroPath is 'uploads/userId/seriesTitle/volume.mokuro'
-          const seriesDir = path.dirname(series.volumes[0].mokuroPath);
-          await fs.promises.rm(seriesDir, { recursive: true, force: true });
+          seriesDirRelative = path.dirname(series.volumes[0].mokuroPath);
+        } else if (series.coverPath) {
+          seriesDirRelative = path.dirname(series.coverPath);
+        }
+
+        if (seriesDirRelative) {
+          // MODIFIED: Use projectRoot
+          const seriesDirAbsolute = path.join(
+            fastify.projectRoot,
+            seriesDirRelative
+          );
+          await fs.promises.rm(seriesDirAbsolute, {
+            recursive: true,
+            force: true
+          });
         }
 
         // 3. Delete series from DB. Prisma 'onDelete: Cascade'
@@ -934,12 +993,24 @@ const libraryRoutes: FastifyPluginAsync = async (
 
         // 2. Delete volume files from disk
         // filePath is 'uploads/userId/seriesTitle/volumeTitle'
-        await fs.promises.rm(volume.filePath, { recursive: true, force: true });
+        const absoluteVolumePath = path.join(
+          fastify.projectRoot,
+          volume.filePath
+        );
+        await fs.promises.rm(absoluteVolumePath, {
+          recursive: true,
+          force: true
+        });
         // mokuroPath is 'uploads/userId/seriesTitle/volume.mokuro'
-        await fs.promises.rm(volume.mokuroPath, { force: true });
+        const absoluteMokuroPath = path.join(
+          fastify.projectRoot,
+          volume.mokuroPath
+        );
+        await fs.promises.rm(absoluteMokuroPath, { force: true });
 
-        const seriesDir = path.dirname(volume.mokuroPath);
+        const seriesDirRelative = path.dirname(volume.mokuroPath);
         const volumeCount = volume.series._count.volumes;
+        const seriesCoverPath = volume.series.coverPath;
 
         // 3. Delete volume from DB. Cascade delete handles progress.
         await fastify.prisma.volume.delete({
@@ -949,14 +1020,20 @@ const libraryRoutes: FastifyPluginAsync = async (
         });
 
         // 4. If this was the last volume, clean up the parent series directory
-        if (volumeCount === 1) {
+        if (volumeCount === 1 && !seriesCoverPath) {
           try {
-            await fs.promises.rm(seriesDir, { recursive: true, force: true });
-            // We can optionally delete the Series DB entry too if we want
-            // await fastify.prisma.series.delete({ where: { id: volume.seriesId } });
+            const seriesDirAbsolute = path.join(
+              fastify.projectRoot,
+              seriesDirRelative
+            );
+            await fs.promises.rm(seriesDirAbsolute, {
+              recursive: true,
+              force: true
+            });
           } catch (e) {
-            // Log a warning if the empty dir fails to delete, but don't fail the request
-            fastify.log.warn(`Could not clean up empty series dir: ${seriesDir}`);
+            fastify.log.warn(
+              `Could not clean up empty series dir: ${seriesDirRelative}`
+            );
           }
         }
 

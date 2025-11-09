@@ -12,6 +12,7 @@ export type AuthUser = {
 declare module 'fastify' {
   export interface FastifyInstance {
     prisma: PrismaClient;
+    projectRoot: string;
     // Our custom authentication hook
     authenticate: (
       request: FastifyRequest,

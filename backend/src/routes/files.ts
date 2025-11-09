@@ -53,7 +53,11 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
 
         // Construct the absolute file path
         // path.resolve() turns our relative DB path into an absolute one
-        const absolutePath = path.resolve(volume.filePath, cleanImageName);
+        const absolutePath = path.join(
+          fastify.projectRoot,
+          volume.filePath,
+          cleanImageName
+        );
 
         // 4. Check if file exists before sending
         try {
@@ -69,7 +73,6 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
         // 5. Securely stream the file
         // 'reply.sendFile' handles Content-Type, ETag, and
         // range requests automatically.
-        // We provide the absolute path.
         return reply.sendFile(absolutePath);
 
       } catch (error) {
@@ -105,17 +108,19 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
         });
 
         if (!series || !series.coverPath) {
-          return reply.status(405).send('Cover not found');
+          return reply.status(404).send('Cover not found');
         }
+
+        const absolutePath = path.join(fastify.projectRoot, series.coverPath);
 
         // Ensure file exists before trying to send it
         try {
-          await fs.promises.access(path.resolve(series.coverPath), fs.constants.R_OK);
+          await fs.promises.access(absolutePath, fs.constants.R_OK);
         } catch {
-          return reply.status(406).send('Cover file missing from disk');
+          return reply.status(404).send('Cover file missing from disk');
         }
 
-        return reply.sendFile(path.resolve(series.coverPath));
+        return reply.sendFile(absolutePath);
       } catch (error) {
         fastify.log.error(error);
         return reply.status(500).send('Error serving cover');
