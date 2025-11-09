@@ -1,0 +1,55 @@
+version: '3.8'
+services:
+  mokuro:
+    # Target the 'backend-builder' stage from Dockerfile.
+    # This stage has 'npm ci' run, so it includes all
+    # devDependencies (like ts-node-dev).
+    build:
+      context: .
+      target: backend-builder
+
+    # Set the working directory to where 'npm run dev' should execute
+    working_dir: /app/backend
+
+    # Override the Dockerfile's CMD to run the 'dev' script
+    command: npm run dev
+
+    volumes:
+      # Mount your 'backend' folder to '/app/backend'
+      # This lets ts-node-dev see code changes in real-time.
+      - ./backend:/app/backend
+      # Use the container's
+      # /app/backend/node_modules folder and ignore your
+      # local host's node_modules (if any).
+      - /app/backend/node_modules
+
+      - ./data:/app/data
+      - ./data/uploads:/app/uploads
+
+    environment:
+      - NODE_ENV=development
+      # This ensures the DATABASE_URL points to your persistent volume.
+      - DATABASE_URL=file:/app/data/library.db
+      # This polling setting is often required for file watching
+      # to work correctly inside a Docker container.
+      - CHOKIDAR_USEPOLLING=true
+
+  frontend:
+      # Targets Stage 1 from Dockerfile
+      build:
+        context: .
+        target: frontend-builder
+      working_dir: /app/frontend
+      # Runs 'vite dev --host'
+      # The '--host' flag is required to access the dev server from your browser
+      command: npm run dev -- --host
+      volumes:
+        - ./frontend:/app/frontend # Mounts your live frontend code
+        - /app/frontend/node_modules # Uses the container's node_modules
+      ports:
+        - "5173:5173" # Exposes the Vite dev server port
+      environment:
+        - CHOKIDAR_USEPOLLING=true # Fixes file watching in Docker
+        - VITE_PROXY_TARGET=http://mokuro:3001
+      depends_on:
+        - mokuro # Tells Docker to start the backend first
