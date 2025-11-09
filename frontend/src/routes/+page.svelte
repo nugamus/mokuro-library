@@ -2,7 +2,7 @@
 	import { user } from '$lib/authStore';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
-	import { apiFetch } from '$lib/api';
+	import { apiFetch, triggerDownload } from '$lib/api';
 	import { confirmation } from '$lib/confirmationStore';
 	import UploadModal from '$lib/components/UploadModal.svelte';
 
@@ -101,6 +101,7 @@
 
 <div class="min-h-screen bg-gray-100 p-8 dark:bg-gray-900">
 	{#if $user}
+		<!-- header -->
 		<div
 			class="flex flex-col items-center justify-between gap-4 border-b border-gray-300 pb-4 dark:border-gray-700 sm:flex-row"
 		>
@@ -109,6 +110,28 @@
 			</h1>
 
 			<div class="flex items-center gap-4 w-full sm:w-auto sm:ml-auto">
+				<!-- Download Library Button -->
+				<button
+					onclick={() => triggerDownload('/api/library/download')}
+					disabled={library.length === 0}
+					class="hidden sm:flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 20 20"
+						fill="currentColor"
+						class="h-5 w-5 text-gray-500 dark:text-gray-400"
+					>
+						<path
+							d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"
+						/>
+						<path
+							d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"
+						/>
+					</svg>
+					Download All
+				</button>
+				<!-- upload button -->
 				<button
 					onclick={() => (isUploadModalOpen = true)}
 					class="w-1/2 rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 sm:w-auto"

@@ -70,3 +70,16 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
   // If we get here, it's a successful JSON response
   return response.json();
 }
+
+/**
+ * Triggers a browser download by navigating to the URL.
+ */
+export function triggerDownload(path: string) {
+  // Create a temporary hidden link and click it
+  const link = document.createElement('a');
+  link.href = path;
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

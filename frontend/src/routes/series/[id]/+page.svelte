@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { apiFetch } from '$lib/api';
+	import { apiFetch, triggerDownload } from '$lib/api';
 	import { user } from '$lib/authStore';
 	import { confirmation } from '$lib/confirmationStore';
 
@@ -124,13 +124,13 @@
 		// 2. Calculate new status based on current LOCAL state
 		const vol = series.volumes[volumeIndex];
 		// Handle potential missing progress array safely
-		const currentProgress = vol.progress[0] ?? {
+		vol.progress[0] = vol.progress[0] ?? {
 			page: 1,
 			completed: false,
 			timeRead: 0,
 			charsRead: 0
 		};
-		const newStatus = !currentProgress.completed;
+		const newStatus = !vol.progress[0].completed;
 
 		// 3. OPTIMISTIC UI UPDATE: Update local state immediately
 		series.volumes[volumeIndex].progress[0].completed = newStatus;
@@ -153,9 +153,6 @@
 					method: 'PUT',
 					body: { completed: newStatus }
 				});
-
-				// Optional: Silent re-fetch to ensure perfect sync with server
-				// await fetchSeriesData(params.id, true);
 			} catch (e) {
 				console.error('Failed to save toggle state:', e);
 				// NOTE: In a production app,  revert the
@@ -212,8 +209,8 @@
 			Error loading series: {error}
 		</p>
 	{:else if series}
-		<!-- MODIFIED: Header with Avatar -->
-		<div class="mb-8 flex items-center gap-6">
+		<!--  Series Header -->
+		<div class="mb-8 flex items-top gap-6">
 			<!-- Avatar Container -->
 			<div
 				class="group relative h-64 w-48 flex-shrink-0 overflow-hidden rounded-md bg-gray-200 shadow-md dark:bg-gray-800"
@@ -242,7 +239,31 @@
 				</button>
 			</div>
 
-			<h1 class="text-4xl font-bold dark:text-white">{series.title}</h1>
+			<div class="flex flex-col items-center gap-2">
+				<h1 class="text-4xl font-bold dark:text-white">{series.title}</h1>
+
+				<!-- Series Download Button -->
+				<button
+					onclick={() => triggerDownload(`/api/library/series/${series?.id}/download`)}
+					class="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+				>
+					<!-- Download Icon -->
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 20 20"
+						fill="currentColor"
+						class="h-5 w-5"
+					>
+						<path
+							d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"
+						/>
+						<path
+							d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"
+						/>
+					</svg>
+					Download Series
+				</button>
+			</div>
 		</div>
 
 		<!-- Hidden File Input -->
@@ -254,6 +275,7 @@
 			onchange={handleCoverUpload}
 		/>
 
+		<!-- Volume Grid -->
 		<div
 			class="mt-8 grid grid-cols-2 gap-y-10 gap-x-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:gap-x-8"
 		>
@@ -273,25 +295,26 @@
 								{volume.title}
 							</div>
 						{/if}
-						<!-- Progress Bar -->
-						{#if percent > 0}
-							<div
-								class="absolute bottom-0 left-0 h-1.5 bg-indigo-600 dark:bg-indigo-500"
-								style="width: {percent}%"
-							></div>
-						{/if}
 					</div>
-					<div class="mt-4">
-						<h3 class="text-md font-medium text-gray-900 dark:text-white">
+					<div class="flex flex-col justify-between mt-4 h-22">
+						<h3 class="text-md font-medium text-gray-900 dark:text-white line-clamp-2">
 							<a href={`/volume/${volume.id}`}>
 								<span aria-hidden="true" class="absolute inset-0"></span>
 								{volume.title}
 							</a>
 						</h3>
-						<!-- Progress Text -->
-						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-							{volume.progress[0] ? volume.progress[0].page : 0}/{volume.pageCount} pages
-						</p>
+
+						<div class="flex flex-col gap-1">
+							<!-- Progress Text -->
+							<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+								{volume.progress[0] ? volume.progress[0].page : 0}/{volume.pageCount} pages
+							</p>
+							<!-- Progress Bar -->
+							<div
+								class="bottom-0 left-0 h-1.5 bg-indigo-600 dark:bg-indigo-500"
+								style="width: {percent}%"
+							></div>
+						</div>
 					</div>
 
 					<!-- Toggle Complete Button  -->
@@ -324,27 +347,57 @@
 						</svg>
 					</button>
 
-					<!-- Delete Button -->
-					<button
-						type="button"
-						aria-label="Delete volume"
-						onclick={(e) => {
-							e.preventDefault(); // Stop navigation
-							e.stopPropagation(); // Stop group click
-							handleDeleteVolume(volume.id, volume.title);
-						}}
-						class="absolute top-2 right-2 z-10 rounded-full bg-black/30
+					<!-- Volume Actions (Top-Right) -->
+					<div class="absolute top-2 right-2 z-10 flex flex-col gap-2">
+						<!-- Volume Download Button -->
+						<button
+							type="button"
+							aria-label="Download volume"
+							onclick={(e) => {
+								e.preventDefault();
+								e.stopPropagation();
+								triggerDownload(`/api/library/volume/${volume.id}/download`);
+							}}
+							class="rounded-full bg-black/30 p-1 text-white/70 opacity-0 transition-opacity hover:bg-blue-600 hover:text-white group-hover:opacity-100"
+						>
+							<!-- Download Icon (Small) -->
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 20 20"
+								fill="currentColor"
+								class="h-5 w-5"
+							>
+								<path
+									d="M10.75 2.75a.75.75 0 00-1.5 0v8.614L6.295 8.235a.75.75 0 10-1.09 1.03l4.25 4.5a.75.75 0 001.09 0l4.25-4.5a.75.75 0 00-1.09-1.03l-2.955 3.129V2.75z"
+								/>
+								<path
+									d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"
+								/>
+							</svg>
+						</button>
+
+						<!-- Delete Button -->
+						<button
+							type="button"
+							aria-label="Delete volume"
+							onclick={(e) => {
+								e.preventDefault(); // Stop navigation
+								e.stopPropagation(); // Stop group click
+								handleDeleteVolume(volume.id, volume.title);
+							}}
+							class="rounded-full bg-black/30
               p-1 text-white/70 opacity-0 transition-opacity hover:bg-red-600
               hover:text-white group-hover:opacity-100 cursor-pointer"
-					>
-						<!-- Trash Icon -->
-						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
-							<path
-								fill="currentColor"
-								d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12l1.41 1.41L13.41 14l2.12 2.12l-1.41 1.41L12 15.41l-2.12 2.12l-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"
-							/>
-						</svg>
-					</button>
+						>
+							<!-- Trash Icon -->
+							<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">
+								<path
+									fill="currentColor"
+									d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zm2.46-7.12l1.41-1.41L12 12.59l2.12-2.12l1.41 1.41L13.41 14l2.12 2.12l-1.41 1.41L12 15.41l-2.12 2.12l-1.41-1.41L10.59 14l-2.13-2.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"
+								/>
+							</svg>
+						</button>
+					</div>
 				</div>
 			{/each}
 		</div>
