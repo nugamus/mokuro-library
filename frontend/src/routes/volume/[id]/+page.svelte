@@ -424,28 +424,6 @@
 		}
 	});
 
-	// Effect to lock/unlock panzoom based on Box Edit Mode
-	$effect(() => {
-		if (panzoomInstance) {
-			if (isBoxEditMode) {
-				// Lock the viewport
-				panzoomInstance.reset(); // Reset to known state
-				panzoomInstance.setOptions({
-					disablePan: true,
-					disableZoom: true,
-					cursor: 'auto' // Use default cursor, not 'move'
-				});
-			} else {
-				// Unlock the viewport
-				panzoomInstance.setOptions({
-					disablePan: false,
-					disableZoom: false,
-					cursor: 'default' // Back to default panzoom cursor
-				});
-			}
-		}
-	});
-
 	// Effect to reset panzoom when page changes
 	$effect(() => {
 		if (panzoomInstance) {
@@ -662,6 +640,7 @@
 						/>
 						<OcrOverlay
 							{page}
+							{panzoomInstance}
 							{isEditMode}
 							{isBoxEditMode}
 							{showTriggerOutline}

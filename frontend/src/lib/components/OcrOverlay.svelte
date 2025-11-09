@@ -2,9 +2,11 @@
 	import type { MokuroPage, MokuroBlock } from '$lib/types';
 	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
 	import { lineOrderStore } from '$lib/lineOrderStore';
+	import type { PanzoomObject } from '@panzoom/panzoom';
 
 	let {
 		page,
+		panzoomInstance,
 		isEditMode,
 		isBoxEditMode,
 		showTriggerOutline,
@@ -14,6 +16,7 @@
 		onLineFocus
 	} = $props<{
 		page: MokuroPage;
+		panzoomInstance: PanzoomObject | null;
 		isEditMode: boolean;
 		isBoxEditMode: boolean;
 		showTriggerOutline: boolean;
@@ -60,6 +63,52 @@
 	};
 
 	/**
+	 * Gets the real image pixel coordinates from a mouse click event,
+	 * accounting for current panzoom scale and offset.
+	 */
+	const getCoords = (event: MouseEvent) => {
+		if (!overlayRootElement?.parentElement || !panzoomInstance) {
+			return { imgX: 0, imgY: 0 };
+		}
+
+		const { scaleRatioX, scaleRatioY } = getScaleRatios();
+		// rect is the page's bounding box, *including* pan and zoom
+		const rect = overlayRootElement.parentElement.getBoundingClientRect();
+		const { x: panX, y: panY } = panzoomInstance.getPan();
+		const currentZoom = panzoomInstance.getScale();
+
+		// 1. Get click position relative to the panned, zoomed container
+		const relativeX = event.clientX - rect.left;
+		const relativeY = event.clientY - rect.top;
+
+		// 2. Convert container-relative pixels to image-absolute pixels
+		const imgX = relativeX * scaleRatioX;
+		const imgY = relativeY * scaleRatioY;
+
+		return { imgX, imgY };
+	};
+
+	/**
+	 * Gets the real image pixel deltas from a mouse move event,
+	 * accounting for the current panzoom scale.
+	 */
+	const getDeltas = (moveEvent: MouseEvent) => {
+		// getScaleRatio already accounts for zoom
+		const { scaleRatioX, scaleRatioY } = getScaleRatios();
+		const currentZoom = panzoomInstance?.getScale() ?? 1.0;
+
+		// 1. Get mouse movement delta, corrected for zoom
+		const relativeDeltaX = moveEvent.movementX;
+		const relativeDeltaY = moveEvent.movementY;
+
+		// 2. Convert container-relative delta to image-absolute delta
+		const imageDeltaX = relativeDeltaX * scaleRatioX;
+		const imageDeltaY = relativeDeltaY * scaleRatioY;
+
+		return { imageDeltaX, imageDeltaY };
+	};
+
+	/**
 	 * Handles dragging the *entire block* (outer container).
 	 */
 	const handleBlockDragStart = (startEvent: MouseEvent, block: MokuroBlock) => {
@@ -67,7 +116,6 @@
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
 
-		const { scaleRatioX, scaleRatioY } = getScaleRatios();
 		const draggedElement = startEvent.currentTarget as HTMLDivElement;
 
 		let totalScreenDeltaX = 0;
@@ -76,12 +124,14 @@
 		let totalImageDeltaY = 0;
 
 		const handleDragMove = (moveEvent: MouseEvent) => {
-			totalScreenDeltaX += moveEvent.movementX;
-			totalScreenDeltaY += moveEvent.movementY;
+			const currentZoom = panzoomInstance?.getScale() ?? 1.0;
+			totalScreenDeltaX += moveEvent.movementX / currentZoom;
+			totalScreenDeltaY += moveEvent.movementY / currentZoom;
 			draggedElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
 
-			totalImageDeltaX += moveEvent.movementX * scaleRatioX;
-			totalImageDeltaY += moveEvent.movementY * scaleRatioY;
+			const { imageDeltaX, imageDeltaY } = getDeltas(moveEvent);
+			totalImageDeltaX += imageDeltaX;
+			totalImageDeltaY += imageDeltaY;
 		};
 
 		const handleDragEnd = () => {
@@ -116,9 +166,8 @@
 	const handleLineDragStart = (startEvent: MouseEvent, block: MokuroBlock, lineIndex: number) => {
 		if (!isBoxEditMode) return;
 		startEvent.preventDefault();
-		startEvent.stopPropagation(); // <-- Stops block drag
+		startEvent.stopPropagation(); // Stops block drag
 
-		const { scaleRatioX, scaleRatioY } = getScaleRatios();
 		const draggedElement = startEvent.currentTarget as HTMLDivElement;
 
 		let totalScreenDeltaX = 0;
@@ -127,12 +176,14 @@
 		let totalImageDeltaY = 0;
 
 		const handleDragMove = (moveEvent: MouseEvent) => {
-			totalScreenDeltaX += moveEvent.movementX;
-			totalScreenDeltaY += moveEvent.movementY;
+			const currentZoom = panzoomInstance?.getScale() ?? 1.0;
+			totalScreenDeltaX += moveEvent.movementX / currentZoom;
+			totalScreenDeltaY += moveEvent.movementY / currentZoom;
 			draggedElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
 
-			totalImageDeltaX += moveEvent.movementX * scaleRatioX;
-			totalImageDeltaY += moveEvent.movementY * scaleRatioY;
+			const { imageDeltaX, imageDeltaY } = getDeltas(moveEvent);
+			totalImageDeltaX += imageDeltaX;
+			totalImageDeltaY += imageDeltaY;
 		};
 
 		const handleDragEnd = () => {
@@ -162,11 +213,8 @@
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
 
-		const { scaleRatioX, scaleRatioY } = getScaleRatios();
-
 		const handleDragMove = (moveEvent: MouseEvent) => {
-			const imageDeltaX = moveEvent.movementX * scaleRatioX;
-			const imageDeltaY = moveEvent.movementY * scaleRatioY;
+			const { imageDeltaX, imageDeltaY } = getDeltas(moveEvent);
 
 			// Update block.box based on which handle is being dragged
 			switch (handleType) {
@@ -224,12 +272,10 @@
 		startEvent.preventDefault();
 		startEvent.stopPropagation(); // Stop line drag, block drag, and block resize
 
-		const { scaleRatioX, scaleRatioY } = getScaleRatios();
 		const lineCoords = block.lines_coords[lineIndex];
 
 		const handleDragMove = (moveEvent: MouseEvent) => {
-			const imageDeltaX = moveEvent.movementX * scaleRatioX;
-			const imageDeltaY = moveEvent.movementY * scaleRatioY;
+			const { imageDeltaX, imageDeltaY } = getDeltas(moveEvent);
 
 			// lineCoords is [top-left, top-right, bottom-right, bottom-left]
 			switch (handleType) {
@@ -355,14 +401,8 @@
 	const createNewLine = (event: MouseEvent, block: MokuroBlock) => {
 		if (!overlayRootElement?.parentElement) return;
 
-		const rect = overlayRootElement.parentElement.getBoundingClientRect();
-		const { scaleRatioX, scaleRatioY } = getScaleRatios();
-
-		const relativeX = event.clientX - rect.left;
-		const relativeY = event.clientY - rect.top;
-
-		const imgX = relativeX * scaleRatioX;
-		const imgY = relativeY * scaleRatioY;
+		const { imgX, imgY } = getCoords(event);
+		if (imgX === undefined) return;
 
 		const DEFAULT_WIDTH = 100;
 		const DEFAULT_HEIGHT = 100;
@@ -393,10 +433,7 @@
 		const { scaleRatioX, scaleRatioY } = getScaleRatios();
 
 		// 2. Get click position in image coordinates
-		const relativeX = event.clientX - rect.left;
-		const relativeY = event.clientY - rect.top;
-		const imgX = relativeX * scaleRatioX;
-		const imgY = relativeY * scaleRatioY;
+		const { imgX, imgY } = getCoords(event);
 
 		// --- 3. Calculate new size based on viewport ---
 		// Get 15% of the *rendered* container size
