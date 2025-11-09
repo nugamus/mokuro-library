@@ -4,11 +4,16 @@
 	import { confirmation } from '$lib/confirmationStore';
 
 	// --- Type definitions ---
+	interface UserProgress {
+		page: number;
+		completed: boolean;
+	}
 	interface Volume {
 		id: string;
 		title: string;
 		pageCount: number;
 		coverImageName: string | null;
+		progress: UserProgress[]; // max 1 item
 	}
 	interface Series {
 		id: string;
@@ -16,6 +21,11 @@
 		coverPath: string | null;
 		volumes: Volume[];
 	}
+
+	// Track debounce toggleComplete timers for each volume independently
+	//// Stores the *intended* completion status for volumes that haven't been saved yet.
+	let pendingToggleComplete = new Map<string, boolean>();
+	let toggleCompleteTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 	// --- State ---
 	let series = $state<Series | null>(null);
@@ -33,6 +43,9 @@
 			// Pass the reactive ID to the fetch function
 			fetchSeriesData(params.id);
 		}
+		return () => {
+			flushPendingToggleComplete();
+		};
 	});
 
 	// Make the function accept the id as an argument
@@ -70,6 +83,115 @@
 			}
 		);
 	};
+
+	// --- Handles cover image upload ---
+	const handleCoverUpload = async () => {
+		if (!fileInput || !fileInput.files || fileInput.files.length === 0 || !series) return;
+
+		const file = fileInput.files[0];
+		const formData = new FormData();
+		formData.append('cover', file);
+
+		try {
+			await apiFetch(`/api/library/series/${series.id}/cover`, {
+				method: 'POST',
+				body: formData
+			});
+
+			// Force re-fetch of series data to get updated coverPath if it was null
+			await fetchSeriesData(series.id);
+			// Update trigger to force <img> reload even if URL is same
+			coverRefreshTrigger++;
+		} catch (e) {
+			error = `Failed to upload cover: ${(e as Error).message}`;
+		} finally {
+			// Clear input for next use
+			fileInput.value = '';
+		}
+	};
+
+	// Toggles the completion status of a volume with Optimistic UI and Debouncing
+	const toggleComplete = async (volumeId: string) => {
+		if (!series) return;
+
+		// 1. Find the volume in our local state
+		const volumeIndex = series.volumes.findIndex((v) => v.id === volumeId);
+		if (volumeIndex === -1) return;
+
+		// 2. Calculate new status based on current LOCAL state
+		const vol = series.volumes[volumeIndex];
+		// Handle potential missing progress array safely
+		const currentProgress = vol.progress[0] ?? {
+			page: 1,
+			completed: false,
+			timeRead: 0,
+			charsRead: 0
+		};
+		const newStatus = !currentProgress.completed;
+
+		// 3. OPTIMISTIC UI UPDATE: Update local state immediately
+		series.volumes[volumeIndex].progress[0].completed = newStatus;
+
+		// 4. DEBOUNCE LOGIC:
+		// If a timer already exists for THIS volume, clear it (cancel previous send)
+		if (toggleCompleteTimers.has(volumeId)) {
+			clearTimeout(toggleCompleteTimers.get(volumeId)!);
+		}
+		// store new intended status
+		pendingToggleComplete.set(volumeId, newStatus);
+
+		// Set a new timer to send the ACTUAL request in 1 second
+		const timerId = setTimeout(async () => {
+			toggleCompleteTimers.delete(volumeId); // Clean up the map entry
+			pendingToggleComplete.delete(volumeId); // Clean up the map entry
+
+			try {
+				await apiFetch(`/api/progress/volume/${volumeId}`, {
+					method: 'PUT',
+					body: { completed: newStatus }
+				});
+
+				// Optional: Silent re-fetch to ensure perfect sync with server
+				// await fetchSeriesData(params.id, true);
+			} catch (e) {
+				console.error('Failed to save toggle state:', e);
+				// NOTE: In a production app,  revert the
+				// optimistic update here if the server request fails.
+			}
+		}, 1000); // 1-second debounce buffer
+
+		// Store the new timer ID
+		toggleCompleteTimers.set(volumeId, timerId);
+	};
+
+	// Helper to get progress percentage
+	const getProgressPercent = (volume: Volume) => {
+		const progress = volume.progress[0];
+		if (!progress || !volume.pageCount) return 0;
+		// We use (page - 1) because page 1 is 0% complete, not (1 / pageCount)%
+		return Math.floor(((progress.page - 1) / (volume.pageCount - 1)) * 100);
+	};
+
+	/**
+	 * Flushes all pending toggles immediately. Called on unmount.
+	 */
+	const flushPendingToggleComplete = () => {
+		for (const [volumeId, status] of pendingToggleComplete.entries()) {
+			// Clear any pending timer for this volume
+			if (toggleCompleteTimers.has(volumeId)) {
+				clearTimeout(toggleCompleteTimers.get(volumeId)!);
+			}
+
+			try {
+				apiFetch(`/api/progress/volume/${volumeId}`, {
+					method: 'PUT',
+					body: { completed: status }
+				});
+			} catch (e) {
+				console.error(`Failed to save toggle for volume ${volumeId}:`, e);
+			}
+		}
+	};
 </script>
 
 <div class="min-h-screen bg-gray-100 p-8 dark:bg-gray-900">
@@ -93,20 +215,27 @@
 			class="mt-8 grid grid-cols-2 gap-y-10 gap-x-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:gap-x-8"
 		>
 			{#each series.volumes as volume (volume.id)}
+				{@const percent = getProgressPercent(volume)}
+				{@const isCompleted = volume.progress[0]?.completed ?? false}
 				<div class="group relative">
-					<div
-						class="aspect-w-2 aspect-h-3 w-full overflow-hidden rounded-md bg-gray-200 dark:bg-gray-800"
-					>
+					<div class="aspect-[3/4] w-full overflow-hidden rounded-md bg-gray-200 dark:bg-gray-800">
 						{#if volume.coverImageName}
 							<img
 								src={`/api/files/volume/${volume.id}/image/${volume.coverImageName}`}
 								alt={volume.title}
-								class="h-full w-full object-cover object-center"
+								class="h-full w-full object-contain object-center"
 							/>
 						{:else}
 							<div class="flex h-full w-full items-center justify-center text-center text-gray-400">
 								{volume.title}
 							</div>
+						{/if}
+						<!-- Progress Bar -->
+						{#if percent > 0}
+							<div
+								class="absolute bottom-0 left-0 h-1.5 bg-indigo-600 dark:bg-indigo-500"
+								style="width: {percent}%"
+							></div>
 						{/if}
 					</div>
 					<div class="mt-4">
@@ -116,7 +245,41 @@
 								{volume.title}
 							</a>
 						</h3>
+						<!-- Progress Text -->
+						<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+							{volume.progress[0] ? volume.progress[0].page : 0}/{volume.pageCount} pages
+						</p>
 					</div>
+
+					<!-- Toggle Complete Button  -->
+					<button
+						type="button"
+						aria-label={isCompleted ? 'Mark as unread' : 'Mark as read'}
+						aria-pressed={isCompleted}
+						onclick={(e) => {
+							e.preventDefault();
+							e.stopPropagation();
+							toggleComplete(volume.id);
+						}}
+						class="absolute top-2 left-2 z-10 rounded-full p-1 transition-colors cursor-pointer
+                     {isCompleted
+							? 'bg-green-500 text-white opacity-100'
+							: 'bg-black/30 text-white/50 opacity-0 hover:bg-black/50 hover:text-white group-hover:opacity-100'}"
+					>
+						<!-- Check Icon -->
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 20 20"
+							fill="currentColor"
+							class="h-5 w-5"
+						>
+							<path
+								fill-rule="evenodd"
+								d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z"
+								clip-rule="evenodd"
+							/>
+						</svg>
+					</button>
 
 					<!-- Delete Button -->
 					<button
@@ -127,7 +290,9 @@
 							e.stopPropagation(); // Stop group click
 							handleDeleteVolume(volume.id, volume.title);
 						}}
-						class="absolute top-2 right-2 z-10 rounded-full bg-black/30 p-1 text-white/70 opacity-0 transition-opacity hover:bg-red-600 hover:text-white group-hover:opacity-100"
+						class="absolute top-2 right-2 z-10 rounded-full bg-black/30
+              p-1 text-white/70 opacity-0 transition-opacity hover:bg-red-600
+              hover:text-white group-hover:opacity-100 cursor-pointer"
 					>
 						<!-- Trash Icon -->
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24">

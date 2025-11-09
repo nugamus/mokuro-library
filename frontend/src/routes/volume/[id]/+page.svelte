@@ -8,7 +8,7 @@
 	import OcrOverlay from '$lib/components/OcrOverlay.svelte';
 
 	// --- SvelteKit Props ---
-	let { params } = $props<{ params: { id: string } }>();
+	let { params } = $props<{ params: { id: string } }>(); // volumeId
 
 	// --- Component State ---
 	let volumeResponse = $state<VolumeResponse | null>(null);
@@ -24,7 +24,8 @@
 	let doublePageOffset = $state<'even' | 'odd'>('odd'); // Default 'odd' (starts on page 1)
 	let retainZoom = $state(true);
 	let navZoneWidth = $state(15);
-	let saveTimer: ReturnType<typeof setTimeout>;
+	let settingsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let isSavingSettings = $state(false);
 
 	// --- OCR settings state ---
 	let isEditMode = $state(false); // Controls visibility of lines_coords
@@ -45,6 +46,11 @@
 	let panzoomElement = $state<HTMLDivElement | null>(null);
 	let panzoomInstance = $state<PanzoomObject | null>(null);
 
+	// --- ADDED: Progress Tracking State ---
+	let initialPage = $state(0); // The page number we loaded with
+	let progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
+	let isSavingProgress = $state(false);
+
 	// --- Data Fetching Effects ---
 	// This effect fetches volume data on load
 	const currentUserId = $derived($user?.id);
@@ -52,8 +58,9 @@
 		if (currentUserId && params.id) {
 			volumeResponse = null;
 			currentPageIndex = 0;
+			initialPage = 0;
 			isLoading = true;
-			fetchVolumeData(params.id);
+			fetchVolumeAndProgressData(params.id);
 		}
 	});
 
@@ -77,7 +84,6 @@
 
 	// This effect watches all local settings and saves them
 	$effect(() => {
-		// 1. Bundle up all current settings
 		const currentSettings: ReaderSettingsData = {
 			layoutMode,
 			readingDirection,
@@ -87,25 +93,109 @@
 			showTriggerOutline
 		};
 
-		// 2. Don't save on the first load
 		if (!settingsInitialized) return;
 
-		// 3. Debounce the save
-		clearTimeout(saveTimer);
-		saveTimer = setTimeout(() => {
-			// 4. Call the store's update function
-			updateSettings(currentSettings);
-		}, 2000); // 2-second delay
+		// Clear previous timer using short-circuit
+		settingsSaveTimer && clearTimeout(settingsSaveTimer);
+
+		// Start new timer
+		settingsSaveTimer = setTimeout(() => {
+			saveSettings(currentSettings);
+		}, 2000);
+
+		// Cleanup function
+		return () => {
+			if (settingsSaveTimer) {
+				console.log('Saving settings on unmount...');
+				saveSettings(currentSettings);
+			}
+		};
 	});
 
-	const fetchVolumeData = async (volumeId: string) => {
+	// This effect watches for page change and save progress ---
+	$effect(() => {
+		if (currentPageIndex !== initialPage) {
+			// User has turned the page
+			progressSaveTimer && clearTimeout(progressSaveTimer);
+			progressSaveTimer = setTimeout(() => {
+				saveProgress();
+			}, 2000); // 2-second buffer
+		}
+
+		// Cleanup function for component unmount
+		return () => {
+			progressSaveTimer && clearTimeout(progressSaveTimer);
+			// If page has changed from its initial loaded state, save immediately
+			if (currentPageIndex !== initialPage) {
+				console.log('Saving progress on unmount...');
+				saveProgress();
+			}
+		};
+	});
+
+	const fetchVolumeAndProgressData = async (volumeId: string) => {
 		try {
+			// Fetch volume data
 			const data = await apiFetch(`/api/library/volume/${volumeId}`);
 			volumeResponse = data as VolumeResponse;
+
+			// Fetch progress data
+			const progressData = await apiFetch(`/api/progress/volume/${volumeId}`);
+			if (progressData.page) {
+				currentPageIndex = progressData.page - 1; // 1-based to 0-based
+				initialPage = progressData.page - 1;
+			}
 		} catch (e) {
 			error = (e as Error).message;
 		} finally {
 			isLoading = false;
+		}
+	};
+
+	// --- Saves the current page progress to the backend ---
+	const saveProgress = async () => {
+		if (isSavingProgress || !volumeResponse) return;
+		isSavingProgress = true;
+
+		// Clear any pending timer
+		if (progressSaveTimer) {
+			clearTimeout(progressSaveTimer);
+			progressSaveTimer = null;
+		}
+
+		try {
+			await apiFetch(`/api/progress/volume/${params.id}`, {
+				method: 'PUT',
+				body: {
+					page: currentPageIndex + 1 // Convert 0-based to 1-based for DB
+				}
+			});
+			// Update initialPage to prevent re-saving on unmount
+			initialPage = currentPageIndex;
+		} catch (e) {
+			console.error('Failed to save progress:', (e as Error).message);
+		} finally {
+			isSavingProgress = false;
+		}
+	};
+
+	// --- save reader settings ---
+	const saveSettings = async (settings: ReaderSettingsData) => {
+		if (isSavingSettings) return;
+		isSavingSettings = true;
+
+		// Clear any pending timer if called directly (e.g., on unmount)
+		if (settingsSaveTimer) {
+			clearTimeout(settingsSaveTimer);
+			settingsSaveTimer = null;
+		}
+
+		try {
+			await updateSettings(settings);
+		} catch (e) {
+			console.error('Failed to save settings:', e);
+		} finally {
+			isSavingSettings = false;
 		}
 	};
 
@@ -281,10 +371,10 @@
 		}
 		// Dual Page
 		const hasOddOffset = doublePageOffset === 'odd';
+		const pageIsEven = currentPageIndex % 2 === 0;
 		let jump = 2;
 
-		// If we're on the first spread (index 1), jump back 1 to the cover
-		if (hasOddOffset && currentPageIndex === 1) {
+		if (hasOddOffset === pageIsEven) {
 			jump = 1;
 		}
 
@@ -449,6 +539,14 @@
 			</div>
 
 			<div class="flex flex-1 justify-end gap-2">
+				<!-- Page Counter -->
+				<span
+					class="flex items-center justify-center text-sm font-medium font-semibold text-gray-300 mr-2"
+				>
+					{`${currentPageIndex + 1}${currentPages.length == 2 ? `-${currentPageIndex + 2}` : ''}`} /
+					{totalPages}
+				</span>
+
 				<!-- OCR TEXT EDIT MODE TOGGLE -->
 				<button
 					onclick={toggleEditMode}
