@@ -2,10 +2,6 @@
 
 This document outlines the detailed technical flow for implementing drag, resize, and context menu functionality within the Mokuro OCR editor, along with the necessary DOM and state manipulation techniques required for stability in a reactive Svelte environment.
 
----
-
-## Explanation of Flow for dragging boxes
-
 1.  **User Enters Mode:**
     * The user clicks the **Box Edit Mode** toggle in the header, setting `isBoxEditMode = true` and `isEditMode = false` (modes are mutually exclusive).
 
@@ -13,10 +9,15 @@ This document outlines the detailed technical flow for implementing drag, resize
     * An `$effect` in `volume/[id]/+page.svelte` detects the state change.
     * It calls `panzoomInstance.reset()` and `panzoomInstance.setOptions({ disablePan: true, disableZoom: true })` to establish a fixed coordinate system.
 
-3.  **User Drags Box (Interaction Logic)**
+---
+
+## Explanation of Flow for dragging boxes
+
+
+4.  **User Drags Box (Interaction Logic)**
     * When `isBoxEditMode` is `true`, two distinct drag interactions are possible:
 
-    **3.1. Dragging the Entire Block (Outer Container):**
+    4.1.  **Dragging the Entire Block (Outer Container):**
     * The `onmousedown` event on the outer `div.group/block` initiates the drag (`handleBlockDragStart`).
     * **Visual Drag:** CSS `transform: translate()` is used for smooth, jank-free visual movement.
     * **Data Update (`onDragEnd`):**
@@ -25,7 +26,7 @@ This document outlines the detailed technical flow for implementing drag, resize
         3.  The same delta is applied to all eight coordinates in the **`block.lines_coords`** array for every associated line (since line coordinates are absolute, they must be moved with the block).
         4.  `onOcrChange()` is called.
 
-    **3.2. Dragging an Individual Line (Inner Div):**
+    4.2.  **Dragging an Individual Line (Inner Div):**
     * The `onmousedown` event on the inner line `div.group/line` initiates the drag (`handleLineDragStart`).
     * It calls `event.stopPropagation()` to prevent the outer block drag (3.1).
     * **Visual Drag:** CSS `transform` is used on the line's element.
@@ -100,3 +101,52 @@ This document outlines the detailed technical flow for implementing drag, resize
         * Finds the index of the `block` in the `page.blocks` array.
         * Calls `page.blocks.splice(index, 1)` to remove the entire block.
         * Calls `onOcrChange()` and `handleSave()` to persist this structural change.
+
+---
+
+## Explanation of Flow for Re-ordering Lines (Modal)
+
+This flow allows a user to change the sequential order of lines within a block via a dedicated modal.
+
+* **Rationale:** Text selection and copying rely on the `block.lines` array order. When a user creates a new line to insert "missing" text, it is appended to the end of the array, which is semantically incorrect. This modal provides a robust UI to correct the line order.
+* **Modes:** This functionality can be triggered from either **Text Edit Mode** (`isEditMode`) or **Box Edit Mode** (`isBoxEditMode`).
+
+1.  **Component Interaction:**
+    * A new Svelte component, `LineOrderModal.svelte`, will be created.
+    * This component will be managed by a new global store, `lineOrderStore`, similar to `confirmationStore`, or passed as a prop from `volume/[id]/+page.svelte`.
+    * The store will hold `{ isOpen: boolean, block: MokuroBlock | null, onSave: () => void }`.
+
+2.  **Context Menu Activation:**
+    * The user right-clicks on an **inner line** (`div.group/line`).
+    * This triggers `openLineContextMenu(event, block, lineIndex)`.
+    * A new `MenuOption` will be added to the `options` array: `{ label: "Re-order Lines...", action: () => openLineOrderModal(block) }`.
+    * This option should *not* be disabled, as it opens the modal for the entire block.
+
+3.  **Modal Flow:**
+    * The `openLineOrderModal(block)` function sets the `lineOrderStore`'s state:
+        * `isOpen = true`
+        * `block = block`
+        * `onSave = onOcrChange` (passing the callback from `OcrOverlay.svelte`).
+    * The `LineOrderModal.svelte` component renders. It contains an `#each` loop over the `$lineOrderStore.block.lines` array.
+    * Each list item displays the `line` text and two arrow buttons ("Up" and "Down").
+
+4.  **Action Functions (Inside Modal):**
+    * An array swap utility `swap(arr, i, j)` will be used.
+    * **`handleMoveUp(lineIndex)`:**
+        1.  If `lineIndex === 0`, it returns.
+        2.  It calls `swap($lineOrderStore.block.lines, lineIndex, lineIndex - 1)`.
+        3.  It calls `swap($lineOrderStore.block.lines_coords, lineIndex, lineIndex - 1)`.
+        4.  Svelte's reactivity updates the modal's list in place.
+    * **`handleMoveDown(lineIndex)`:**
+        1.  If `lineIndex === $lineOrderStore.block.lines.length - 1`, it returns.
+        2.  It calls `swap($lineOrderStore.block.lines, lineIndex, lineIndex + 1)`.
+        3.  It calls `swap($lineOrderStore.block.lines_coords, lineIndex, lineIndex + 1)`.
+        4.  Svelte's reactivity updates the modal's list in place.
+    * **`handleSave()` / `handleClose()`:**
+        1.  The modal closes (`$lineOrderStore.isOpen = false`).
+        2.  The `onSave` callback (which is `onOcrChange`) is triggered.
+        3.  This marks the `volume/[id]/+page.svelte`/+page.svelte] as having unsaved changes, prompting the "Save" button to appear.
+
+5.  **UI Update:**
+    * The modal's internal list re-renders instantly on swap.
+    * When the modal is closed, the changes are already applied to the `block` object. The `onOcrChange()` call ensures the main `OcrOverlay.svelte` (if it re-renders) and the save mechanism are aware of the new state.

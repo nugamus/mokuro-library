@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { MokuroPage, MokuroBlock } from '$lib/types';
 	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
+	import { lineOrderStore } from '$lib/lineOrderStore';
 
 	let {
 		page,
@@ -439,6 +440,14 @@
 	};
 
 	/**
+	 * Opens the modal for re-ordering lines in the given block.
+	 */
+	const openLineOrderModal = (block: MokuroBlock) => {
+		// Pass the block and the onOcrChange callback to the store
+		lineOrderStore.open(block, onOcrChange);
+	};
+
+	/**
 	 * Opens the context menu for the empty space in page.
 	 */
 	const openOverlayContextMenu = (event: MouseEvent) => {
@@ -477,7 +486,7 @@
 	};
 
 	/**
-	 * Opens the context menu for an *individual line*.
+	 * Opens the context menu for an individual line.
 	 */
 	const openLineContextMenu = (event: MouseEvent, block: MokuroBlock, lineIndex: number) => {
 		// Stop the browser menu in all modes
@@ -508,11 +517,22 @@
 		}
 
 		if (isBoxEditMode) {
-			if (isEditMode) {
+			if (options.length > 0) {
 				// Only add a separator if text options are also present
 				options.push({ separator: true });
 			}
-			// Box Edit Mode options
+		}
+
+		// Add re-order and delete options if in *either* edit mode
+		if (isEditMode || isBoxEditMode) {
+			if (options.length > 0) {
+				options.push({ separator: true });
+			}
+			// Add new "Re-order Lines" option
+			options.push({
+				label: 'Re-order Lines...',
+				action: () => openLineOrderModal(block)
+			});
 			options.push({
 				label: 'Delete Line',
 				action: () => deleteLine(block, lineIndex)

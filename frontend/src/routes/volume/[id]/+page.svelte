@@ -588,9 +588,11 @@
 				</button>
 
 				{#if hasUnsavedChanges}
+					<!-- OCR save button -->
 					<button
 						onclick={handleSave}
 						disabled={isSaving}
+						title="Save OCR changes"
 						type="button"
 						class="text-gray-400 hover:text-white disabled:opacity-50 cursor-pointer"
 						aria-label="Save OCR Edits"

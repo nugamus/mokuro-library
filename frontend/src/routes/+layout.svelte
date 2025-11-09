@@ -6,6 +6,7 @@
 	import { checkAuth } from '$lib/authStore';
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import ConfirmationModal from '$lib/components/ConfirmationModal.svelte';
+	import LineOrderModal from '$lib/components/LineOrderModal.svelte';
 
 	let { children } = $props();
 
@@ -21,3 +22,4 @@
 {@render children()}
 <ContextMenu />
 <ConfirmationModal />
+<LineOrderModal />

@@ -52,6 +52,7 @@
 </script>
 
 {#if isOpen}
+	<!-- click on background to close-->
 	<button
 		transition:fade={{ duration: 150 }}
 		onclick={onClose}
