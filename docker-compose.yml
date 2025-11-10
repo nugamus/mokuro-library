@@ -9,7 +9,7 @@ services:
     ports:
       # Maps port 80 on computer to port 3001 inside the container.
       # Change the first number if port 80 is already in use (e.g., "8080:3001").
-      - "80:3001"
+      - "3001:3001"
     volumes:
       # Persist the SQLite database.
       - ./data:/app/data
