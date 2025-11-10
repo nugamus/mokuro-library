@@ -30,15 +30,22 @@
 	let focusedBlock = $state<MokuroBlock | null>(null);
 
 	const wrapDotSequences = (text: string) => {
-		const ellipsisGlyph = '\u2026';
+		const ellipsis = '\u2026';
+		const doubleExcl = '\u203C';
 		// Regex Explanation:
 		// ([\.．]{2,}): Matches two or more consecutive occurrences of
 		//              EITHER the ASCII period (\.) OR the Fullwidth Full Stop (．).
 		// g: Global flag to match all occurrences in the string.
-		const regex = /([\.．]{2,})/g;
+		const regexes = new Map<RegExp, string>();
+		regexes.set(/([\.．]{2,})/g, ellipsis);
+		regexes.set(/([!！]{2,})/g, doubleExcl);
 
 		// Replace the matched dot sequence ($&) with the span wrapper.
-		return text.replace(regex, ellipsisGlyph);
+		let s = text;
+		for (const [reg, pattern] of regexes) {
+			s = s.replaceAll(reg, pattern);
+		}
+		return s;
 	};
 
 	/**
@@ -770,9 +777,12 @@
                 background-color: ${isEditMode || isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
                 cursor: ${isBoxEditMode ? 'grab' : block.vertical ? 'vertical-text' : 'text'};
                 font-size: calc(calc(90vh / ${page.img_height}) * ${block.font_size});
-                font-weight: 550;
+                font-weight: 500;
                 white-space: nowrap;
                 user-select: text;
+
+                /* Ensure a high-quality CJK font is used */
+                font-family: 'Noto Sans JP', 'MS Mincho', sans-serif;
               `}
 							onblur={(e) => {
 								let newText = (e.currentTarget as HTMLDivElement).innerText;
@@ -825,8 +835,5 @@
 		-moz-font-feature-settings:
 			'vpal' on,
 			'vkrn' on;
-
-		/* Ensure a high-quality CJK font is used */
-		font-family: 'Noto Sans CJK JP', 'Yu Gothic', sans-serif;
 	}
 </style>
