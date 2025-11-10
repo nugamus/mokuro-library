@@ -93,14 +93,19 @@ However, as a client-side tool, it relies on browser storage, which has limitati
 **Mokuro Library solves this problem** by moving everything to the server:
 
 * **Solve Storage Limits:** Library size is limited only by the server's hard drive, not browser's cache.
-* **Persistent Centralized Progress:** All reading progress, page numbers, and settings are saved to your user account on the server, so you are not brower/devide-bound.
+* **Persistent Centralized Progress:** All reading progress, page numbers, and settings are saved to your user account on the server, so you are not browser/devide-bound.
 * **Data lives in the open:** Uploaded files stay on the server and accessible through the file system.
-* **File-Based Edit Persistence:** OCR modifications are written directly back to the corresponding `.mokuro` file on the server's filesystem. This contrasts with client-side applications that store edits in volatile browser storage. As a result, all corrections are as persistent and portable as the `.mokuro` files themselves.
+* **File-Based Edit Persistence:** OCR modifications are written directly back to the corresponding `.mokuro` file on the server's filesystem. As a result, all corrections are as persistent and portable as the `.mokuro` files themselves.
 
-### 2. Anki integration
+### 2. Non-essential stretch features:
+* [ ] Optional Reader features
+  * [x] Per user persistent reader settings
+  * [ ] Webtoon Mode: A single, long-scrolling vertical layout.
+  * [ ] Caching: Pre-loading the next and previous page images.
+* [ ] Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
+* [ ] AnkiConnect Integration: Focuses on sentence mining, as dictionary extensions like Yomi-tan already have word mining down.
+* [ ] The ability to export the library in different format (e.g. pdf, cbz, ...)
 
-Unlike [ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader), this is not a planned feature. Implementing it to work with Docker can be rather complicated.
-In addition, browser extensions like Yomi-tan already have matured Anki-Connect support (with tags like `{screenshot}` or `{clipboard-image}` for images).
 
 ## 🔧 Troubleshooting
 

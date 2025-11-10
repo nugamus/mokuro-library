@@ -24,54 +24,54 @@ The system will be a decoupled client-server application.
 ### Must-Haves (Minimum Viable Product)
 
 1.  **Multi-User Authentication:**
-    * Users must be able to create an account and log in.
-    * The backend will use a simple, non-HTTPS-only cookie for session management, suitable for a trusted LAN/VPN environment.
+    * [x] Users must be able to create an account and log in.
+    * [x] The backend will use a simple, non-HTTPS-only cookie for session management, suitable for a trusted LAN/VPN environment.
 
 2.  **Server-Side Library (Directory Upload-Style):**
-    * Authenticated users can upload content via the web UI. The upload modal will support two methods:
-        1.  Single File Upload: .zip or .cbz files containing a single volume, \<series\_title\> will be pulled from inside the .mokuro file.
-        2.  Directory Upload: Users can select a "root" folder from their computer that contains pre-processed Mokuro output.
+    * [ ] Authenticated users can upload content via the web UI. The upload modal will support two methods:
+        * [ ] Single File Upload: .zip or .cbz files containing a single volume, \<series\_title\> will be pulled from inside the .mokuro file.
+        * [x] Directory Upload: Users can select a "root" folder from their computer that contains pre-processed Mokuro output.
     * The backend will be able to parse the uploaded directory structure to find series and volumes based on the standard Mokuro output format:
         **Mokuro Output Structure:**
         * Image Files: root/\<series\_title\>/\<volume\_title\>/\<image\>.\<ext\>
         * Mokuro File: root/\<series\_title\>/\<volume\_title\>.mokuro
     * The backend will iterate through the uploaded file list, identify each series and volume, and populate the SQLite database, linking the new Series to the logged-in user's ID.
-    * Collision Handling: If an uploaded volume already exists in that user's library (based on series\_title and volume\_title), the server will ignore the uploaded volume and keep the existing data.
+    * [x] Collision Handling: If an uploaded volume already exists in that user's library (based on series\_title and volume\_title), the server will ignore the uploaded volume and keep the existing data.
 
 3.  **Per-User Progress & Settings:**
-    * All reading progress (current page, stats) will be saved to the database, linked to the specific user ID.
-        * Reading progress and read markers will be displayed on volume entry   
-    * All user-configurable settings (theme, reader behavior, etc.) will be saved to the database, linked to the user ID.
+    * [x] All reading progress (current page, stats) will be saved to the database, linked to the specific user ID.
+        * [x] Reading progress and read markers will be displayed on volume entry   
+    * [x] All user-configurable settings (theme, reader behavior, etc.) will be saved to the database, linked to the user ID.
 
 4.  **Manga Reader UI:**
-	* Core reader features (must-haves)
-		* Fetch and display the current page's image.
-		* Layout Mode: A toggle for Single Page vs. Dual-Page Spread (e.g., showing two pages side-by-side).
-		* Dual-Page offset: the ability to choose whether to start dual page from even or odd pages
-		* Dual-Page reading direction: left to right or right to left
-		* Ability to set the width of the side navigation buttons
-		* Interactivity: Zoom and Pan the image(s).
-	* OCR features (must-haves)
-		* Display editable OCR blocks as overlays.
-		* OCR blocks are only visible when hovered.
-		* Ensure these overlays correctly scale and pan with the base image.
-		* Ability to delete, create, and change existing OCR blocks
-		* A "Save" button to write changes back.
-	* Optional features
-		* Per user persistent reader settings
-		* Webtoon Mode: A single, long-scrolling vertical layout.
-		* Caching: Pre-loading the next and previous page images.
+	* [x] Core reader features
+		* [x] Fetch and display the current page's image.
+		* [x] Layout Mode: A toggle for Single Page vs. Dual-Page Spread (e.g., showing two pages side-by-side).
+		* [x] Dual-Page offset: the ability to choose whether to start dual page from even or odd pages
+		* [x] Dual-Page reading direction: left to right or right to left
+		* [x] Ability to set the width of the side navigation buttons
+		* [x] Interactivity: Zoom and Pan the image(s).
+	* [x] OCR overlay features
+		* [x] Display editable OCR blocks as overlays.
+		* [x] OCR blocks are only visible when hovered.
+		* [x] Ensure these overlays correctly scale and pan with the base image.
 
 5.  **OCR Editing (Write-Back):**
-    * Users can edit the text within an OCR text box.
-    * Users can edit the textbox location (i.e. the four corners) of an OCR text box
-    * A "Save" button will send the modified text data to the backend.
-    * The backend will verify the user owns the volume, read the corresponding .mokuro file from the disk, update its JSON content, and save the changes.
+    * [x] Ability to delete, create, and change existing OCR blocks
+      * [x] Users can edit the textbox location (i.e. the four corners) of an OCR text box
+      * [x] Users can edit the text within an OCR text box.
+    * [x] A "Save" button will send the modified text data to the backend.
+    * [x] The backend will verify the user owns the volume, read the corresponding .mokuro file from the disk, update its JSON content, and save the changes.
 
 ### Nice-to-Haves (Post-MVP)
 
-* Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
-* AnkiConnect Integration: Re-implement the AnkiConnect feature, linking settings to the server-side user account.
+* [ ] Optional Reader features
+  * [x] Per user persistent reader settings
+  * [ ] Webtoon Mode: A single, long-scrolling vertical layout.
+  * [ ] Caching: Pre-loading the next and previous page images.
+* [ ] Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
+* [ ] AnkiConnect Integration: Focuses on sentence mining, as dictionary extensions like Yomi-tan already have word mining down.
+* [ ] The ability to export the library in different format (e.g. pdf, cbz, ...)
 
 ## Technology Stack
 
