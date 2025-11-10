@@ -37,7 +37,7 @@
 		//              EITHER the ASCII period (\.) OR the Fullwidth Full Stop (．).
 		// g: Global flag to match all occurrences in the string.
 		const regexes = new Map<RegExp, string>();
-		regexes.set(/([\.．]{2,})/g, ellipsis);
+		regexes.set(/([\.．。]{2,})/g, ellipsis);
 		regexes.set(/([!！]{2,})/g, doubleExcl);
 
 		// Replace the matched dot sequence ($&) with the span wrapper.
