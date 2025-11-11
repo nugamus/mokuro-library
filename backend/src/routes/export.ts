@@ -137,7 +137,7 @@ const exportRoutes: FastifyPluginAsync = async (
    * GET /api/export/zip
    * Downloads the entire user library as a ZIP.
    */
-  fastify.get('/download', async (request, reply) => {
+  fastify.get('/zip', async (request, reply) => {
     const userId = request.user.id;
     // The user's library root is 'uploads/<userId>'
     // We need to resolve this relative to the project root.
