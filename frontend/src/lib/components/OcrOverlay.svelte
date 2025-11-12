@@ -27,8 +27,22 @@
 		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void; // callback to update the focused block state
 	}>();
 
+	// --- States ---
 	// current focused mokuroBlock for hovering behavior
 	let focusedBlock = $state<MokuroBlock | null>(null);
+
+	//stable reference to the root element, should be the same size as the view port
+	let overlayRootElement: HTMLDivElement | null = $state(null);
+
+	// Track the currently focused line div
+	let focusedLineElement: HTMLDivElement | null = $state(null);
+
+	let viewportWidth = $state(0);
+	let viewportHeight = $state(0);
+
+	let fontScale = $derived(
+		Math.min(viewportWidth / page.img_width, viewportHeight / page.img_height)
+	);
 
 	const wrapDotSequences = (text: string) => {
 		const ellipsis = '\u2026';
@@ -38,7 +52,7 @@
 		//              EITHER the ASCII period (\.) OR the Fullwidth Full Stop (．).
 		// g: Global flag to match all occurrences in the string.
 		const regexes = new Map<RegExp, string>();
-		regexes.set(/([\.．。]{2,})/g, ellipsis);
+		regexes.set(/([\.．。]{2,})/g, '．．．');
 		regexes.set(/([!！]{2,})/g, doubleExcl);
 
 		// Replace the matched dot sequence ($&) with the span wrapper.
@@ -53,8 +67,6 @@
 	 * Gets the scale ratio of rendered pixels to image pixels.
 	 * Uses your corrected logic of measuring the parentElement.
 	 */
-	//stable reference to the root element, should be the same size as the view port
-	let overlayRootElement: HTMLDivElement | null = $state(null);
 	const getScaleRatios = () => {
 		if (!overlayRootElement?.parentElement) {
 			return { scaleRatioX: 1, scaleRatioY: 1 };
@@ -67,6 +79,8 @@
 		const scaleRatioX = page.img_width / rect.width;
 		const scaleRatioY = page.img_height / rect.height;
 
+		// these two numbers should be the same since aspect ratio is preserved,
+		// but better safe than sorry
 		return { scaleRatioX, scaleRatioY };
 	};
 
@@ -340,8 +354,6 @@
 		window.addEventListener('mouseup', handleDragEnd);
 	};
 
-	// Track the currently focused line div
-	let focusedLineElement: HTMLDivElement | null = $state(null);
 	/**
 	 * Executes a document command (cut, copy, paste) on the focused line.
 	 */
@@ -602,6 +614,7 @@
 	};
 </script>
 
+<svelte:window bind:innerWidth={viewportWidth} bind:innerHeight={viewportHeight} />
 <!-- svelte-ignore a11y_no_static_element_interactions, a11y_click_events_have_key_events -->
 <div
 	class="absolute top-0 left-0 h-full w-full ocr-top-layer"
@@ -785,13 +798,13 @@
 								style={`
                 background-color: ${isEditMode || isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
                 cursor: ${isBoxEditMode ? 'grab' : block.vertical ? 'vertical-text' : 'text'};
-                font-size: calc(calc(90vh / ${page.img_height}) * ${block.font_size});
+                font-size: ${1 * fontScale * block.font_size}px;
                 font-weight: 500;
                 white-space: nowrap;
                 user-select: text;
 
                 /* Ensure a high-quality CJK font is used */
-                font-family: 'Noto Sans JP', 'MS Mincho', sans-serif;
+                font-family: 'Noto Sans JP', 'Migu 1P', sans-serif;
               `}
 								onblur={(e) => {
 									let newText = (e.currentTarget as HTMLDivElement).innerText;
@@ -836,14 +849,16 @@
 		/* Minimal, beneficial font features (keeping only vertical kerning/alternates) */
 		font-feature-settings:
 			'vpal' on,
-			'vkrn' on;
+			'vkrn' on,
+			'vchw' on;
 
 		-webkit-font-feature-settings:
 			'vpal' on,
-			'vkrn' on;
-
+			'vkrn' on,
+			'vchw' on;
 		-moz-font-feature-settings:
 			'vpal' on,
-			'vkrn' on;
+			'vkrn' on,
+			'vchw' on;
 	}
 </style>
