@@ -2,6 +2,7 @@
 	import { apiFetch, triggerDownload } from '$lib/api';
 	import { user } from '$lib/authStore';
 	import { confirmation } from '$lib/confirmationStore';
+	import { contextMenu } from '$lib/contextMenuStore';
 
 	// --- Type definitions ---
 	interface UserProgress {
@@ -111,6 +112,43 @@
 			// Clear input for next use
 			fileInput.value = '';
 		}
+	};
+
+	/**
+	 * Opens a context menu to choose the download format.
+	 * This will be triggered by the download button.
+	 */
+	const openDownloadMenu = (event: MouseEvent, id: string, kind: 'series' | 'volume') => {
+		// Stop the click from doing anything else
+		event.preventDefault();
+		event.stopPropagation();
+
+		// 1. Get the button element from the event
+		const button = event.currentTarget as HTMLButtonElement;
+
+		// 2. Get its position on the screen
+		const rect = button.getBoundingClientRect();
+
+		// 3. Set the menu's (x, y) to be just below the button
+		const x = rect.left;
+		const y = rect.bottom;
+
+		contextMenu.open(x, y, [
+			{
+				label: 'Download as ZIP',
+				action: () => {
+					// Triggers the existing (original) zip download route
+					triggerDownload(`/api/export/${kind}/${id}/zip`);
+				}
+			},
+			{
+				label: 'Download as PDF',
+				action: () => {
+					// Triggers the new PDF-in-ZIP download route
+					triggerDownload(`/api/export/${kind}/${id}/pdf`);
+				}
+			}
+		]);
 	};
 
 	// Toggles the completion status of a volume with Optimistic UI and Debouncing
@@ -244,8 +282,8 @@
 
 				<!-- Series Download Button -->
 				<button
-					onclick={() => triggerDownload(`/api/export/series/${series?.id}/zip`)}
-					class="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+					onclick={(e) => openDownloadMenu(e, params.id, 'series')}
+					class="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 cursor-pointer"
 				>
 					<!-- Download Icon -->
 					<svg
@@ -355,11 +393,7 @@
 						<button
 							type="button"
 							aria-label="Download volume"
-							onclick={(e) => {
-								e.preventDefault();
-								e.stopPropagation();
-								triggerDownload(`/api/export/volume/${volume.id}/zip`);
-							}}
+							onclick={(e) => openDownloadMenu(e, volume.id, 'volume')}
 							class="rounded-full bg-black/30 p-1 text-white/70 hover:bg-blue-600 hover:text-white"
 						>
 							<!-- Download Icon (Small) -->

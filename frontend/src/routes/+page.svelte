@@ -4,6 +4,7 @@
 	import { browser } from '$app/environment';
 	import { apiFetch, triggerDownload } from '$lib/api';
 	import { confirmation } from '$lib/confirmationStore';
+	import { contextMenu } from '$lib/contextMenuStore';
 	import UploadModal from '$lib/components/UploadModal.svelte';
 
 	// --- Type definitions ---
@@ -97,6 +98,43 @@
 		}
 		user.set(null);
 	};
+
+	/**
+	 * Opens a context menu to choose the download format.
+	 * This will be triggered by the download button.
+	 */
+	const openDownloadMenu = (event: MouseEvent) => {
+		// Stop the click from doing anything else
+		event.preventDefault();
+		event.stopPropagation();
+
+		// 1. Get the button element from the event
+		const button = event.currentTarget as HTMLButtonElement;
+
+		// 2. Get its position on the screen
+		const rect = button.getBoundingClientRect();
+
+		// 3. Set the menu's (x, y) to be just below the button
+		const x = rect.left;
+		const y = rect.bottom;
+
+		contextMenu.open(x, y, [
+			{
+				label: 'Download as ZIP',
+				action: () => {
+					// Triggers the existing (original) zip download route
+					triggerDownload(`/api/export/zip`);
+				}
+			},
+			{
+				label: 'Download as PDF',
+				action: () => {
+					// Triggers the new PDF-in-ZIP download route
+					triggerDownload(`/api/export/pdf`);
+				}
+			}
+		]);
+	};
 </script>
 
 <div class="min-h-screen bg-gray-100 p-8 dark:bg-gray-900">
@@ -112,9 +150,9 @@
 			<div class="flex items-center gap-4 w-full sm:w-auto sm:ml-auto">
 				<!-- Download Library Button -->
 				<button
-					onclick={() => triggerDownload('/api/export/zip')}
+					onclick={openDownloadMenu}
 					disabled={library.length === 0}
-					class="hidden sm:flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+					class="flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600 sm:w-auto"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -129,7 +167,8 @@
 							d="M3.5 12.75a.75.75 0 00-1.5 0v2.5A2.75 2.75 0 004.75 18h10.5A2.75 2.75 0 0018 15.25v-2.5a.75.75 0 00-1.5 0v2.5c0 .69-.56 1.25-1.25 1.25H4.75c-.69 0-1.25-.56-1.25-1.25v-2.5z"
 						/>
 					</svg>
-					Download All
+
+					<span class="hidden md:inline mr-1"> Download All </span>
 				</button>
 				<!-- upload button -->
 				<button

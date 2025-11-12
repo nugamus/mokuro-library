@@ -561,6 +561,7 @@
 				<span
 					class="flex flex-row items-center justify-center text-sm font-medium font-semibold text-gray-300"
 				>
+					<!-- shortened form -->
 					<span class="inline md:hidden mr-1">
 						{`${currentPageIndex + 1}${currentPages.length == 2 ? `-${currentPageIndex + 2}` : ''}`}
 					</span>
