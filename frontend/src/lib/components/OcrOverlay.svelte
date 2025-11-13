@@ -49,14 +49,15 @@
 	const wrapDotSequences = (text: string, isVertical: boolean) => {
 		const ellipsis = isVertical ? '．\ufe01．\ufe01．\ufe01' : '\u2026';
 		const doubleExcl = '\u203C';
+		const ExclQuest = '\u2049';
 		// Regex Explanation:
 		// ([\.．]{2,}): Matches two or more consecutive occurrences of
 		//              EITHER the ASCII period (\.) OR the Fullwidth Full Stop (．).
 		// g: Global flag to match all occurrences in the string.
 		const regexes = new Map<RegExp, string>();
-		regexes.set(/([\.．。]{2,})/g, ellipsis);
-		regexes.set(/([!！]{2,})/g, doubleExcl);
-
+		regexes.set(/[\.．。]{2,}/g, ellipsis);
+		regexes.set(/[!！]{2,}/g, doubleExcl);
+		regexes.set(/[!！][?？]/g, ExclQuest);
 		// Replace the matched dot sequence ($&) with the span wrapper.
 		let s = text;
 		for (const [reg, pattern] of regexes) {
