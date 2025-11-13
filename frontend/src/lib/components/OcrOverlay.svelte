@@ -111,6 +111,7 @@
 
 		for (let i = 0; i < 100; i++) {
 			let measuredSize = measure(guess);
+			console.log(`${i} ${measuredSize} ${targetDimension} ${guess} ${min} ${max}`);
 
 			if (max - min < 0.001) {
 				bestGuess = guess;
@@ -166,8 +167,6 @@
 		const { scaleRatioX, scaleRatioY } = getScaleRatios();
 		// rect is the page's bounding box, *including* pan and zoom
 		const rect = overlayRootElement.parentElement.getBoundingClientRect();
-		const { x: panX, y: panY } = panzoomInstance.getPan();
-		const currentZoom = panzoomInstance.getScale();
 
 		// 1. Get click position relative to the panned, zoomed container
 		const relativeX = event.clientX - rect.left;
@@ -187,7 +186,6 @@
 	const getDeltas = (moveEvent: MouseEvent) => {
 		// getScaleRatio already accounts for zoom
 		const { scaleRatioX, scaleRatioY } = getScaleRatios();
-		const currentZoom = panzoomInstance?.getScale() ?? 1.0;
 
 		// 1. Get mouse movement delta, corrected for zoom
 		const relativeDeltaX = moveEvent.movementX;
@@ -919,7 +917,7 @@
 								class:vertical-text={block.vertical}
 								style={`
                 cursor: ${isBoxEditMode ? 'grab' : block.vertical ? 'vertical-text' : 'text'};
-                font-size: ${1 * fontScale * block.font_size}px;
+                font-size: ${fontScale * block.font_size}px;
               `}
 								ondblclick={(e) => {
 									if (!isEditMode && !isBoxEditMode && isSmartResizeMode) {
