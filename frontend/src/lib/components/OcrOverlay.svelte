@@ -46,15 +46,15 @@
 		Math.min(viewportWidth / page.img_width, viewportHeight / page.img_height)
 	);
 
-	const wrapDotSequences = (text: string) => {
-		const ellipsis = '\u2026';
+	const wrapDotSequences = (text: string, isVertical: boolean) => {
+		const ellipsis = isVertical ? '．\ufe01．\ufe01．\ufe01' : '\u2026';
 		const doubleExcl = '\u203C';
 		// Regex Explanation:
 		// ([\.．]{2,}): Matches two or more consecutive occurrences of
 		//              EITHER the ASCII period (\.) OR the Fullwidth Full Stop (．).
 		// g: Global flag to match all occurrences in the string.
 		const regexes = new Map<RegExp, string>();
-		regexes.set(/([\.．。]{2,})/g, '．．．');
+		regexes.set(/([\.．。]{2,})/g, ellipsis);
 		regexes.set(/([!！]{2,})/g, doubleExcl);
 
 		// Replace the matched dot sequence ($&) with the span wrapper.
@@ -785,7 +785,7 @@
 				{/snippet}
 				<div
 					class={`
-            ${isBoxEditMode ? 'bg-transparent' : 'bg-white'}
+            ${isBoxEditMode || isSliderHovered ? 'bg-transparent' : 'bg-white'}
             relative h-full w-full
           `}
 					class:vertical-text={block.vertical}
@@ -808,17 +808,17 @@
 
 						<div
 							class={`
-                ${isEditMode ? 'border-red-500/70' : 'border-transparent'}
-                absolute border p-0 m-0 placeholder-transparent 
+                ${isEditMode || isSmartResizeMode ? 'border-red-500/70' : 'border-transparent'}
+                absolute border p-0 m-0 placeholder-transparent
                 transition-opacity leading-none z-2 group/line
+                flex item-center
               `}
-							class:vertical-text={block.vertical}
 							style={`
                 left: ${relative_x_min}%;
                 top: ${relative_y_min}%;
                 width: ${width}%;
                 height: ${height}%;
-                background-color: ${isEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
+                background-color: ${isEditMode || isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
               `}
 							role={isBoxEditMode ? 'button' : undefined}
 							onmousedown={(e) => handleLineDragStart(e, block, lineIndex)}
@@ -827,60 +827,55 @@
 							<!-- Inner Line Resize Handles -->
 							{#if isBoxEditMode}
 								<div
-									class="absolute -left-0.5 -top-0.5 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -left-0.75 -top-0.75 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-left')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -top-0.5 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -top-0.75 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-center')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -right-0.5 -top-0.5 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -right-0.75 -top-0.5 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-right')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -left-0.5 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -left-0.75 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'middle-left')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -right-0.5 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -right-0.75 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'middle-right')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -bottom-0.5 -left-0.5 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -bottom-0.75 -left-0.5 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-left')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -bottom-0.5 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -bottom-0.75 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-center')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -bottom-0.5 -right-0.5 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -bottom-0.75 -right-0.75 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-right')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 							{/if}
 							<div
+								data-line-text="true"
 								contenteditable={isEditMode}
 								role={isEditMode ? 'textbox' : undefined}
-								class="h-full w-full text-black text-semibold"
+								class="ocr-line-text self-center"
+								class:vertical-text={block.vertical}
 								style={`
-                background-color: ${isEditMode || isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
                 cursor: ${isBoxEditMode ? 'grab' : block.vertical ? 'vertical-text' : 'text'};
                 font-size: ${1 * fontScale * block.font_size}px;
-                font-weight: 500;
-                white-space: nowrap;
-                user-select: text;
-
-                /* Ensure a high-quality CJK font is used */
-                font-family: 'Noto Sans JP', 'Migu 1P', sans-serif;
               `}
 								ondblclick={(e) => {
 									if (!isEditMode && !isBoxEditMode && isSmartResizeMode) {
@@ -909,7 +904,7 @@
 									onLineFocus(block, page);
 								}}
 							>
-								{isEditMode ? line : wrapDotSequences(line)}
+								{isEditMode ? line : wrapDotSequences(line, block.vertical)}
 							</div>
 						</div>
 					{/each}
@@ -920,31 +915,30 @@
 </div>
 
 <style>
+	.ocr-line-text {
+		font-weight: 500;
+		white-space: nowrap;
+		user-select: text;
+
+		/* Ensure a high-quality CJK font is used */
+		font-family: 'Source Han Serif JP', 'Noto Sans JP', sans-serif;
+		line-height: 1;
+	}
 	/* Vertical Text Flow (Tategaki) */
 	.vertical-text {
 		writing-mode: vertical-rl;
 		text-orientation: mixed;
-		display: inline-block;
-		line-height: 1;
-
-		/* FIX for Alignment: Forces horizontal centering within the vertical column.
-     * This centers fullwidth punctuation marks like U+FF01 and U+2026.
-     */
-		/* text-align: center; */
 
 		/* Minimal, beneficial font features (keeping only vertical kerning/alternates) */
+		/* font-variant-east-asian: normal; */
 		font-feature-settings:
-			'vpal' on,
-			'vkrn' on,
-			'vchw' on;
-
-		-webkit-font-feature-settings:
-			'vpal' on,
-			'vkrn' on,
-			'vchw' on;
-		-moz-font-feature-settings:
-			'vpal' on,
-			'vkrn' on,
-			'vchw' on;
+			'vhal' 1,
+			'locl' 1;
+	}
+	:global(.vertical-text .ellipsis) {
+		/* Combines the content into a single horizontal block */
+		/* display: inline-block; */
+		/* width: 1.5em; */
+		font-feature-settings: 'vhal' 1;
 	}
 </style>
