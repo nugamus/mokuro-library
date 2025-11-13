@@ -36,7 +36,6 @@
 	let focusedBlock = $state<MokuroBlock | null>(null);
 	let focusedPage = $state<MokuroPage | null>(null);
 	let isSmartResizeMode = $state(false);
-	let isSliderInteracting = $state(false);
 	let isSliderHovered = $state(false);
 
 	// --- OCR save states
@@ -530,27 +529,33 @@
 						class="mx-auto flex w-48 items-center gap-2"
 						role="toolbar"
 						tabindex="-1"
-						onpointerdown={() => (isSliderInteracting = true)}
-						onpointerup={() => (isSliderInteracting = false)}
+						onmousedown={(e) => {
+							// Only prevent default if the click is on the container,
+							// not on the slider input itself.
+							if ((e.target as HTMLElement).id !== 'headerFontSizeSlider') {
+								e.preventDefault();
+							}
+						}}
 						onmouseenter={() => (isSliderHovered = true)}
 						onmouseleave={() => (isSliderHovered = false)}
 					>
-						<label for="headerFontSizeSlider" class="text-xs font-medium">
-							Size: {focusedBlockFontSize.toFixed(0)}
+						<label for="headerFontSizeSlider" class="text-s text-semibold font-medium leading-none">
+							{focusedBlockFontSize.toFixed(0)}
 						</label>
 						<input
 							id="headerFontSizeSlider"
+							title="Scroll to adjust font size"
 							type="range"
 							min="8"
 							max={sliderMax}
 							step="1"
 							value={focusedBlockFontSize}
-							onwheel={handleFontSizeWheel}
-							oninput={handleFontSizeInput}
 							class="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-gray-500/50 accent-indigo-500"
 							aria-valuemin="8"
-							aria-valuemax="200"
+							aria-valuemax={sliderMax}
 							aria-valuenow={focusedBlockFontSize}
+							onwheel={handleFontSizeWheel}
+							oninput={handleFontSizeInput}
 						/>
 					</div>
 				{:else if isSaving}
@@ -717,7 +722,6 @@
 							{isBoxEditMode}
 							{isSmartResizeMode}
 							{showTriggerOutline}
-							{isSliderInteracting}
 							{isSliderHovered}
 							{onOcrChange}
 							{onLineFocus}

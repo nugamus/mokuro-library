@@ -12,7 +12,6 @@
 		isBoxEditMode,
 		isSmartResizeMode,
 		showTriggerOutline,
-		isSliderInteracting,
 		isSliderHovered,
 		onOcrChange,
 		onLineFocus
@@ -23,7 +22,6 @@
 		isBoxEditMode: boolean;
 		isSmartResizeMode: boolean;
 		showTriggerOutline: boolean;
-		isSliderInteracting: boolean;
 		isSliderHovered: boolean;
 		onOcrChange: () => void; // callback to indicate orc data change
 		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void; // callback to update the focused block state
@@ -843,8 +841,7 @@
 				class={`
         relative h-full w-full
       `}
-				forceVisible={(isSliderInteracting || isSliderHovered || $contextMenu.isOpen) &&
-					focusedBlock === block}
+				forceVisible={(isSliderHovered || $contextMenu.isOpen) && focusedBlock === block}
 				mode="overlay"
 			>
 				{#snippet trigger()}
@@ -957,8 +954,7 @@
 										onOcrChange();
 									}}
 									onblur={(e) => {
-										// We only need to handle focus logic.
-										if (!isSliderInteracting) {
+										if (!isSliderHovered) {
 											onLineFocus(null, null);
 											focusedLineElement = null;
 											focusedBlock = null;
