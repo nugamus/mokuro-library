@@ -98,20 +98,27 @@
 		// 3. Helper function to measure the DOM at a specific size
 		const measure = (size: number): number => {
 			lineElement.style.fontSize = `${size}px`;
-			return isVertical ? lineElement.scrollHeight : lineElement.scrollWidth;
+			// return isVertical ? lineElement.scrollHeight : lineElement.scrollWidth;
+			const rect = lineElement.getBoundingClientRect();
+			return (isVertical ? rect.height : rect.width) / panzoomInstance.getScale();
 		};
 
 		// 4. Binary search
 		let min = MIN_FONT_SIZE;
 		let max = MAX_FONT_SIZE;
 		let guess = Math.min(Math.max(initial_guess, min), max);
+		let bestGuess = guess;
 
 		for (let i = 0; i < 100; i++) {
 			let measuredSize = measure(guess);
 
-			if (measuredSize === targetDimension || targetDimension - measuredSize === 1) break;
+			if (max - min < 0.001) {
+				bestGuess = guess;
+				break;
+			}
 			if (measuredSize < targetDimension) {
 				min = guess;
+				bestGuess = guess;
 			}
 			if (measuredSize > targetDimension) {
 				max = guess;
@@ -119,11 +126,11 @@
 			guess = (max + min) / 2;
 		}
 		// 6. State Update
-		block.font_size = +guess.toFixed(3);
+		block.font_size = +bestGuess.toFixed(3);
 		// 7. Persistence
 		onOcrChange();
 		// 5. cleanup
-		lineElement.style.fontSize = '';
+		lineElement.style.fontSize = `${fontScale * block.font_size}px`;
 	}
 
 	/**
