@@ -10,6 +10,7 @@
 		panzoomInstance,
 		isEditMode,
 		isBoxEditMode,
+		isSmartResizeMode,
 		showTriggerOutline,
 		isSliderInteracting,
 		isSliderHovered,
@@ -20,6 +21,7 @@
 		panzoomInstance: PanzoomObject | null;
 		isEditMode: boolean;
 		isBoxEditMode: boolean;
+		isSmartResizeMode: boolean;
 		showTriggerOutline: boolean;
 		isSliderInteracting: boolean;
 		isSliderHovered: boolean;
@@ -62,6 +64,65 @@
 		}
 		return s;
 	};
+
+	/**
+	 * Automatically set the font of the current block such than
+	 * the text fits snug to the current line's box
+	 * starts with a small size, then use stepping
+	 */
+	function smartResizeFont(block: MokuroBlock, lineIndex: number, lineElement: HTMLElement) {
+		if (!lineElement) return;
+
+		const coords = block.lines_coords[lineIndex];
+		const isVertical = block.vertical ?? false;
+
+		// 1. Get Target Dimension
+		let targetDimension: number;
+		let initial_guess: number;
+		const boxHeight = coords[3][1] - coords[0][1]; // Box Height
+		const boxWidth = coords[1][0] - coords[0][0]; // Box Width
+		if (isVertical) {
+			targetDimension = boxHeight;
+			initial_guess = boxWidth;
+		} else {
+			targetDimension = boxWidth;
+			initial_guess = boxHeight;
+		}
+
+		// 2. Define search range
+		const MIN_FONT_SIZE = 8;
+		const MAX_FONT_SIZE = page.img_width / 2; // Our search ceiling
+
+		// 3. Helper function to measure the DOM at a specific size
+		const measure = (size: number): number => {
+			lineElement.style.fontSize = `${size}px`;
+			return isVertical ? lineElement.scrollHeight : lineElement.scrollWidth;
+		};
+
+		// 4. Binary search
+		let min = MIN_FONT_SIZE;
+		let max = MAX_FONT_SIZE;
+		let guess = Math.min(Math.max(initial_guess, min), max);
+
+		for (let i = 0; i < 100; i++) {
+			let measuredSize = measure(guess);
+
+			if (measuredSize === targetDimension || targetDimension - measuredSize === 1) break;
+			if (measuredSize < targetDimension) {
+				min = guess;
+			}
+			if (measuredSize > targetDimension) {
+				max = guess;
+			}
+			guess = (max + min) / 2;
+		}
+		// 6. State Update
+		block.font_size = guess;
+		// 7. Persistence
+		onOcrChange();
+		// 5. cleanup
+		lineElement.style.fontSize = '';
+	}
 
 	/**
 	 * Gets the scale ratio of rendered pixels to image pixels.
@@ -294,6 +355,16 @@
 		startEvent.preventDefault();
 		startEvent.stopPropagation(); // Stop line drag, block drag, and block resize
 
+		// 1. Get the handle that was clicked
+		const handleElement = startEvent.currentTarget as HTMLElement;
+		// 2. Get its parent, which is the group/line div
+		const groupLineElement = handleElement.parentElement;
+		if (!groupLineElement) return;
+
+		// 3. Find the text element inside the group/line div using the predefined static selector
+		const textElement = groupLineElement.querySelector('[data-line-text="true"]') as HTMLElement;
+		if (!textElement) return; // Safety check
+
 		const lineCoords = block.lines_coords[lineIndex];
 
 		const handleDragMove = (moveEvent: MouseEvent) => {
@@ -348,6 +419,11 @@
 			window.removeEventListener('mousemove', handleDragMove);
 			window.removeEventListener('mouseup', handleDragEnd);
 			onOcrChange(); // Fire change event once
+
+			if (isSmartResizeMode) {
+				// Use the prop
+				smartResizeFont(block, lineIndex, textElement);
+			}
 		};
 
 		window.addEventListener('mousemove', handleDragMove);
@@ -806,6 +882,12 @@
                 /* Ensure a high-quality CJK font is used */
                 font-family: 'Noto Sans JP', 'Migu 1P', sans-serif;
               `}
+								ondblclick={(e) => {
+									if (!isEditMode && !isBoxEditMode && isSmartResizeMode) {
+										e.stopPropagation();
+										smartResizeFont(block, lineIndex, e.currentTarget as HTMLElement);
+									}
+								}}
 								onblur={(e) => {
 									let newText = (e.currentTarget as HTMLDivElement).innerText;
 									block.lines[lineIndex] = newText;
@@ -815,6 +897,10 @@
 										onLineFocus(null, null);
 										focusedLineElement = null;
 										focusedBlock = null;
+									}
+
+									if (isSmartResizeMode) {
+										smartResizeFont(block, lineIndex, e.currentTarget as HTMLElement);
 									}
 								}}
 								onfocus={(e) => {
