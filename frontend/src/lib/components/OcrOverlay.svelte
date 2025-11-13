@@ -106,9 +106,6 @@
 
 		for (let i = 0; i < 100; i++) {
 			let guessMeasure = measure(guess);
-			console.log(
-				`${i} ${guessMeasure.toFixed(3)} ${targetMeasure.toFixed(3)} ${max.toFixed(3)} ${min.toFixed(3)}`
-			);
 			let delta = targetMeasure - guessMeasure;
 
 			if (delta > 0) {
@@ -126,16 +123,14 @@
 
 			guess = min + ((targetMeasure - minMeasure) / (maxMeasure - minMeasure)) * (max - min);
 		}
-		// 6. State Update
+		// 5. State Update
 		block.font_size = +bestGuess.toFixed(3);
 		lineElement.style.fontSize = `${fontScale * block.font_size}px`;
 		const rect = lineElement.getBoundingClientRect();
-		const measureFinal = isVertical ? rect.height : rect.width;
-		console.log(`${measureFinal}`);
 
-		// 7. Persistence
+		// 6. Persistence
 		onOcrChange();
-		// 5. cleanup
+		// 7. cleanup
 		range.detach();
 	}
 
