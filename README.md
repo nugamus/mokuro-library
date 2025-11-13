@@ -121,10 +121,10 @@ The original [ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader) is 
 
 **Use Mokuro Library (this project) if:**
 * You have a large manga library and are hitting browser storage quotas.
-* You run a NAS or home server and want a persistent, "always-on" library.
-* You want **multi-user** support.
-* You want your files living out in the open and accessible in the filesystem.
-* You want your OCR text edits to be **saved directly back to the `.mokuro` files** on your server for ease of migration.
+* You want a centralized library that lives in the open on your computer's filesystem, not in the browser.
+* You want your **OCR text edits saved directly back** to the `.mokuro` files on your disk for portability.
+* You want to **sync reading progress** across devices (by running it on a NAS/Server).
+* You need **multi-user** support for family or friends (by running it on a NAS/Server).
 
 ### 2. Non-essential stretch features:
 * [ ] Optional Reader features
