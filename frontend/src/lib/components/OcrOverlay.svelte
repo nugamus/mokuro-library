@@ -641,15 +641,34 @@
 	 */
 	const openBlockContextMenu = (event: MouseEvent, block: MokuroBlock) => {
 		event.preventDefault(); // suppress native context menu at all times
-		if (!isBoxEditMode) return; // Only available in box edit mode
 		event.stopPropagation();
+
+		const options: MenuOption[] = [];
+		if (isBoxEditMode) {
+			options.push({
+				label: 'Add Line',
+				action: () => createNewLine(event, block)
+			});
+		}
+
+		if (isBoxEditMode || isEditMode) {
+		}
 
 		contextMenu.open(event.clientX, event.clientY, [
 			{
-				label: 'Add Line',
-				action: () => createNewLine(event, block)
+				label: 'Re-order Lines...',
+				action: () => openLineOrderModal(block)
 			}
 		]);
+
+		// Open the menu only if we have options to show
+		if (options.length > 0) {
+			contextMenu.open(event.clientX, event.clientY, options);
+			options.push({
+				label: 'Re-order Lines...',
+				action: () => openLineOrderModal(block)
+			});
+		}
 	};
 
 	/**
@@ -700,7 +719,7 @@
 			if (options.length > 0) {
 				options.push({ separator: true });
 			}
-			// Add new "Re-order Lines" option
+			// Add "Re-order Lines" option
 			options.push({
 				label: 'Re-order Lines...',
 				action: () => openLineOrderModal(block)
@@ -911,7 +930,7 @@
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -right-0.75 -top-0.5 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -right-0.75 -top-0.75 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-right')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
@@ -926,7 +945,7 @@
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
 								<div
-									class="absolute -bottom-0.75 -left-0.5 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+									class="absolute -bottom-0.75 -left-0.75 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
 									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-left')}
 									role={isBoxEditMode ? 'button' : undefined}
 								></div>
