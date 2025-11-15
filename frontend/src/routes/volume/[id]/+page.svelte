@@ -7,7 +7,7 @@
 	import ReaderSettings from '$lib/components/ReaderSettings.svelte';
 	import OcrOverlay from '$lib/components/OcrOverlay.svelte';
 	import CachedImage from '$lib/components/CachedImage.svelte';
-	import { goto, beforeNavigate, afterNavigate } from '$app/navigation';
+	import { goto, beforeNavigate } from '$app/navigation';
 	import { confirmation } from '$lib/confirmationStore';
 	import { tick, onMount } from 'svelte';
 
@@ -53,6 +53,7 @@
 	let panzoomElement = $state<HTMLDivElement | null>(null);
 	let panzoomInstance = $state<PanzoomObject | null>(null);
 	let verticalScrollerElement = $state<HTMLDivElement | null>(null); // for vertical mode
+	let panzoomWrapper = $state<HTMLDivElement | null>(null); // for vertical mode
 
 	// --- Progress Tracking State ---
 	let initialPage = 0; // The page number we loaded with
@@ -473,8 +474,6 @@
 					}
 				}
 				if (bestEntry.isIntersecting) {
-					console.log(entries);
-					console.log(bestEntry.intersectionRatio);
 					const index = (bestEntry.target as HTMLElement).dataset.pageIndex;
 					if (index) {
 						const newPageIndex = parseInt(index, 10);
@@ -484,7 +483,7 @@
 			},
 			{
 				root: verticalScrollerElement,
-				threshold: [0, 0.25, 0.5, 0.75, 1.0]
+				threshold: [0.5]
 			}
 		);
 
@@ -497,7 +496,6 @@
 	};
 
 	const setLayout = async (mode: 'single' | 'double' | 'vertical') => {
-		console.log(`Setting layout ${mode}`);
 		layoutMode = mode;
 		await tick();
 		setupDoublePageMode();
@@ -615,17 +613,39 @@
 
 	// initialize panzoom
 	$effect(() => {
+		if (!hasHover && layoutMode === 'vertical') return;
 		if (mainElement && panzoomElement && browser) {
 			let pz: PanzoomObject;
 
+			const originalWidth = panzoomElement.offsetWidth;
+			const originalHeight = panzoomElement.offsetHeight;
 			// 1. --- Define handlers in the outer scope ---
 			const onWheel = (e: WheelEvent) => {
 				// ALWAYS zoom if Ctrl is held
-				if (e.ctrlKey || layoutMode !== 'vertical') {
+				if (e.ctrlKey && layoutMode === 'vertical') {
 					e.preventDefault();
-					pz?.zoomWithWheel(e);
+					if (!pz || !verticalScrollerElement || !panzoomElement || !panzoomWrapper) return;
+					const scroll = e.deltaY > 0 ? -1 : 1;
+					const zoomStep = pz.getOptions().step ?? 0.3;
+					const scaleAmount = 1 + scroll * zoomStep;
+					const currentScale = pz.getScale();
+					const newScale = Math.max(Math.min(currentScale * scaleAmount, 10), 0.3);
+					const currentScroll = verticalScrollerElement.scrollTop;
+
+					pz.zoom(newScale);
+					panzoomWrapper.style.height = `${originalHeight * newScale}px`;
+					verticalScrollerElement.scrollTop = (currentScroll * newScale) / currentScale;
 					return;
 				}
+
+				if (layoutMode === 'vertical') {
+					const currentScroll = verticalScrollerElement?.scrollTop;
+					return;
+				}
+
+				e.preventDefault();
+				pz.zoomWithWheel(e);
+				return;
 			};
 
 			const initPanzoom = async () => {
@@ -636,7 +656,9 @@
 				pz = Panzoom(panzoomElement, {
 					canvas: true,
 					maxScale: 10,
-					cursor: 'default'
+					cursor: 'default',
+					origin: layoutMode === 'vertical' ? '50% 0' : '50% 50%',
+					disableYAxis: layoutMode === 'vertical'
 				});
 				panzoomInstance = pz;
 
@@ -703,7 +725,6 @@
 						class="mx-auto flex w-48 items-center gap-2"
 						role="toolbar"
 						tabindex="-1"
-						bind:this={verticalScrollerElement}
 						onmousedown={(e) => {
 							// Only prevent default if the click is on the container,
 							// not on the slider input itself.
@@ -866,37 +887,43 @@
 				</button>
 			</div>
 		</header>
-		{#if layoutMode === 'vertical'}
-			<main class="flex flex-1 items-center justify-center overflow-hidden" bind:this={mainElement}>
+
+		<main class="flex flex-1 items-center justify-center overflow-hidden" bind:this={mainElement}>
+			{#if layoutMode === 'vertical'}
 				<div class="h-full w-full overflow-y-auto" bind:this={verticalScrollerElement}>
-					<div class="relative mx-auto w-full max-w-4xl pt-16">
-						{#each mokuroData.pages as page, i (page.img_path)}
-							<div
-								class="relative flex-shrink-0 bg-white"
-								style={`aspect-ratio: ${page.img_width} / ${page.img_height};`}
-								data-page-index={i}
-							>
-								{#if visiblePages[i]}
-									<CachedImage src={`/api/files/volume/${params.id}/image/${page.img_path}`} />
-									<OcrOverlay
-										{page}
-										{panzoomInstance}
-										{isEditMode}
-										{isBoxEditMode}
-										{isSmartResizeMode}
-										{showTriggerOutline}
-										{isSliderHovered}
-										{onOcrChange}
-										{onLineFocus}
-									/>
-								{/if}
-							</div>
-						{/each}
+					<div class="w-full" bind:this={panzoomWrapper}>
+						<div class="relative mx-auto w-full max-w-4xl pt-16" bind:this={panzoomElement}>
+							{#each mokuroData.pages as page, i (page.img_path)}
+								<div
+									class="relative flex-shrink-0 bg-white"
+									style={`aspect-ratio: ${page.img_width} / ${page.img_height};`}
+									data-page-index={i}
+								>
+									{#if visiblePages[i]}
+										<img
+											src={`/api/files/volume/${params.id}/image/${page.img_path}`}
+											alt={`Page ${page.img_path}`}
+											class="h-full w-full object-contain"
+											draggable="false"
+										/>
+										<OcrOverlay
+											{page}
+											{panzoomInstance}
+											{isEditMode}
+											{isBoxEditMode}
+											{isSmartResizeMode}
+											{showTriggerOutline}
+											{isSliderHovered}
+											{onOcrChange}
+											{onLineFocus}
+										/>
+									{/if}
+								</div>
+							{/each}
+						</div>
 					</div>
 				</div>
-			</main>
-		{:else}
-			<main class="flex flex-1 items-center justify-center overflow-hidden" bind:this={mainElement}>
+			{:else}
 				<button
 					onclick={readingDirection === 'rtl' ? nextPage : prevPage}
 					type="button"
@@ -914,7 +941,12 @@
 							class="relative flex-shrink-0"
 							style={`aspect-ratio: ${page.img_width} / ${page.img_height}; max-height: 100%; max-width: 100%;`}
 						>
-							<CachedImage src={`/api/files/volume/${params.id}/image/${page.img_path}`} />
+							<img
+								src={`/api/files/volume/${params.id}/image/${page.img_path}`}
+								alt={`Page ${page.img_path}`}
+								class="h-full w-full object-contain"
+								draggable="false"
+							/>
 							<OcrOverlay
 								{page}
 								{panzoomInstance}
@@ -937,8 +969,8 @@
 					aria-label="Next Page"
 					style={`width: ${navZoneWidth}%`}
 				></button>
-			</main>
-		{/if}
+			{/if}
+		</main>
 	{:else}
 		<div class="flex h-screen items-center justify-center">
 			<p class="text-gray-700 dark:text-gray-300">Redirecting to login...</p>
