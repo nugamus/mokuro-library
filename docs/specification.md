@@ -70,7 +70,7 @@ The system will be a decoupled client-server application.
   * [x] Smart resize mode that auto fit the text content to the bounding box.
   * [x] Per user persistent reader settings.
   * [x] A single, long-scrolling vertical layout (webtoon mode).
-  * [ ] Caching: Pre-loading the next and previous page images.
+  * [x] Caching: Pre-loading the next and previous page images.
 * [ ] The ability to export the library in different format (e.g. pdf, cbz, ...)
   * [x] zip
   * [x] pdf with selectable text
