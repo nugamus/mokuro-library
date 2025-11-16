@@ -4,6 +4,7 @@
 	import { lineOrderStore } from '$lib/lineOrderStore';
 	import TouchToggle from '$lib/components/TouchToggle.svelte';
 	import type { PanzoomObject } from '@panzoom/panzoom';
+	import { tick } from 'svelte';
 
 	let {
 		page,
@@ -12,6 +13,7 @@
 		isBoxEditMode,
 		isSmartResizeMode,
 		showTriggerOutline,
+		readingDirection,
 		isSliderHovered,
 		onOcrChange,
 		onLineFocus
@@ -22,6 +24,7 @@
 		isBoxEditMode: boolean;
 		isSmartResizeMode: boolean;
 		showTriggerOutline: boolean;
+		readingDirection: string;
 		isSliderHovered: boolean;
 		onOcrChange: () => void; // callback to indicate orc data change
 		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void; // callback to update the focused block state
@@ -364,7 +367,7 @@
 		if (!groupLineElement) return;
 
 		// 3. Find the text element inside the group/line div using the predefined static selector
-		const textElement = groupLineElement.querySelector('[data-line-text="true"]') as HTMLElement;
+		const textElement = groupLineElement.querySelector('[data-line-index]') as HTMLElement;
 		if (!textElement) return; // Safety check
 
 		const lineCoords = block.lines_coords[lineIndex];
@@ -775,6 +778,163 @@
 			}
 		}
 	};
+
+	/**
+	 * Intercepts 'Enter' key to split a line into two.
+	 * Helper function for handleLineKeyDown
+	 */
+	const handleLineSplinter = async (
+		event: KeyboardEvent,
+		block: MokuroBlock,
+		lineIndex: number
+	) => {
+		if (event.key !== 'Enter') return;
+
+		// 1. Stop the browser from inserting a <br>
+		event.preventDefault();
+
+		// 2. Get cursor position and text
+		const selection = window.getSelection();
+		if (!selection || !selection.anchorNode) return;
+
+		const anchorOffset = selection.anchorOffset;
+		const fullText = block.lines[lineIndex];
+
+		// 3. Splinter the text
+		const textBefore = fullText.substring(0, anchorOffset);
+		const textAfter = fullText.substring(anchorOffset);
+
+		// 4. Update the original line
+		block.lines[lineIndex] = textBefore;
+
+		// 5. Calculate new line's position
+		const GAP = 2; // 5px gap in image coordinates
+		const originalCoords = block.lines_coords[lineIndex];
+		const width = originalCoords[1][0] - originalCoords[0][0];
+		const height = originalCoords[3][1] - originalCoords[0][1];
+
+		let newTopLeft_X = originalCoords[0][0];
+		let newTopLeft_Y = originalCoords[0][1];
+
+		if (block.vertical) {
+			if (readingDirection === 'rtl') {
+				newTopLeft_X = originalCoords[0][0] - width - GAP; // New box to the left
+			} else {
+				newTopLeft_X = originalCoords[0][0] + width + GAP; // New box to the right
+			}
+		} else {
+			newTopLeft_Y = originalCoords[0][1] + height + GAP; // New box below
+		}
+
+		// 6. Create the new line's coordinates
+		const newCoords: [[number, number], [number, number], [number, number], [number, number]] = [
+			[newTopLeft_X, newTopLeft_Y], // top-left
+			[newTopLeft_X + width, newTopLeft_Y], // top-right
+			[newTopLeft_X + width, newTopLeft_Y + height], // bottom-right
+			[newTopLeft_X, newTopLeft_Y + height] // bottom-left
+		];
+
+		// 7. Insert the new line data into the block
+		block.lines.splice(lineIndex + 1, 0, textAfter);
+		block.lines_coords.splice(lineIndex + 1, 0, newCoords);
+
+		// 8. Mark as dirty and wait for Svelte to re-render
+		onOcrChange();
+		await tick();
+
+		// 9. Find the newly created div and focus it
+		const parentBlockElement = (event.target as HTMLElement).closest('.group\\/block');
+		if (!parentBlockElement) return;
+
+		const newLineElement = parentBlockElement.querySelector(
+			`[data-line-index="${lineIndex + 1}"]`
+		) as HTMLDivElement;
+
+		if (newLineElement) {
+			console.log(`focus new line`);
+			newLineElement.focus();
+		}
+	};
+
+	/**
+	 * Jump focused line in edit mode using arrow keys
+	 * Helper function for handleLineKeyDown
+	 */
+	const handleLineNavigation = async (
+		event: KeyboardEvent,
+		block: MokuroBlock,
+		lineIndex: number
+	) => {
+		const selection = window.getSelection();
+		let currentOffset = 0;
+		if (selection) {
+			currentOffset = selection.anchorOffset;
+		}
+
+		let targetLineIndex = -1;
+
+		if (!block.vertical) {
+			// Horizontal Block
+			if (event.key === 'ArrowUp') {
+				targetLineIndex = lineIndex - 1;
+			} else if (event.key === 'ArrowDown') {
+				targetLineIndex = lineIndex + 1;
+			}
+		} else {
+			// Vertical Block
+			if (readingDirection === 'rtl') {
+				if (event.key === 'ArrowLeft') {
+					targetLineIndex = lineIndex + 1; // "Next" line
+				} else if (event.key === 'ArrowRight') {
+					targetLineIndex = lineIndex - 1; // "Previous" line
+				}
+			} else {
+				// 'ltr'
+				if (event.key === 'ArrowLeft') {
+					targetLineIndex = lineIndex - 1; // "Previous" line
+				} else if (event.key === 'ArrowRight') {
+					targetLineIndex = lineIndex + 1; // "Next" line
+				}
+			}
+		}
+
+		// If a valid target was found, change focus
+		if (targetLineIndex >= 0 && targetLineIndex < block.lines.length) {
+			// This is a navigation action, so prevent default cursor movement
+			event.preventDefault();
+
+			const parentBlockElement = (event.target as HTMLElement).closest('.group\\/block');
+			if (!parentBlockElement) return;
+
+			const newLineElement = parentBlockElement.querySelector(
+				`[data-line-index="${targetLineIndex}"]`
+			) as HTMLDivElement;
+
+			if (newLineElement) {
+				newLineElement.focus();
+				// Get the text node inside the new element
+				const textNode = newLineElement.firstChild;
+				const newSelection = window.getSelection();
+				if (textNode && newSelection) {
+					// Cap the desired offset at the new line's max length
+					const newOffset = Math.min(currentOffset, textNode.textContent?.length || 0);
+
+					// Create a new range and selection to set the cursor
+					newSelection.removeAllRanges();
+					newSelection.collapse(textNode, newOffset);
+				}
+			}
+		}
+
+		// If no target was found (e.g., ArrowLeft on a horizontal line),
+		// don't call preventDefault(), and the browser
+		// moves the text cursor normally.
+	};
+
+	const handleLineKeyDown = async (event: KeyboardEvent, block: MokuroBlock, lineIndex: number) => {
+		await handleLineSplinter(event, block, lineIndex);
+		handleLineNavigation(event, block, lineIndex);
+	};
 </script>
 
 <svelte:window
@@ -865,7 +1025,7 @@
 				class={`
         relative h-full w-full
       `}
-				forceVisible={(isSliderHovered || $contextMenu.isOpen) && focusedBlock === block}
+				forceVisible={(isEditMode || $contextMenu.isOpen) && focusedBlock === block}
 				mode="overlay"
 			>
 				{#snippet trigger()}
@@ -878,7 +1038,7 @@
 				{/snippet}
 				<div
 					class={`
-            ${isBoxEditMode || isSliderHovered ? 'bg-transparent' : 'bg-white'}
+            ${isBoxEditMode || isEditMode ? 'bg-transparent' : 'bg-white'}
             relative h-full w-full
           `}
 					class:vertical-text={block.vertical}
@@ -965,7 +1125,7 @@
 								<!-- avoid toggle when long pressing onto text in edit mode -->
 								<div
 									data-ignore-long-press="true"
-									data-line-text="true"
+									data-line-index={lineIndex}
 									contenteditable="true"
 									role="textbox"
 									tabindex="0"
@@ -976,6 +1136,7 @@
                     font-size: ${fontScale * block.font_size}px;
                   `}
 									bind:innerText={block.lines[lineIndex]}
+									onkeydown={(e) => handleLineKeyDown(e, block, lineIndex)}
 									oninput={() => {
 										onOcrChange();
 									}}
@@ -998,7 +1159,7 @@
 								></div>
 							{:else}
 								<div
-									data-line-text="true"
+									data-line-index={lineIndex}
 									class="ocr-line-text self-center"
 									class:vertical-text={block.vertical}
 									style={`

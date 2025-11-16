@@ -912,6 +912,7 @@
 											{isBoxEditMode}
 											{isSmartResizeMode}
 											{showTriggerOutline}
+											{readingDirection}
 											{isSliderHovered}
 											{onOcrChange}
 											{onLineFocus}
@@ -948,6 +949,7 @@
 								{isBoxEditMode}
 								{isSmartResizeMode}
 								{showTriggerOutline}
+								{readingDirection}
 								{isSliderHovered}
 								{onOcrChange}
 								{onLineFocus}
