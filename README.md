@@ -97,30 +97,20 @@ When you pull new changes from Git or modify the schema:
     docker compose up -d --force-recreate
     ```
     Your data in the `./data` folder will be preserved.
+
+## 📖 Usage & Getting Started
+
+After installing and starting the container, here are your first steps:
+
+1.  Open `http://localhost:3001` in your browser.
+2.  Create your first user account.
+3.  On the main library page, click the "Upload" button.
+4.  Select a directory that has been processed by `mokuro` (one that contains the `.mokuro` file and images).
+5.  Once uploaded, click the new series cover to start reading.
+
+**For a complete guide on all UI features, including OCR editing, please see the [Mokuro Library User Guide Wiki](https://nguyenston.github.io/mokuro-library).**
+
     
-## 🛠️ Development (with Hot-Reload)
-
-The recommended workflow is the full-stack, containerized dev environment. For details on this and alternative workflows (like Hybrid Development), see [the development doc](docs/development.md).
-
-### Recommended Dev Workflow
-
-1.  **First-Time Build (or when `package.json` changes):**
-    You must build the dev images once to install all dependencies.
-    ```bash
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml build
-    ```
-   
-
-2.  **Start the Dev Environment:**
-    This command starts both the backend and frontend services with hot-reloading.
-    ```bash
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
-    ```
-   
-
-3.  **Access the app:**
-    * Open `http://localhost:5173` in your browser.
-    * The SvelteKit app will auto-proxy `/api` requests to the backend container.
 
 ## 📚 FAQ
 ### 1. Mokuro Library vs. Mokuro Reader
@@ -204,6 +194,30 @@ If you need to completely wipe your library and start over:
 1.  Stop the container: `docker compose down`
 2.  Delete the `./data` folder in your project directory.
 3.  Start the container: `docker compose up -d`. A fresh database will be created automatically.
+
+## 🛠️ Development (with Hot-Reload)
+
+The recommended workflow is the full-stack, containerized dev environment. For details on this and alternative workflows (like Hybrid Development), see [the development doc](docs/development.md).
+
+### Recommended Dev Workflow
+
+1.  **First-Time Build (or when `package.json` changes):**
+    You must build the dev images once to install all dependencies.
+    ```bash
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml build
+    ```
+   
+
+2.  **Start the Dev Environment:**
+    This command starts both the backend and frontend services with hot-reloading.
+    ```bash
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+    ```
+   
+
+3.  **Access the app:**
+    * Open `http://localhost:5173` in your browser.
+    * The SvelteKit app will auto-proxy `/api` requests to the backend container.
 
 ## Acknowledgements
 
