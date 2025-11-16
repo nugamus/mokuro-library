@@ -1,0 +1,18 @@
+# Node.js dependencies
+node_modules/
+
+# VitePress build output directory
+.vitepress/dist/
+
+# VitePress cache and temp files
+.vitepress/cache/
+.vitepress/temp/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# NPM debug logs
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*

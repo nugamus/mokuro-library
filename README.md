@@ -127,14 +127,23 @@ The original [ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader) is 
 
 ### 2. Non-essential stretch features:
 * [x] Optional Reader features
-  * [x] Per user persistent reader settings
-  * [x] A single, long-scrolling vertical layout.
-  * [x] Caching: Pre-loading the next and previous page images.
-* [ ] Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
-* [ ] AnkiConnect Integration: Focuses on sentence mining, as dictionary extensions like Yomi-tan already have word mining down.
-* [x] The ability to export the library in different format (e.g. pdf, cbz, ...)
+  * [x] Smart resize mode that auto fit the text content to the bounding box.
+  * [x] Per user persistent reader settings.
+  * [x] A single, long-scrolling vertical layout (webtoon mode).
+  * [x] Caching images to avoid unnecessary server calls.
+  * [ ] Customization
+    * [ ] Custom keymapping
+    * [ ] Custom ligatures
+* [ ] The ability to export the library in different format (e.g. pdf, cbz, ...)
   * [x] zip
   * [x] pdf with selectable text
+  * [ ] cbz (low priority)
+* [ ] Library features
+  * [ ] More secure cookie implementation for more public use cases.
+  * [ ] The ability to rename series and volume.
+  * [ ] Search and sort.
+  * [ ] Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
+* [ ] AnkiConnect Integration: Focuses on sentence mining, as dictionary extensions like Yomi-tan already have word mining down.
 
 
 ## 🔧 Troubleshooting
