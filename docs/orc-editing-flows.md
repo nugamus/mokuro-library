@@ -144,6 +144,45 @@ This flow is triggered when a user edits text *while* `isSmartResizeMode` is act
 
 ---
 
+## 6. Flow: Line Splintering using Enter Key (Edit Mode)
+
+This flow describes what happens when a user presses the `Enter` key inside a text line.
+
+* **1. Action:** The user, in `Text Edit Mode`, places their text cursor (caret) somewhere in the middle of a text line.
+* **2. Action:** The user presses the `Enter` key.
+* **3. System Response:**
+    * The system prevents the default browser action (e.g., inserting a `<br>` tag).
+    * The current line is "split" at the cursor's position. The text *before* the cursor remains in the current line.
+    * A new text line is created *after* the current line, containing the text *after* the cursor.
+* **4. Placement:**
+    * If the block is **horizontal**, the new line is placed directly *below* the current line, with a small gap.
+    * If the block is **vertical**, the new line is placed *next to* the current line (respecting `readingDirection`, with a small gap).
+* **5. Focus:** The user's focus is immediately and automatically moved to the beginning of the newly created line.
+
+---
+
+## 7. Flow: Line Navigation using Arrow Keys (Edit Mode)
+
+This flow describes how the user can move focus between adjacent text lines using the arrow keys.
+
+* **1. Action:** The user, in `Text Edit Mode`, has a text line focused.
+* **2. Action:** The user presses an arrow key.
+* **3. System Response:**
+    * The system determines if the key corresponds to a "line navigation" or "cursor movement" action based on the block's orientation.
+* **4. Interaction Logic:**
+    * **Horizontal Block:**
+        * `ArrowUp` / `ArrowDown`: Triggers line navigation.
+        * `ArrowLeft` / `ArrowRight`: Is ignored by this flow, allowing the browser to move the text cursor normally within the line.
+    * **Vertical Block:**
+        * `ArrowLeft` / `ArrowRight`: Triggers line navigation (direction respects `readingDirection`).
+        * `ArrowUp` / `ArrowDown`: Is ignored by this flow, allowing the browser to move the text cursor normally within the line.
+* **5. Focus Change:**
+    * If a line navigation is triggered, the system saves the current text cursor's character position (e.g., 5th character).
+    * Focus is moved to the adjacent line (e.g., the line above, or the line to the left).
+    * The system attempts to place the cursor at the *same character position* in the new line. (If the new line is shorter, the cursor is placed at the end of the line).
+
+---
+
 ## 6. Flow: Context Menu Actions (Create, Delete)
 
 This flow manages the creation and deletion of blocks and lines via the right-click context menu.
