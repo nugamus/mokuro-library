@@ -851,8 +851,54 @@
 		) as HTMLDivElement;
 
 		if (newLineElement) {
-			console.log(`focus new line`);
 			newLineElement.focus();
+		}
+	};
+
+	/**
+	 * Intercepts 'Backspace' key to merge 2 lines
+	 * Helper function for handleLineKeyDown
+	 */
+	const handleLineMerge = async (event: KeyboardEvent, block: MokuroBlock, lineIndex: number) => {
+		if (event.key !== 'Backspace') return;
+		if (lineIndex === 0) return;
+
+		// 1. Get cursor position and text
+		const selection = window.getSelection();
+		if (!selection || !selection.anchorNode) return;
+
+		const anchorOffset = selection.anchorOffset;
+		const text = block.lines[lineIndex];
+		if (anchorOffset !== 0) return;
+
+		// 2. Stop the browser from default behavior
+		event.preventDefault();
+
+		const parentBlockElement = (event.target as HTMLElement).closest('.group\\/block');
+		const newOffset = block.lines[lineIndex - 1].length;
+		block.lines[lineIndex - 1] += text;
+		deleteLine(block, lineIndex);
+
+		await tick();
+
+		// Find the recieving div and focus it, preserve carat location
+		if (!parentBlockElement) return;
+
+		const newLineElement = parentBlockElement.querySelector(
+			`[data-line-index="${lineIndex - 1}"]`
+		) as HTMLDivElement;
+
+		// focus the line before and set cursor to end of line
+		if (newLineElement) {
+			newLineElement.focus();
+			// Get the text node inside the new element
+			const textNode = newLineElement.firstChild;
+			const newSelection = window.getSelection();
+			if (textNode && newSelection) {
+				// Create a new range and selection to set the cursor
+				newSelection.removeAllRanges();
+				newSelection.collapse(textNode, newOffset);
+			}
 		}
 	};
 
@@ -933,6 +979,7 @@
 
 	const handleLineKeyDown = async (event: KeyboardEvent, block: MokuroBlock, lineIndex: number) => {
 		await handleLineSplinter(event, block, lineIndex);
+		await handleLineMerge(event, block, lineIndex);
 		handleLineNavigation(event, block, lineIndex);
 	};
 </script>
