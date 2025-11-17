@@ -1158,7 +1158,7 @@
                 top: ${relative_y_min}%;
                 width: ${width}%;
                 height: ${height}%;
-                background-color: ${isEditMode || isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
+                background-color: ${isEditMode ? 'rgba(239, 128, 128, 0.85)' : isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
               `}
 								role={isBoxEditMode ? 'button' : undefined}
 								onmousedown={(e) => handleLineDragStart(e, block, lineIndex)}
