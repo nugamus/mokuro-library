@@ -1086,145 +1086,186 @@
 				<div
 					class={`
             ${isBoxEditMode || isEditMode ? 'bg-transparent' : 'bg-white'}
-            relative h-full w-full
+            relative h-full w-full p-0
           `}
 					class:vertical-text={block.vertical}
 					bind:this={block.domElement}
 					role="group"
 				>
-					{#each block.lines as line, lineIndex}
-						{@const coords = block.lines_coords[lineIndex]}
+					{#if !isBoxEditMode && !isEditMode && !isSmartResizeMode}
+						<!-- scan mode, allow tools like yomitan to scan across lines -->
+						{#each block.lines as line, lineIndex}
+							{@const coords = block.lines_coords[lineIndex]}
+							{@const relative_x_min =
+								((coords[0][0] - block.box[0]) / (block.box[2] - block.box[0])) * 100}
+							{@const relative_y_min =
+								((coords[0][1] - block.box[1]) / (block.box[3] - block.box[1])) * 100}
+							{@const relative_x_max =
+								((coords[2][0] - block.box[0]) / (block.box[2] - block.box[0])) * 100}
+							{@const relative_y_max =
+								((coords[2][1] - block.box[1]) / (block.box[3] - block.box[1])) * 100}
+							{@const width = relative_x_max - relative_x_min}
+							{@const height = relative_y_max - relative_y_min}
+							<span
+								class={`
+                  border-transparent border p-0 m-0 background-transparent
+                  leading-none z-3
+                  inline-flex relative pointer-events-auto
+                  ocr-line-text items-center align-top
+                `}
+								style={`
+                  width: ${width}%;
+                  height: ${height}%;
+                  left: ${(block.vertical ? -100 : 0) + width + relative_x_min}%;
+                  top: ${relative_y_min}%;
+                  font-size: ${fontScale * block.font_size}px;
+                  cursor: ${block.vertical ? 'vertical-text' : 'text'};
 
-						{@const relative_x_min =
-							((coords[0][0] - block.box[0]) / (block.box[2] - block.box[0])) * 100}
-						{@const relative_y_min =
-							((coords[0][1] - block.box[1]) / (block.box[3] - block.box[1])) * 100}
-						{@const relative_x_max =
-							((coords[2][0] - block.box[0]) / (block.box[2] - block.box[0])) * 100}
-						{@const relative_y_max =
-							((coords[2][1] - block.box[1]) / (block.box[3] - block.box[1])) * 100}
-						{@const width = relative_x_max - relative_x_min}
-						{@const height = relative_y_max - relative_y_min}
+                  /* Space Collapse (Mimics Absolute Flow Removal) */
+                  margin-bottom: -${block.vertical ? height : 0}%;
+                  margin-left: -${block.vertical ? 0 : width}%;
 
-						<div
-							class={`
+                `}
+								oncontextmenu={(e) => openLineContextMenu(e, block, lineIndex)}
+							>
+								{ligaturize(line, block.vertical)}
+							</span>
+						{/each}
+					{:else}
+						{#each block.lines as line, lineIndex}
+							{@const coords = block.lines_coords[lineIndex]}
+
+							{@const relative_x_min =
+								((coords[0][0] - block.box[0]) / (block.box[2] - block.box[0])) * 100}
+							{@const relative_y_min =
+								((coords[0][1] - block.box[1]) / (block.box[3] - block.box[1])) * 100}
+							{@const relative_x_max =
+								((coords[2][0] - block.box[0]) / (block.box[2] - block.box[0])) * 100}
+							{@const relative_y_max =
+								((coords[2][1] - block.box[1]) / (block.box[3] - block.box[1])) * 100}
+							{@const width = relative_x_max - relative_x_min}
+							{@const height = relative_y_max - relative_y_min}
+
+							<div
+								class={`
                 ${isEditMode || isSmartResizeMode ? 'border-red-500/70' : 'border-transparent'}
                 absolute border p-0 m-0 placeholder-transparent
                 transition-opacity leading-none z-2 group/line
-                flex item-center
+                flex items-center
               `}
-							style={`
+								style={`
                 left: ${relative_x_min}%;
                 top: ${relative_y_min}%;
                 width: ${width}%;
                 height: ${height}%;
                 background-color: ${isEditMode || isBoxEditMode ? 'rgba(239, 68, 68, 0.5)' : 'transparent'};
               `}
-							role={isBoxEditMode ? 'button' : undefined}
-							onmousedown={(e) => handleLineDragStart(e, block, lineIndex)}
-							oncontextmenu={(e) => openLineContextMenu(e, block, lineIndex)}
-						>
-							<!-- Inner Line Resize Handles -->
-							{#if isBoxEditMode}
-								<div
-									class="absolute -left-0.75 -top-0.75 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-left')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -top-0.75 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-center')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -right-0.75 -top-0.75 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-right')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -left-0.75 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'middle-left')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -right-0.75 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'middle-right')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -bottom-0.75 -left-0.75 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-left')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -bottom-0.75 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-center')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-								<div
-									class="absolute -bottom-0.75 -right-0.75 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
-									onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-right')}
-									role={isBoxEditMode ? 'button' : undefined}
-								></div>
-							{/if}
+								role={isBoxEditMode ? 'button' : undefined}
+								onmousedown={(e) => handleLineDragStart(e, block, lineIndex)}
+								oncontextmenu={(e) => openLineContextMenu(e, block, lineIndex)}
+							>
+								<!-- Inner Line Resize Handles -->
+								{#if isBoxEditMode}
+									<div
+										class="absolute -left-0.75 -top-0.75 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-left')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -top-0.75 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-center')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -right-0.75 -top-0.75 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'top-right')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -left-0.75 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'middle-left')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -right-0.75 top-1/2 z-20 h-1.5 w-1.5 -translate-y-1/2 cursor-ew-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'middle-right')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -bottom-0.75 -left-0.75 z-20 h-1.5 w-1.5 cursor-nesw-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-left')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -bottom-0.75 left-1/2 z-20 h-1.5 w-1.5 -translate-x-1/2 cursor-ns-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-center')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+									<div
+										class="absolute -bottom-0.75 -right-0.75 z-20 h-1.5 w-1.5 cursor-nwse-resize rounded-full bg-yellow-400 opacity-0 group-hover/line:opacity-100"
+										onmousedown={(e) => handleLineResizeStart(e, block, lineIndex, 'bottom-right')}
+										role={isBoxEditMode ? 'button' : undefined}
+									></div>
+								{/if}
 
-							{#if isEditMode}
-								<!-- avoid toggle when long pressing onto text in edit mode -->
-								<div
-									data-ignore-long-press="true"
-									data-line-index={lineIndex}
-									contenteditable="true"
-									role="textbox"
-									tabindex="0"
-									class="ocr-line-text self-center"
-									class:vertical-text={block.vertical}
-									style={`
+								{#if isEditMode}
+									<!-- avoid toggle when long pressing onto text in edit mode -->
+									<div
+										data-ignore-long-press="true"
+										data-line-index={lineIndex}
+										contenteditable="true"
+										role="textbox"
+										tabindex="0"
+										class="ocr-line-text"
+										class:vertical-text={block.vertical}
+										style={`
                     cursor: ${block.vertical ? 'vertical-text' : 'text'};
                     font-size: ${fontScale * block.font_size}px;
                   `}
-									bind:innerText={block.lines[lineIndex]}
-									onkeydown={(e) => handleLineKeyDown(e, block, lineIndex)}
-									oninput={() => {
-										onOcrChange();
-									}}
-									onblur={(e) => {
-										if (!isSliderHovered) {
-											onLineFocus(null, null);
-											focusedLineElement = null;
-											focusedBlock = null;
-										}
+										bind:innerText={block.lines[lineIndex]}
+										onkeydown={(e) => handleLineKeyDown(e, block, lineIndex)}
+										oninput={() => {
+											onOcrChange();
+										}}
+										onblur={(e) => {
+											if (!isSliderHovered) {
+												onLineFocus(null, null);
+												focusedLineElement = null;
+												focusedBlock = null;
+											}
 
-										if (isSmartResizeMode) {
-											smartResizeFont(block, e.currentTarget as HTMLElement);
-										}
-									}}
-									onfocus={(e) => {
-										focusedLineElement = e.currentTarget;
-										focusedBlock = block;
-										onLineFocus(block, page);
-									}}
-								></div>
-							{:else}
-								<div
-									data-line-index={lineIndex}
-									class="ocr-line-text self-center"
-									class:vertical-text={block.vertical}
-									style={`
-                    cursor: ${isBoxEditMode ? 'grab' : 'text'};
+											if (isSmartResizeMode) {
+												smartResizeFont(block, e.currentTarget as HTMLElement);
+											}
+										}}
+										onfocus={(e) => {
+											focusedLineElement = e.currentTarget;
+											focusedBlock = block;
+											onLineFocus(block, page);
+										}}
+									></div>
+								{:else}
+									<div
+										data-line-index={lineIndex}
+										class="ocr-line-text"
+										class:vertical-text={block.vertical}
+										style={`
+                    cursor: ${isBoxEditMode ? 'grab' : block.vertical ? 'vertical-text' : 'text'};
                     font-size: ${fontScale * block.font_size}px;
                   `}
-									ondblclick={(e) => {
-										if (!isEditMode && !isBoxEditMode && isSmartResizeMode) {
-											e.stopPropagation();
-											smartResizeFont(block, e.currentTarget as HTMLElement);
-										}
-									}}
-								>
-									{ligaturize(line, block.vertical)}
-								</div>
-							{/if}
-						</div>
-					{/each}
+										ondblclick={(e) => {
+											if (!isEditMode && !isBoxEditMode && isSmartResizeMode) {
+												e.stopPropagation();
+												smartResizeFont(block, e.currentTarget as HTMLElement);
+											}
+										}}
+									>
+										{ligaturize(line, block.vertical)}
+									</div>
+								{/if}
+							</div>
+						{/each}
+					{/if}
 				</div>
 			</TouchToggle>
 		</div>
