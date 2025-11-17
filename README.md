@@ -58,7 +58,7 @@ The recommended way to run Mokuro Library is with Docker Compose, which handles 
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/nguyenston/mokuro-library.git](https://github.com/nguyenston/mokuro-library.git)
+    git clone https://github.com/nguyenston/mokuro-library.git
     ```
 
 2.  **Navigate to the directory:**
