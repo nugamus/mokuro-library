@@ -16,6 +16,10 @@ COPY backend/package*.json ./
 RUN npm ci
 COPY backend/ .
 
+# Set the database URL just for this build stage
+# This tells Prisma to create the file at /app/backend/prisma/library.db
+ENV DATABASE_URL="file:/app/backend/prisma/library.db"
+
 # Creates a new, fresh library.db file
 RUN npx prisma db push
 # Generate Prisma client
