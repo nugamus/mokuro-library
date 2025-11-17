@@ -100,7 +100,7 @@ const generateVolumePdf = async (
     'frontend',
     'static',
     'fonts',
-    'migu-1p-regular.woff2'
+    'noto-sans-jp-v55-japanese_latin-regular.woff2'
   );
 
   try {
