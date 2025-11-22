@@ -130,10 +130,23 @@ All endpoints (except /auth) are protected and require an authenticated session 
     * Gets the current user's settings JSON.
 * **PUT /api/settings**
     * Updates the current user's settings.
-* **GET /api/progress/volume/:id**
-    * Gets the UserProgress for a volume for the current user.
-* **PUT /api/progress/volume/:id**
-    * Saves/updates the UserProgress for a volume for the current user.
+* **GET /api/metadata/volume/:id/progress**
+    * Gets the UserProgress (page, time read, etc.) for a specific volume.
+    * Returns default values (page 1, etc.) if no progress exists.
+* **PATCH /api/metadata/volume/:id/progress**
+    * Updates the UserProgress for a volume. 
+    * Supports partial updates (e.g., sending just `{ page: 10 }`).
+    * Automatically creates the progress record if it doesn't exist (Upsert).
+* **DELETE /api/metadata/volume/:id/progress**
+    * Resets (wipes) the progress for a specific volume.
+* **PATCH /api/metadata/series/:id**
+    * Renames the **Display Title** of a series.
+    * Accepts `{ title: "New Name" }` or `{ title: null }` (to revert to the folder name).
+    * Does **not** affect the filesystem directory name.
+* **PATCH /api/metadata/volume/:id**
+    * Renames the **Display Title** of a volume.
+    * Accepts `{ title: "New Name" }` or `{ title: null }`.
+    * Does **not** affect the filesystem directory name.
 
 ### File API (User-Scoped)
 
