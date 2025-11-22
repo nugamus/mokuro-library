@@ -36,32 +36,25 @@ interface SeriesParams {
   id: string; // This 'id' is the seriesId
 }
 
-/**
- * Helper to stream a directory as a ZIP file to the response.
- */
-const streamZip = (
-  sourceDir: string,
-  zipName: string,
-  reply: FastifyReply
-) => {
-  const archive = archiver('zip', {
-    zlib: { level: 0 } // no compression
-  });
-
-  reply.header('Content-Type', 'application/zip');
-  // Using encodeURIComponent for safer filenames in headers
-  const safeFileName = encodeURIComponent(zipName);
-  reply.header('Content-Disposition', `attachment; filename="${safeFileName}.zip"`);
-
-  archive.on('error', (err) => {
-    throw err;
-  });
-
-  archive.directory(sourceDir, false);
-  archive.finalize();
-
-  return reply.send(archive);
-};
+// Shared Interface for the Metadata JSON
+interface MokuroSeriesMetadata {
+  version: string;
+  series: {
+    title: string | null;
+    originalFolderName: string;
+  };
+  volumes: {
+    [fileName: string]: {
+      displayTitle: string | null;
+      progress?: {
+        page: number;
+        isCompleted: boolean;
+        timeRead: number;
+        charsRead: number;
+      };
+    }
+  };
+}
 
 // for a volume that includes its series relation.
 // Use a simple, explicit interface as requested.
@@ -174,6 +167,40 @@ const generateVolumePdf = async (
   }
 };
 
+// --- Helper: Generate Metadata Object ---
+const generateSeriesMetadata = (
+  series: any,
+  volumes: any[],
+  userId: string
+): MokuroSeriesMetadata => {
+  const volumeMap: MokuroSeriesMetadata['volumes'] = {};
+
+  for (const vol of volumes) {
+    const fileName = `${vol.folderName}.mokuro`;
+    // Find progress for this specific user
+    const userProgress = vol.progress.find((p: any) => p.userId === userId);
+
+    volumeMap[fileName] = {
+      displayTitle: vol.title,
+      progress: userProgress ? {
+        page: userProgress.page,
+        isCompleted: userProgress.completed,
+        timeRead: userProgress.timeRead,
+        charsRead: userProgress.charsRead
+      } : undefined
+    };
+  }
+
+  return {
+    version: "1.0",
+    series: {
+      title: series.title,
+      originalFolderName: series.folderName
+    },
+    volumes: volumeMap
+  };
+};
+
 const exportRoutes: FastifyPluginAsync = async (
   fastify,
   opts
@@ -193,7 +220,10 @@ const exportRoutes: FastifyPluginAsync = async (
 
       const volume = await fastify.prisma.volume.findFirst({
         where: { id: volumeId, series: { ownerId: userId } },
-        include: { series: true }
+        include: {
+          series: true,
+          progress: { where: { userId } }
+        }
       });
 
       if (!volume) {
@@ -216,6 +246,12 @@ const exportRoutes: FastifyPluginAsync = async (
           reply.status(500).send('Archiving error');
         }
       });
+
+      // Generate Metadata for this specific volume context
+      // We create a "Series" metadata file even for a single volume export,
+      // so that if the user extracts it, they get the Series context.
+      const metadata = generateSeriesMetadata(volume.series, [volume], userId);
+      archive.append(JSON.stringify(metadata, null, 2), { name: `${volume.series.folderName}.json` });
 
       // Add the volume directory (images)
       const absoluteVolumePath = path.join(fastify.projectRoot, volume.filePath);
@@ -300,28 +336,60 @@ const exportRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       const { id: seriesId } = request.params;
       const userId = request.user.id;
+      try {
+        const series = await fastify.prisma.series.findFirst({
+          where: { id: seriesId, ownerId: userId },
+          include: {
+            volumes: {
+              include: {
+                progress: { where: { userId } }
+              }
+            }
+          }
+        });
 
-      const series = await fastify.prisma.series.findFirst({
-        where: { id: seriesId, ownerId: userId },
-        include: { volumes: true }
-      });
+        if (!series) return reply.status(404).send({ message: 'Series not found' });
 
-      if (!series) {
-        return reply.status(404).send('Series not found');
+        const archive = archiver('zip', { zlib: { level: 5 } });
+        const filename = `${series.folderName}.zip`;
+
+        reply.header('Content-Type', 'application/zip');
+        reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+        reply.send(archive);
+
+        // 1. Generate Metadata
+        const metadata = generateSeriesMetadata(series, series.volumes, userId);
+        const jsonFilename = `${series.folderName}.json`;
+
+        // Place it at the root of the zip (which unpacks into the series folder)
+        archive.append(JSON.stringify(metadata, null, 2), { name: jsonFilename });
+
+        // 2. Add Series Cover
+        if (series.coverPath) {
+          const absCoverPath = path.join(fastify.projectRoot, series.coverPath);
+          if (fs.existsSync(absCoverPath)) {
+            archive.file(absCoverPath, { name: path.basename(series.coverPath) });
+          }
+        }
+
+        // 3. Add Volumes
+        for (const vol of series.volumes) {
+          const volumePath = path.join(fastify.projectRoot, vol.filePath);
+          const mokuroPath = path.join(fastify.projectRoot, vol.mokuroPath);
+
+          if (fs.existsSync(volumePath)) {
+            archive.directory(volumePath, vol.folderName);
+          }
+          if (fs.existsSync(mokuroPath)) {
+            archive.file(mokuroPath, { name: `${vol.folderName}.mokuro` });
+          }
+        }
+
+        await archive.finalize();
+      } catch (error) {
+        fastify.log.error(error);
+        if (!reply.raw.headersSent) reply.status(500).send({ message: 'Export failed' });
       }
-
-      if (series.volumes.length === 0) {
-        return reply.status(400).send('Series is empty');
-      }
-
-      // Find the series root directory from the first volume's path
-      const seriesDirRelative = path.dirname(series.volumes[0].mokuroPath);
-      const seriesDirAbsolute = path.join(
-        fastify.projectRoot,
-        seriesDirRelative
-      );
-
-      return streamZip(seriesDirAbsolute, series.folderName, reply);
     }
   );
 
@@ -403,22 +471,60 @@ const exportRoutes: FastifyPluginAsync = async (
    */
   fastify.get('/zip', async (request, reply) => {
     const userId = request.user.id;
-    // The user's library root is 'uploads/<userId>'
-    // We need to resolve this relative to the project root.
-    // Assuming the server runs from the project root or 'backend' folder:
-    const userLibraryDir = path.join(
-      fastify.projectRoot,
-      'uploads',
-      userId
-    );
-
     try {
-      await fs.promises.access(userLibraryDir, fs.constants.R_OK);
-    } catch {
-      return reply.status(404).send('Library is empty or not found on disk.');
-    }
+      const allSeries = await fastify.prisma.series.findMany({
+        where: { ownerId: userId },
+        include: {
+          volumes: {
+            include: {
+              progress: { where: { userId } }
+            }
+          }
+        }
+      });
 
-    return streamZip(userLibraryDir, `${request.user.username}-library`, reply);
+      const archive = archiver('zip', { zlib: { level: 5 } });
+      const filename = `Mokuro_Library_Backup.zip`;
+
+      reply.header('Content-Type', 'application/zip');
+      reply.header('Content-Disposition', `attachment; filename="${filename}"`);
+      reply.send(archive);
+
+      for (const series of allSeries) {
+        const seriesRoot = series.folderName;
+
+        // 1. Generate Metadata
+        const metadata = generateSeriesMetadata(series, series.volumes, userId);
+        const jsonFilename = path.join(seriesRoot, `${series.folderName}.json`);
+        archive.append(JSON.stringify(metadata, null, 2), { name: jsonFilename });
+
+        // 2. Add Series Cover
+        if (series.coverPath) {
+          const absCoverPath = path.join(fastify.projectRoot, series.coverPath);
+          if (fs.existsSync(absCoverPath)) {
+            archive.file(absCoverPath, { name: path.join(seriesRoot, path.basename(series.coverPath)) });
+          }
+        }
+
+        // 3. Add Volumes
+        for (const vol of series.volumes) {
+          const volumePath = path.join(fastify.projectRoot, vol.filePath);
+          const mokuroPath = path.join(fastify.projectRoot, vol.mokuroPath);
+
+          if (fs.existsSync(volumePath)) {
+            archive.directory(volumePath, path.join(seriesRoot, vol.folderName));
+          }
+          if (fs.existsSync(mokuroPath)) {
+            archive.file(mokuroPath, { name: path.join(seriesRoot, `${vol.folderName}.mokuro`) });
+          }
+        }
+      }
+
+      await archive.finalize();
+    } catch (error) {
+      fastify.log.error(error);
+      if (!reply.raw.headersSent) reply.status(500).send({ message: 'Export failed' });
+    }
   });
 
   /**
