@@ -1,6 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '../generated/prisma/client'; // Import Prisma for types
 
+
 // Define a schema for the request body on PUT
 // This ensures we only accept valid, partial data for an update
 const progressBodySchema = {
@@ -194,7 +195,7 @@ const metadataRoutes: FastifyPluginAsync = async (
    * PATCH /api/metadata/series/:id
    * Renames the Display Title of a Series.
    */
-  fastify.patch<{ Params: IdParams; Body: { title: string } }>(
+  fastify.patch<{ Params: IdParams; Body: { title: string | null } }>(
     '/series/:id',
     { schema: { body: renameBodySchema } },
     async (request, reply) => {
@@ -220,7 +221,7 @@ const metadataRoutes: FastifyPluginAsync = async (
    * PATCH /api/metadata/volume/:id
    * Renames the Display Title of a Volume.
    */
-  fastify.patch<{ Params: IdParams; Body: { title: string } }>(
+  fastify.patch<{ Params: IdParams; Body: { title: string | null } }>(
     '/volume/:id',
     { schema: { body: renameBodySchema } },
     async (request, reply) => {
