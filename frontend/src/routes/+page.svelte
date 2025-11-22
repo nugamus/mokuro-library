@@ -15,13 +15,15 @@
 
 	interface Volume {
 		id: string;
-		title: string;
+		title: string | null;
+		folderName: string;
 		pageCount: number;
 	}
 
 	interface Series {
 		id: string;
-		title: string;
+		title: string | null;
+		folderName: string;
 		coverPath: string | null;
 		volumes: Volume[];
 	}
@@ -214,20 +216,20 @@
 								{#if series.coverPath}
 									<img
 										src={`/api/files/series/${series.id}/cover`}
-										alt={series.title}
+										alt={series.folderName}
 										class="h-full w-full object-contain object-center transition-opacity group-hover:opacity-75"
 									/>
 								{:else}
 									<div
 										class="flex h-full w-full items-center justify-center p-4 text-center text-xl font-bold text-gray-400"
 									>
-										{series.title}
+										{series.folderName}
 									</div>
 								{/if}
 
 								<!-- Clickable Link Overlay -->
 								<a href={`/series/${series.id}`} class="absolute inset-0">
-									<span class="sr-only">View {series.title}</span>
+									<span class="sr-only">View {series.folderName}</span>
 								</a>
 							</div>
 
@@ -236,7 +238,7 @@
 									<h3 class="text-sm font-medium text-gray-900 dark:text-white">
 										<a href={`/series/${series.id}`}>
 											<span aria-hidden="true" class="absolute inset-0"></span>
-											{series.title}
+											{series.title ?? series.folderName}
 										</a>
 									</h3>
 									<p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -252,7 +254,7 @@
 									onclick={(e) => {
 										e.preventDefault();
 										e.stopPropagation();
-										handleDeleteSeries(series.id, series.title);
+										handleDeleteSeries(series.id, series.title ?? series.folderName);
 									}}
 									class="relative z-10 -m-2 p-2 text-gray-400 hover:text-red-500"
 								>

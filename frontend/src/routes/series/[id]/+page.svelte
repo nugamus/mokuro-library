@@ -11,14 +11,16 @@
 	}
 	interface Volume {
 		id: string;
-		title: string;
+		title: string | null;
+		folderName: string;
 		pageCount: number;
 		coverImageName: string | null;
 		progress: UserProgress[]; // max 1 item
 	}
 	interface Series {
 		id: string;
-		title: string;
+		title: string | null;
+		folderName: string;
 		coverPath: string | null;
 		volumes: Volume[];
 	}
@@ -256,14 +258,14 @@
 				{#if series.coverPath}
 					<img
 						src={`/api/files/series/${series.id}/cover?t=${coverRefreshTrigger}`}
-						alt={series.title}
+						alt={series.folderName}
 						class="h-full w-full object-contain"
 					/>
 				{:else}
 					<div
 						class="flex h-full w-full items-center justify-center text-4xl font-bold text-gray-400"
 					>
-						{series.title.charAt(0).toUpperCase()}
+						{series.folderName.charAt(0).toUpperCase()}
 					</div>
 				{/if}
 
@@ -278,7 +280,7 @@
 			</div>
 
 			<div class="flex flex-col items-center gap-2">
-				<h1 class="text-4xl font-bold dark:text-white">{series.title}</h1>
+				<h1 class="text-4xl font-bold dark:text-white">{series.title ?? series.folderName}</h1>
 
 				<!-- Series Download Button -->
 				<button
@@ -325,12 +327,12 @@
 						{#if volume.coverImageName}
 							<img
 								src={`/api/files/volume/${volume.id}/image/${volume.coverImageName}`}
-								alt={volume.title}
+								alt={volume.folderName}
 								class="h-full w-full object-contain object-center"
 							/>
 						{:else}
 							<div class="flex h-full w-full items-center justify-center text-center text-gray-400">
-								{volume.title}
+								{volume.folderName}
 							</div>
 						{/if}
 					</div>
@@ -338,7 +340,7 @@
 						<h3 class="text-md font-medium text-gray-900 dark:text-white line-clamp-2">
 							<a href={`/volume/${volume.id}`}>
 								<span aria-hidden="true" class="absolute inset-0"></span>
-								{volume.title}
+								{volume.title ?? volume.folderName}
 							</a>
 						</h3>
 
@@ -419,7 +421,7 @@
 							onclick={(e) => {
 								e.preventDefault(); // Stop navigation
 								e.stopPropagation(); // Stop group click
-								handleDeleteVolume(volume.id, volume.title);
+								handleDeleteVolume(volume.id, volume.title ?? volume.folderName);
 							}}
 							class="rounded-full bg-black/30
               p-1 text-white/70 hover:bg-red-600
