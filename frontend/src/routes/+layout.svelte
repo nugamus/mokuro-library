@@ -7,6 +7,7 @@
 	import ContextMenu from '$lib/components/ContextMenu.svelte';
 	import ConfirmationModal from '$lib/components/ConfirmationModal.svelte';
 	import LineOrderModal from '$lib/components/LineOrderModal.svelte';
+	import RenameModal from '$lib/components/RenameModal.svelte';
 
 	let { children } = $props();
 
@@ -23,3 +24,4 @@
 <ContextMenu />
 <ConfirmationModal />
 <LineOrderModal />
+<RenameModal />

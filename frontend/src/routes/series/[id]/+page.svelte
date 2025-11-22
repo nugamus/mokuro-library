@@ -3,6 +3,7 @@
 	import { user } from '$lib/authStore';
 	import { confirmation } from '$lib/confirmationStore';
 	import { contextMenu } from '$lib/contextMenuStore';
+	import { renameStore } from '$lib/renameStore';
 
 	// --- Type definitions ---
 	interface UserProgress {
@@ -153,6 +154,36 @@
 		]);
 	};
 
+	// --- Open rename modal for series ---
+	const openRenameSeries = () => {
+		if (!series) return;
+
+		renameStore.open(series.title ?? '', async (newTitle) => {
+			newTitle = newTitle === '' ? null : newTitle;
+			// Logic defined inline here, keeping the component clean
+			await apiFetch(`/api/metadata/series/${series!.id}`, {
+				method: 'PATCH',
+				body: { title: newTitle }
+			});
+			await fetchSeriesData(params.id);
+		});
+	};
+
+	// --- Open rename modal for volume ---
+	const openRenameVolume = (e: Event, vol: Volume) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		renameStore.open(vol.title ?? '', async (newTitle) => {
+			newTitle = newTitle === '' ? null : newTitle;
+			await apiFetch(`/api/metadata/volume/${vol.id}`, {
+				method: 'PATCH',
+				body: { title: newTitle }
+			});
+			await fetchSeriesData(params.id);
+		});
+	};
+
 	// Toggles the completion status of a volume with Optimistic UI and Debouncing
 	const toggleComplete = async (volumeId: string) => {
 		if (!series) return;
@@ -279,13 +310,37 @@
 				</button>
 			</div>
 
-			<div class="flex flex-col items-center gap-2">
-				<h1 class="text-4xl font-bold dark:text-white">{series.title ?? series.folderName}</h1>
+			<!-- series title -->
+			<div class="flex flex-col items-left gap-2">
+				<div class="flex gap-2 group">
+					<h1 class="text-4xl font-bold dark:text-white">{series.title ?? series.folderName}</h1>
+					<!-- series rename button -->
+					<button
+						onclick={openRenameSeries}
+						class="opacity-0 transition-opacity group-hover:opacity-100 text-gray-400 hover:text-indigo-500 [@media(hover:none)]:opacity-100 cursor-pointer"
+						title="Rename Series"
+					>
+						<!-- pen icon -->
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							viewBox="0 0 20 20"
+							fill="currentColor"
+							class="w-5 h-5"
+						>
+							<path
+								d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"
+							/>
+							<path
+								d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z"
+							/>
+						</svg>
+					</button>
+				</div>
 
 				<!-- Series Download Button -->
 				<button
 					onclick={(e) => openDownloadMenu(e, params.id, 'series')}
-					class="flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 cursor-pointer"
+					class="flex items-center gap-2 rounded-md bg-blue-600 px-2 py-2 text-sm font-medium text-white hover:bg-blue-700 cursor-pointer w-fit"
 				>
 					<!-- Download Icon -->
 					<svg
@@ -336,11 +391,39 @@
 							</div>
 						{/if}
 					</div>
+					<!-- volume info -->
 					<div class="flex flex-col justify-between mt-4 h-22">
-						<h3 class="text-md font-medium text-gray-900 dark:text-white line-clamp-2">
+						<h3
+							class="text-md font-medium text-gray-900 dark:text-white line-clamp-2"
+							title={volume.title ?? volume.folderName}
+						>
+							<!-- volume title -->
 							<a href={`/volume/${volume.id}`}>
 								<span aria-hidden="true" class="absolute inset-0"></span>
-								{volume.title ?? volume.folderName}
+								<div class=" relative w-full h-fit">
+									{volume.title ?? volume.folderName}
+									<!-- volume rename button -->
+									<button
+										onclick={(e) => openRenameVolume(e, volume)}
+										class="z-20 absolute top-0 right-0 opacity-0 transition-opacity group-hover:opacity-100 text-gray-400 hover:text-indigo-500 [@media(hover:none)]:opacity-100 cursor-pointer"
+										title="Rename Volume"
+									>
+										<!-- edit icon -->
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											viewBox="0 0 20 20"
+											fill="currentColor"
+											class="w-4 h-4"
+										>
+											<path
+												d="M5.433 13.917l1.262-3.155A4 4 0 017.58 9.42l6.92-6.918a2.121 2.121 0 013 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 01-.65-.65z"
+											/>
+											<path
+												d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0010 3H4.75A2.75 2.75 0 002 5.75v9.5A2.75 2.75 0 004.75 18h9.5A2.75 2.75 0 0017 15.25V10a.75.75 0 00-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5z"
+											/>
+										</svg>
+									</button>
+								</div>
 							</a>
 						</h3>
 
@@ -396,7 +479,7 @@
 							type="button"
 							aria-label="Download volume"
 							onclick={(e) => openDownloadMenu(e, volume.id, 'volume')}
-							class="rounded-full bg-black/30 p-1 text-white/70 hover:bg-blue-600 hover:text-white"
+							class="rounded-full bg-black/30 p-1 text-white/70 hover:bg-blue-600 hover:text-white cursor-pointer"
 						>
 							<!-- Download Icon (Small) -->
 							<svg
