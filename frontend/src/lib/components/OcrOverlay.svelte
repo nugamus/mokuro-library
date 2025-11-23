@@ -47,7 +47,7 @@
 	let fontScale = $derived.by(() => {
 		const rect = overlayRootElement?.getBoundingClientRect();
 		if (!rect?.height) return 1;
-		return rect.height / page.img_height;
+		return rect.height / page.img_height / panzoomInstance.getScale();
 	});
 
 	/**
