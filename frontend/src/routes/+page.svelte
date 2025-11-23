@@ -58,7 +58,7 @@
 			isLoadingLibrary = true;
 			libraryError = null;
 			const data = await apiFetch('/api/library');
-			library = data as Series[];
+			library = data.data as Series[];
 		} catch (e) {
 			libraryError = (e as Error).message;
 		} finally {
