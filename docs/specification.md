@@ -71,15 +71,18 @@ The system will be a decoupled client-server application.
   * [x] Per user persistent reader settings.
   * [x] A single, long-scrolling vertical layout (webtoon mode).
   * [x] Caching images to avoid unnecessary server calls.
+  * [ ] Customization
+    * [ ] Custom keymapping
+    * [ ] Custom ligatures
 * [ ] The ability to export the library in different format (e.g. pdf, cbz, ...)
   * [x] zip
   * [x] pdf with selectable text
   * [ ] cbz (low priority)
 * [ ] Library features
   * [ ] More secure cookie implementation for more public use cases.
-  * [ ] The ability to rename series and volume.
-  * [ ] Search and sort.
-  * [ ] Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
+  * [x] The ability to rename series and volume.
+  * [x] Search, sort, and paginate.
+  * [ ] Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
 * [ ] AnkiConnect Integration: Focuses on sentence mining, as dictionary extensions like Yomi-tan already have word mining down.
 
 ## Technology Stack
@@ -177,69 +180,98 @@ This schema will be located at backend/prisma/schema.prisma.
 
 ```prisma
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+
+  // for docker: 'linux-musl-openssl-3.0.x' is required for Alpine Linux
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "sqlite"
-  url      = "file:./library.db"
+  url      = env("DATABASE_URL")
 }
 
 // Stores metadata about a manga series
 model Series {
-  id        String    @id @default(cuid())
-  title     String // e.g., "Yotsuba&!"
-  coverPath String? // Path to the cover image
+  id          String    @id @default(cuid())
+  title       String?   // defaults to folderName
+  folderName  String
+  coverPath   String?   // Path to the cover image
 
-  volumes Volume[]
-  owner   User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  ownerId String // Which user uploaded this
+  // Always contains either 'title' or 'folderName'
+  sortTitle   String
 
-  @@unique([title, ownerId]) // A user can't have two series with the same title
+  createdAt   DateTime  @default(now()) // "Date Added"
+  updatedAt   DateTime  @updatedAt @default(now())     // "Recently Updated" (Refreshed on new volume)
+
+  // Updated manually when a child volume's progress is updated.
+  // Default is Epoch (1970) so unread items appear at the bottom of "Recently Read".
+  lastReadAt  DateTime  @default(dbgenerated("'1970-01-01T00:00:00.000Z'"))
+
+  volumes     Volume[]
+  owner       User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId     String    // Which user uploaded this
+
+  @@unique([folderName, ownerId]) // A user can't have two series with the same title
 }
 
 // Stores metadata about a single volume
 model Volume {
-  id        String @id @default(cuid())
-  title     String // e.g., "Volume 1"
-  pageCount Int
+  id          String   @id @default(cuid())
+  title       String?  // defaults to folderName
+  folderName  String
+  pageCount   Int
+
+  // Always contains either 'title' or 'folderName'
+  sortTitle   String
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt @default(now())
 
   // File paths on the NAS
-  filePath   String @unique // Path to the folder containing the images
-  mokuroPath String @unique // Path to the .mokuro file
+  filePath    String   @unique // Path to the folder containing the images
+  mokuroPath  String   @unique // Path to the .mokuro file
 
-  series   Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
-  seriesId String
+  coverImageName String?
 
-  progress UserProgress[]
+  series      Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  seriesId    String
 
-  @@unique([seriesId, title]) // Prevent duplicate volumes within a series
+  progress    UserProgress[]
+
+  @@unique([seriesId, folderName]) // Prevent duplicate volumes within a series
 }
 
 // Stores user accounts and their settings
 model User {
-  id       String @id @default(cuid())
-  username String @unique
-  password String // Will store a hash
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String   // Will store a hash
 
-  settings Json // All reader settings
+  settings  Json     // All reader settings
 
-  uploads  Series[]
-  progress UserProgress[]
+  uploads   Series[]
+  progress  UserProgress[]
 }
 
 // Tracks the progress for a specific user and a specific volume
 model UserProgress {
-  id        String  @id @default(cuid())
-  page      Int     @default(1)
-  timeRead  Int     @default(0) // in minutes
-  charsRead Int     @default(0)
-  completed Boolean @default(false)
+  id         String    @id @default(cuid())
+  page       Int       @default(1)
+  timeRead   Int       @default(0) // in minutes
+  charsRead  Int       @default(0)
+  completed  Boolean   @default(false)
 
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId String
-  volume Volume @relation(fields: [volumeId], references: [id], onDelete: Cascade)
-  volumeId String
+  // --- RECENTLY READ ---
+  // 1. @updatedAt: Automatically updates to NOW() whenever you save progress.
+  // 2. @default("1970..."): Forces existing database rows to have an "ancient" date 
+  lastReadAt DateTime @updatedAt @default(dbgenerated("'1970-01-01T00:00:00.000Z'"))
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId     String
+  volume     Volume    @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  volumeId   String
 
   @@unique([userId, volumeId]) // A user can only have one progress entry per volume
 }

@@ -149,9 +149,9 @@ The original [ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader) is 
   * [ ] cbz (low priority)
 * [ ] Library features
   * [ ] More secure cookie implementation for more public use cases.
-  * [ ] The ability to rename series and volume.
-  * [ ] Search and sort.
-  * [ ] Reading Statistics: Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
+  * [x] The ability to rename series and volume.
+  * [x] Search, sort, and paginate.
+  * [ ] Implement the UI to display reading stats (time, characters read), which will be tracked in the database.
 * [ ] AnkiConnect Integration: Focuses on sentence mining, as dictionary extensions like Yomi-tan already have word mining down.
 
 
