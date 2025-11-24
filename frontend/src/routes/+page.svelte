@@ -2,10 +2,13 @@
 	import { user } from '$lib/authStore';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { page } from '$app/stores';
 	import { apiFetch, triggerDownload } from '$lib/api';
 	import { confirmation } from '$lib/confirmationStore';
 	import { contextMenu } from '$lib/contextMenuStore';
 	import UploadModal from '$lib/components/UploadModal.svelte';
+	import LibrarySearchBar from '$lib/components/LibrarySearchBar.svelte';
+	import PaginationControls from '$lib/components/PaginationControls.svelte';
 
 	// --- Type definitions ---
 	interface UserProgress {
@@ -18,6 +21,7 @@
 		title: string | null;
 		folderName: string;
 		pageCount: number;
+		progress: UserProgress[];
 	}
 
 	interface Series {
@@ -28,8 +32,19 @@
 		volumes: Volume[];
 	}
 
+	interface LibraryResponse {
+		data: Series[];
+		meta: {
+			total: number;
+			page: number;
+			limit: number;
+			totalPages: number;
+		};
+	}
+
 	// --- Use $state for all reactive variables ---
 	let library = $state<Series[]>([]);
+	let meta = $state({ total: 0, page: 1, limit: 20, totalPages: 1 });
 	let isLoadingLibrary = $state(true);
 	let libraryError = $state<string | null>(null);
 	let isUploadModalOpen = $state(false);
@@ -48,17 +63,22 @@
 	// --- Library Fetch Effect ---
 	$effect(() => {
 		if ($user && browser) {
-			fetchLibrary();
+			// Pass the current search params to the fetch function
+			fetchLibrary($page.url.search);
 		}
 	});
 
 	// --- fetchLibrary ---
-	const fetchLibrary = async () => {
+	const fetchLibrary = async (queryString: string) => {
 		try {
 			isLoadingLibrary = true;
 			libraryError = null;
-			const data = await apiFetch('/api/library');
-			library = data.data as Series[];
+			// Pass the query string (e.g. "?q=test&sort=recent") directly to backend
+			const response = await apiFetch(`/api/library${queryString}`);
+
+			// Handle the new response format { data, meta }
+			library = response.data as Series[];
+			meta = response.meta;
 		} catch (e) {
 			libraryError = (e as Error).message;
 		} finally {
@@ -80,7 +100,7 @@
 						method: 'DELETE'
 					});
 					// Refresh the library list
-					await fetchLibrary();
+					await fetchLibrary($page.url.search);
 				} catch (e) {
 					// Show error in the main UI
 					libraryError = `Failed to delete series: ${(e as Error).message}`;
@@ -190,6 +210,7 @@
 		</div>
 
 		<div class="mt-8">
+			<LibrarySearchBar />
 			{#if isLoadingLibrary}
 				<p class="mt-4 text-gray-700 dark:text-gray-300">Loading library...</p>
 			{:else if libraryError}
@@ -204,6 +225,7 @@
 					</p>
 				</div>
 			{:else}
+				<!-- series grid -->
 				<div
 					class="mt-6 grid grid-cols-2 gap-y-10 gap-x-6 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 xl:gap-x-8"
 				>
@@ -275,6 +297,8 @@
 						</div>
 					{/each}
 				</div>
+
+				<PaginationControls {meta} />
 			{/if}
 		</div>
 	{:else}
@@ -288,7 +312,7 @@
 		onClose={() => (isUploadModalOpen = false)}
 		onUploadSuccess={() => {
 			isUploadModalOpen = false;
-			fetchLibrary(); // Refresh the library list!
+			fetchLibrary($page.url.search);
 		}}
 	/>
 </div>
