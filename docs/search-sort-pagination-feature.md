@@ -8,58 +8,66 @@
 * **As a user,** I want to search for "Naruto" and see results appear as I type, without manually clicking a search button.
 * **As a user,** I want to sort my library by "Recently Read" so I can jump back into active series quickly.
 * **As a user,** I want to sort by "Date Added" to see my newest uploads.
-* **As a user,** I want to sort by "Recently Updated" to see series that have new volumes added.
 * **As a user,** I want to control how many items appear on screen (20, 50, 100) to match my screen size and bandwidth.
 * **As a user,** I want the URL to reflect my current view (`?q=naruto&page=2`) so I can bookmark or share specific search results.
 
 ## 3. Data Semantics & Definitions
 
-To ensure consistent sorting, we strictly define the meaning of our timestamp and naming fields.
+To ensure performant SQL sorting without complex runtime logic, we explicitly define our data fields.
 
-### 3.1. Series Logic
-* **`title` (Display Title):** The user-configurable name.
-    * *Sorting Behavior:* Used for **"A-Z"** sorts. If `null`, the `folderName` is used as the fallback.
-* **`folderName` (Disk ID):** The immutable directory name.
-    * *Sorting Behavior:* Fallback for A-Z sorts.
-* **`createdAt` (Date Added):** The timestamp when the Series was **first created**.
-    * *Sorting Behavior:* Used for **"Date Added"** (Oldest/Newest) sort. This value is immutable.
-* **`updatedAt` (Last Activity):** The timestamp when the Series was last modified.
-    * *Trigger Logic:* Updates on rename, cover change, **AND** when a new Volume is uploaded to this series.
-    * *Sorting Behavior:* Used for **"Recently Updated"** sort (e.g., bubbling a series to the top when a new chapter is added).
+### 3.1. Naming Logic
+* **`folderName` (Disk ID):** The immutable directory name on the filesystem. Used as the unique identifier for file operations.
+* **`title` (Display Override):** A nullable string.
+    * If `null`: The user has not set a custom title. UI displays `folderName`.
+    * If set: The UI displays this string.
+* **`sortTitle` (The Sorting Key):** A denormalized, required column.
+    * **Logic:** Always equals `COALESCE(title, folderName)`.
+    * **Purpose:** Allows standard SQL `ORDER BY sortTitle ASC` to work correctly, mixing custom titles and folder names alphabetically without performance penalties. Automatically updated whenever `title` changes.
 
-### 3.2. User Progress Logic
-* **`lastReadAt` (Recently Read):** A timestamp on `UserProgress` updated every time a user opens a volume or turns a page.
-    * *Sorting Behavior:* Used for **"Recently Read"** sort. This effectively orders series by "When did I last touch any volume in this series?".
+### 3.2. Timestamp Logic
+We use the **Prisma Driver Adapter (`@prisma/adapter-better-sqlite3`)**, which stores dates as ISO-8601 strings (`TEXT`) in SQLite.
+
+* **`createdAt` (Date Added):**
+    * **Default:** `'1970-01-01T00:00:00.000Z'` (Epoch). This ensures legacy/migrated data sits at the bottom of "Newest" lists.
+    * **New Uploads:** Explicitly set to `new Date()` by the application.
+* **`updatedAt` (Last Activity):**
+    * **Trigger:** Updates on rename, cover change, or when a new Volume is uploaded to the series.
+    * **Default:** Epoch (1970).
+* **`lastReadAt` (Recently Read):**
+    * **Location:** Denormalized onto the `Series` model (to avoid joining thousands of progress rows).
+    * **Trigger:** Updated whenever a user reads a page in *any* volume belonging to the series.
+    * **Default:** Epoch (1970). Unread books appear at the bottom.
 
 ## 4. Technical Architecture
 
 ### 4.1. Database Schema (`schema.prisma`)
-We add the necessary timestamps and indices to support the definitions above.
 
 ```prisma
 model Series {
-  // ... existing fields
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  // ... ID and Relations ...
 
-  // Indices for performance
-  @@index([title])
-  @@index([updatedAt])
+  title       String?   // Mutable (Display)
+  folderName  String    // Immutable (Disk)
+  
+  // The effective title for sorting (Managed by App Logic)
+  sortTitle   String    @default("")
+
+  // Timestamps (Stored as ISO Strings via Driver Adapter)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt @default(now())
+  
+  // Denormalized for performance
+  lastReadAt  DateTime  @default(dbgenerated("'1970-01-01T00:00:00.000Z'"))
+
+  // Indices for instant pagination
+  @@index([sortTitle])
   @@index([createdAt])
-}
-
-model UserProgress {
-  // ... existing fields
-  
-  // Tracks when the user last interacted with this volume.
-  lastReadAt  DateTime @default(now()) @updatedAt
-  
-  @@index([userId, lastReadAt]) // Critical for "Recently Read" sort
+  @@index([updatedAt])
+  @@index([lastReadAt])
 }
 ```
 
 ### 4.2. API Specification (`GET /api/library`)
-The library endpoint will be refactored to accept query parameters.
 
 **Request:**
 `GET /api/library?page=1&limit=20&q=searchterm&sort=recent&order=desc`
@@ -67,43 +75,33 @@ The library endpoint will be refactored to accept query parameters.
 | Param | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
 | `page` | `int` | `1` | The current page number. |
-| `limit` | `int` | `20` | Items per page (Page Size). |
-| `q` | `string` | `""` | Search query (matches `title` or `folderName`). |
-| `sort` | `enum` | `title` | `title` (A-Z), `created` (Date Added), `updated` (Recently Updated), `recent` (Last Read). |
-| `order` | `enum` | `asc` | `asc` (Ascending) or `desc` (Descending). |
+| `limit` | `int` | `20` | Items per page. |
+| `q` | `string` | `""` | Search query. Filters against `title` OR `folderName`. |
+| `sort` | `enum` | `title` | `title` (A-Z via `sortTitle`), `created`, `updated`, `recent` (via `lastReadAt`). |
+| `order` | `enum` | `asc` | `asc` or `desc`. |
 
 **Response:**
-We switch from returning a raw Array `[]` to a paginated Object `{}`.
+Returns a standard paginated object.
 
 ```json
 {
-  "data": [ ...series objects... ],
+  "data": [ ...Series Objects... ],
   "meta": {
-    "total": 150,       // Total items matching query
-    "page": 1,          // Current page
-    "limit": 20,        // Current limit
-    "totalPages": 8     // ceil(total / limit)
+    "total": 150,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 8
   }
 }
 ```
 
-### 4.3. Frontend Logic
-To make "Live Search" feel responsive while using a backend API, we implement **Debounced URL Synchronization**.
+### 4.3. Frontend Logic (Svelte 5)
 
-1.  **State Source:** The URL (`$page.url.searchParams`) is the single source of truth.
-2.  **Action:** When the user types in the search bar:
-    * Wait 300ms (Debounce).
-    * Update URL to `?q=newterm&page=1` (using `replaceState` to avoid cluttering history).
-3.  **Reaction:** A Svelte `$effect` detects the URL change -> calls `fetchLibraryData()` -> updates the UI.
+The frontend uses Svelte 5 Runes for fine-grained reactivity, abandoning the legacy `$app/stores`.
 
-## 5. Implementation Plan
-
-1.  **Database:** Apply migration for `createdAt`, `updatedAt`, and `lastReadAt`.
-2.  **Backend:**
-    * Update `POST /upload` to "touch" `Series.updatedAt` when adding a volume.
-    * Refactor `GET /api/library` to handle pagination/sort/search.
-3.  **Frontend Service:** Update `api.ts` to handle the new `{ data, meta }` response.
-4.  **Frontend UI:**
-    * Build `<PaginationControls />` (Next/Prev, Page Size dropdown).
-    * Build `<LibraryToolbar />` (Search input, Sort dropdown).
-    * Update the main grid to render from `response.data`.
+* **State Source:** The URL (`$page.url.searchParams`) via `$app/state`.
+* **Reactivity:** An `$effect` monitors the URL state. Any change (typing in search, clicking next page) triggers `fetchLibrary()`.
+* **Debounce:** The search input updates the URL after a 300ms delay to prevent API spam.
+* **Components:**
+    * `<LibraryToolbar />`: Handles Search input and Sort buttons.
+    * `<PaginationControls />`: Handles Page navigation and "Items per page" selection.
