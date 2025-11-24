@@ -20,10 +20,13 @@ services:
       # Mount 'backend' folder to '/app/backend'
       # This lets ts-node-dev see code changes in real-time.
       - ./backend:/app/backend
+
       # Use the container's
-      # /app/backend/node_modules folder and ignore your
+      # /app/backend/node_modules and src/generated folder and ignore your
       # local host's node_modules (if any).
       - /app/backend/node_modules
+      - /app/backend/src/generated
+
       - ./frontend/static/fonts:/app/frontend/static/fonts:ro
 
       - ./data:/app/data
