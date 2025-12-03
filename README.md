@@ -113,26 +113,28 @@ After installing and starting the container, here are your first steps:
     
 
 ## 📚 FAQ
+
 ### 1. Mokuro Library vs. Mokuro Reader
 
-The original [ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader) is a fantastic **browser-based** reader. It's fast, simple, and perfect for loading `.mokuro` files directly into your browser without installing anything. It stores your library and reading progress in the browser's internal storage (IndexedDB).
+While both projects serve the same `.mokuro` processed content, they are built on fundamentally different architectures.
 
-**Mokuro Library** is a **self-hosted, server-side** application that solves a different set of problems. It is designed to run as a persistent service (e.g., in a Docker container on a NAS). It moves the entire library, all user accounts, and all progress tracking to the server, using a central SQLite database and the server's filesystem.
+The original **[ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader)** is a **Client-Side Progressive Web App (PWA)**. It runs entirely in your browser, using IndexedDB for storage and connecting to third-party services (Google Drive, MEGA, WebDAV) for synchronization.
+
+**Mokuro Library** (this project) is a **Self-Hosted Server Application**. It runs as a container on your own hardware (NAS, Home Server), serving files directly from your local filesystem and using a centralized SQL database.
 
 #### Which One Should You Use?
 
 **Use the original [ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader) if:**
-* You want to quickly read a `.mokuro` file without setting up a server.
-* You prefer a hosted (don't worry, your data is still local), zero-installation experience.
-* You are managing a smaller library that fits comfortably within your browser's storage limits.
-* You only need to track your progress on a single device.
+* **You want an Offline-First experience:** You want to read content on the go (e.g., on a plane) without a connection to a home server.
+* **You prefer a Zero-Infrastructure setup:** You do not want to manage Docker containers or host your own server.
+* **You rely on Cloud Storage:** You prefer syncing your library and progress via Google Drive, MEGA, or WebDAV.
+* **You import volumes on demand:** You are comfortable importing specific volumes into the browser as needed.
 
 **Use Mokuro Library (this project) if:**
-* You have a large manga library and are hitting browser storage quotas.
-* You want a centralized library that lives in the open on your computer's filesystem, not in the browser.
-* You want your **OCR text edits saved directly back** to the `.mokuro` files on your disk for portability.
-* You want to **sync reading progress** across devices (by running it on a NAS/Server).
-* You need **multi-user** support for family or friends (by running it on a NAS/Server).
+* **You Self-Host on a NAS/Server:** You want a centralized "Source of Truth" that streams images directly from your hard drive without duplicating data into browser storage.
+* **You want centralized OCR edits (Write-Back):** You want your text corrections saved directly back to the source `.mokuro` files on your disk, ensuring your library remains portable and platform-agnostic.
+* **You require Multi-User separation:** You want to host a private library for multiple users (family/friends) with completely separate accounts, progress tracking, and settings databases.
+* **You prefer LAN Streaming:** You want to browse and read your entire collection instantly on any device in your network without waiting for imports or downloads.
 
 ### 2. Non-essential stretch features:
 * [x] Optional Reader features
