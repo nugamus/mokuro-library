@@ -6,7 +6,7 @@ It provides a centralized, persistent library for your Mokuro-processed manga, d
 
 ## 🌟 Core Features
 
-For more details, read [the specification](docs/specification.md):
+For more details, read [the specification](docs/architecture/specification.md):
 * **Multi-User Authentication:** Separate accounts for different users, with progress and settings saved per-user.
 * **Server-Side Library:** Upload entire Mokuro-processed directories. All files are managed by the server.
 * **Persistent, Per-User Progress:** Reading progress, page, and completion status are saved to the database for each user.
@@ -199,7 +199,8 @@ If you need to completely wipe your library and start over:
 
 ## 🛠️ Development (with Hot-Reload)
 
-The recommended workflow is the full-stack, containerized dev environment. For details on this and alternative workflows (like Hybrid Development), see [the development doc](docs/development.md).
+The recommended workflow is the full-stack, containerized dev environment. For details on this and alternative workflows (like Hybrid Development), 
+see [the development doc](docs/architecture/development.md).
 
 ### Recommended Dev Workflow
 
