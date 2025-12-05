@@ -10,7 +10,8 @@ Mokuro Library is designed to upload entire Mokuro-processed directories at once
 2.  The application uses a **Directory Upload** method. You must select the *root folder* that contains your processed manga.
 3.  The server will parse the folder structure to identify series and volumes.
 
-![The upload modal](/upload-modal.webp)
+![The upload modal](/upload-modal-empty.webp)
+![The upload modal in progress](/upload-modal.webp)
 
 ### Required Folder Structure
 
