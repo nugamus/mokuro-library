@@ -78,47 +78,101 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
 export function apiUpload(
   path: string,
   formData: FormData,
-  onProgress: (percent: number) => void
+  onProgress: (percent: number) => void,
+  maxRetries = 2
 ): Promise<any> {
   return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', path);
+    let attempts = 0;
 
-    // 1. Track Upload Progress
-    if (xhr.upload) {
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable) {
-          const percent = Math.round((event.loaded / event.total) * 100);
-          onProgress(percent);
+    const tryUpload = () => {
+      attempts++;
+      console.log(`Upload attempt ${attempts}/${maxRetries + 1}`);
+
+      const xhr = new XMLHttpRequest();
+      let hasStarted = false;
+
+      // Short timeout to detect "stuck" requests that never start
+      const stuckTimer = setTimeout(() => {
+        console.log(`hasStarted: ${hasStarted}`)
+        if (!hasStarted) {
+          console.log('Request appears stuck, aborting...');
+          xhr.abort();
+          if (attempts <= maxRetries) {
+            setTimeout(tryUpload, 200);
+          } else {
+            reject(new Error('Upload failed: request never started after retries'));
+          }
+        }
+      }, 5000);
+
+      xhr.open('POST', path);
+
+      xhr.onreadystatechange = () => {
+        // readyState 2 = HEADERS_RECEIVED (server has received the request)
+        if (xhr.readyState >= 2 && !hasStarted) {
+          hasStarted = true;
+          clearTimeout(stuckTimer);
+          console.log('Request started successfully');
         }
       };
-    }
 
-    // 2. Handle Response
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          resolve(data);
-        } catch (e) {
-          resolve(xhr.responseText);
-        }
-      } else {
-        try {
-          const errorData = JSON.parse(xhr.responseText);
-          reject(new Error(errorData.message || 'Upload failed'));
-        } catch (e) {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
-        }
+      if (xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          hasStarted = true;
+          clearTimeout(stuckTimer);
+          if (event.lengthComputable) {
+            const percent = Math.round((event.loaded / event.total) * 100);
+            onProgress(percent);
+          }
+        };
       }
+
+      // Longer timeout for the actual upload (adjust based on your file sizes)
+      xhr.timeout = 300000; // 5 minutes
+
+      xhr.ontimeout = () => {
+        clearTimeout(stuckTimer);
+        if (attempts <= maxRetries) {
+          console.log('Request timed out, retrying...');
+          setTimeout(tryUpload, 200);
+        } else {
+          reject(new Error('Upload timed out after retries'));
+        }
+      };
+
+      xhr.onload = () => {
+        clearTimeout(stuckTimer);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText));
+          } catch (e) {
+            resolve(xhr.responseText);
+          }
+        } else {
+          // Don't retry on server errors (4xx, 5xx) - only on stuck/timeout
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            reject(new Error(errorData.message || 'Upload failed'));
+          } catch (e) {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
+      };
+
+      xhr.onerror = () => {
+        clearTimeout(stuckTimer);
+        if (attempts <= maxRetries) {
+          console.log('Network error, retrying...');
+          setTimeout(tryUpload, 200);
+        } else {
+          reject(new Error('Network error during upload'));
+        }
+      };
+
+      xhr.send(formData);
     };
 
-    xhr.onerror = () => {
-      reject(new Error('Network error during upload'));
-    };
-
-    // 3. Send
-    xhr.send(formData);
+    tryUpload();
   });
 }
 
