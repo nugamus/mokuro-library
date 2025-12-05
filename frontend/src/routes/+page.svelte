@@ -69,14 +69,13 @@
 	});
 
 	// --- fetchLibrary ---
-	const fetchLibrary = async (queryString: string) => {
+	const fetchLibrary = async (queryString: string, silent = false) => {
 		try {
-			isLoadingLibrary = true;
-			libraryError = null;
-			// Pass the query string (e.g. "?q=test&sort=recent") directly to backend
-			const response = await apiFetch(`/api/library${queryString}`);
+			// Only show the loading spinner if NOT silent (e.g. initial load)
+			if (!silent) isLoadingLibrary = true;
 
-			// Handle the new response format { data, meta }
+			libraryError = null;
+			const response = await apiFetch(`/api/library${queryString}`);
 			library = response.data as Series[];
 			meta = response.meta;
 		} catch (e) {
@@ -311,8 +310,7 @@
 		isOpen={isUploadModalOpen}
 		onClose={() => (isUploadModalOpen = false)}
 		onUploadSuccess={() => {
-			isUploadModalOpen = false;
-			fetchLibrary($page.url.search);
+			fetchLibrary($page.url.search, true);
 		}}
 	/>
 </div>

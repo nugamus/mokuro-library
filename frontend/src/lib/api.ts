@@ -72,6 +72,57 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
 }
 
 /**
+ * Specialized upload function using XMLHttpRequest to support progress tracking.
+ * fetch() does not support upload progress, so we must use XHR.
+ */
+export function apiUpload(
+  path: string,
+  formData: FormData,
+  onProgress: (percent: number) => void
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', path);
+
+    // 1. Track Upload Progress
+    if (xhr.upload) {
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable) {
+          const percent = Math.round((event.loaded / event.total) * 100);
+          onProgress(percent);
+        }
+      };
+    }
+
+    // 2. Handle Response
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data);
+        } catch (e) {
+          resolve(xhr.responseText);
+        }
+      } else {
+        try {
+          const errorData = JSON.parse(xhr.responseText);
+          reject(new Error(errorData.message || 'Upload failed'));
+        } catch (e) {
+          reject(new Error(`Upload failed with status ${xhr.status}`));
+        }
+      }
+    };
+
+    xhr.onerror = () => {
+      reject(new Error('Network error during upload'));
+    };
+
+    // 3. Send
+    xhr.send(formData);
+  });
+}
+
+/**
  * Triggers a browser download by navigating to the URL.
  */
 export function triggerDownload(path: string) {
