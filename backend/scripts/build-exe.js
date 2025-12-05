@@ -8,14 +8,13 @@ const ROOT_DIR = path.resolve(__dirname, '../..');
 const BACKEND_DIR = path.resolve(__dirname, '..');
 const FRONTEND_DIR = path.join(ROOT_DIR, 'frontend');
 const RELEASE_DIR = path.join(BACKEND_DIR, 'release');
+const DIST_DIR = path.join(BACKEND_DIR, 'dist');
 
 console.log('🚀 Starting Windows Portable Build (Node 22 SEA)...');
 
 try {
-  // 1. Clean & Init Release Dir
+  // 1. Clean & Init Release and Dist Dir
   if (fs.existsSync(RELEASE_DIR)) fs.rmSync(RELEASE_DIR, { recursive: true, force: true });
-
-  const DIST_DIR = path.join(BACKEND_DIR, 'dist');
   if (fs.existsSync(DIST_DIR)) fs.rmSync(DIST_DIR, { recursive: true, force: true });
 
   fs.mkdirSync(RELEASE_DIR);
@@ -81,23 +80,53 @@ try {
 
   // 8. Inject Blob into Executable
   console.log('💉 Injecting Application...');
-  const sentinel = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2";
+  const sentinel = "NODE_SEA_FUSE_fce680ab2cc467b6e072b8b5df1996b2"; // magic string
   execSync(`npx postject "${destExePath}" NODE_SEA_BLOB dist/sea-prep.blob --sentinel-fuse ${sentinel} --overwrite`, { cwd: BACKEND_DIR, stdio: 'inherit' });
 
   // 9. Copy Native Dependencies
   console.log('🐘 Copying Native Assets...');
+
+  // A. Copy Schema
   fs.copyFileSync(path.join(BACKEND_DIR, 'prisma', 'schema.prisma'), path.join(RELEASE_DIR, 'prisma', 'schema.prisma'));
 
-  const prismaDir = path.join(BACKEND_DIR, 'src', 'generated', 'prisma');
-  fs.copyFileSync(path.join(prismaDir, 'query_engine-windows.dll.node'), path.join(RELEASE_DIR, 'query_engine-windows.dll.node'));
-
-  console.log('📦 Copying native modules...');
+  // B. Prepare node_modules structure
+  console.log('📦 Copying native modules (Pruned)...');
   const destNodeModules = path.join(RELEASE_DIR, 'node_modules');
-  fs.mkdirSync(destNodeModules);
 
-  fs.cpSync(path.join(BACKEND_DIR, 'node_modules', 'better-sqlite3'), path.join(destNodeModules, 'better-sqlite3'), { recursive: true });
-  fs.cpSync(path.join(BACKEND_DIR, 'node_modules', '.prisma'), path.join(destNodeModules, '.prisma'), { recursive: true });
-  fs.cpSync(path.join(BACKEND_DIR, 'node_modules', '@prisma'), path.join(destNodeModules, '@prisma'), { recursive: true });
+  // Helper to copy specific files/folders
+  const copyDep = (srcRel, destRel) => {
+    const src = path.join(BACKEND_DIR, 'node_modules', srcRel);
+    const dest = path.join(destNodeModules, destRel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.cpSync(src, dest, { recursive: true });
+  };
+
+  // C. Copy Better-SQLite3 (Only Runtime Files)
+  // We skip the 'build' folder except for the .node binary
+  copyDep('better-sqlite3/lib', 'better-sqlite3/lib');
+  copyDep('better-sqlite3/package.json', 'better-sqlite3/package.json');
+  // Copy the native binary explicitly
+  const b3BinarySrc = path.join(BACKEND_DIR, 'node_modules/better-sqlite3/build/Release/better_sqlite3.node');
+  const b3BinaryDest = path.join(destNodeModules, 'better-sqlite3/build/Release/better_sqlite3.node');
+  fs.mkdirSync(path.dirname(b3BinaryDest), { recursive: true });
+  fs.copyFileSync(b3BinarySrc, b3BinaryDest);
+
+  // D. Copy Prisma Client (Only JS Code)
+  // We exclude the heavy engines from the generic copy
+  copyDep('@prisma/client/package.json', '@prisma/client/package.json');
+  copyDep('@prisma/client/runtime', '@prisma/client/runtime'); // The JS runtime
+  copyDep('@prisma/client/index.js', '@prisma/client/index.js'); // The entry point
+  copyDep('@prisma/client/default.js', '@prisma/client/default.js'); // CommonJS entry
+
+  // E. Copy ONLY the Windows Query Engine
+  // We place it exactly where Prisma Client expects it in a "standard" install
+  const queryEngineName = 'query_engine-windows.dll.node';
+  const srcEngine = path.join(BACKEND_DIR, 'src/generated/prisma', queryEngineName);
+
+  // Put the query engine in .prisma/client (Standard lookup path)
+  const destPrismaEngine = path.join(destNodeModules, '.prisma/client', queryEngineName);
+  fs.mkdirSync(path.dirname(destPrismaEngine), { recursive: true });
+  fs.copyFileSync(srcEngine, destPrismaEngine);
 
   console.log('------------------------------------------------');
   console.log('✅ Build Complete!');
