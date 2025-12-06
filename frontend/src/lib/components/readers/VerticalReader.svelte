@@ -1,0 +1,217 @@
+<script lang="ts">
+	import { onMount, tick } from 'svelte';
+	import type { ReaderState } from '$lib/states/ReaderState.svelte';
+	import type { MokuroBlock, MokuroPage } from '$lib/types';
+	import type { PanzoomObject } from '@panzoom/panzoom';
+	import CachedImage from '$lib/components/CachedImage.svelte';
+	import OcrOverlay from '$lib/components/OcrOverlay.svelte';
+	import { panzoom } from '$lib/actions/panzoom';
+
+	let {
+		reader,
+		panzoomInstance = $bindable(),
+		isEditMode,
+		isBoxEditMode,
+		isSmartResizeMode,
+		showTriggerOutline,
+		isSliderHovered,
+		onOcrChange,
+		onLineFocus
+	} = $props<{
+		reader: ReaderState;
+		panzoomInstance: PanzoomObject | null;
+		isEditMode: boolean;
+		isBoxEditMode: boolean;
+		isSmartResizeMode: boolean;
+		showTriggerOutline: boolean;
+		isSliderHovered: boolean;
+		onOcrChange: () => void;
+		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
+	}>();
+
+	let verticalScrollerElement = $state<HTMLElement | null>(null);
+	let panzoomWrapper = $state<HTMLElement | null>(null);
+	let panzoomElement = $state<HTMLElement | null>(null);
+
+	// Track visibility of every page to skip rendering heavy images/overlays
+	let visiblePages = $state<boolean[]>([]);
+
+	// Observers
+	let renderObserver: IntersectionObserver | null = null;
+	let destroyObserver: IntersectionObserver | null = null;
+	let progressObserver: IntersectionObserver | null = null;
+
+	const RENDER_MARGIN = '100px 0px';
+	const DESTROY_MARGIN = '500px 0px';
+
+	const setupObservers = async () => {
+		if (!panzoomElement || !reader.mokuroData || !verticalScrollerElement) return;
+
+		// Cleanup old observers
+		renderObserver?.disconnect();
+		destroyObserver?.disconnect();
+		progressObserver?.disconnect();
+
+		// Reset state
+		visiblePages = Array(reader.mokuroData.pages.length).fill(false);
+
+		// Wait for Svelte to render the placeholder divs
+		await tick();
+		const pageElements = panzoomElement.querySelectorAll('[data-page-index]');
+
+		// 1. Render Observer (Load Content when close)
+		renderObserver = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (entry.isIntersecting) {
+						const index = parseInt((entry.target as HTMLElement).dataset.pageIndex!, 10);
+						visiblePages[index] = true;
+					}
+				}
+			},
+			{ root: verticalScrollerElement, rootMargin: RENDER_MARGIN }
+		);
+
+		// 2. Destroy Observer (Unload Content when far)
+		destroyObserver = new IntersectionObserver(
+			(entries) => {
+				for (const entry of entries) {
+					if (!entry.isIntersecting) {
+						const index = parseInt((entry.target as HTMLElement).dataset.pageIndex!, 10);
+						visiblePages[index] = false;
+					}
+				}
+			},
+			{ root: verticalScrollerElement, rootMargin: DESTROY_MARGIN }
+		);
+
+		// 3. Progress Observer (Track active page)
+		progressObserver = new IntersectionObserver(
+			(entries) => {
+				// Find the element with the highest intersection ratio
+				let bestEntry = entries[0];
+				for (const entry of entries) {
+					if (entry.isIntersecting && entry.intersectionRatio > bestEntry.intersectionRatio) {
+						bestEntry = entry;
+					}
+				}
+				if (bestEntry && bestEntry.isIntersecting) {
+					const index = (bestEntry.target as HTMLElement).dataset.pageIndex;
+					if (index) {
+						// Update state silently (without triggering navigation animations)
+						reader.setPage(parseInt(index, 10));
+					}
+				}
+			},
+			{ root: verticalScrollerElement, threshold: [0.1, 0.5, 0.9] }
+		);
+
+		pageElements.forEach((el) => {
+			renderObserver?.observe(el);
+			destroyObserver?.observe(el);
+			progressObserver?.observe(el);
+		});
+
+		// Initial scroll to saved position
+		if (pageElements[reader.currentPageIndex]) {
+			pageElements[reader.currentPageIndex].scrollIntoView({ block: 'start' });
+		}
+	};
+
+	onMount(() => {
+		setupObservers();
+		return () => {
+			renderObserver?.disconnect();
+			destroyObserver?.disconnect();
+			progressObserver?.disconnect();
+		};
+	});
+
+	// Re-run observers if the data changes (e.g. forced refresh)
+	$effect(() => {
+		if (reader.mokuroData) {
+			setupObservers();
+		}
+	});
+
+	// Custom Zoom Handler for Vertical Mode
+	const handleWheel = (e: WheelEvent) => {
+		// Only intercept if Ctrl is pressed (Zoom intent)
+		console.log('wheel!');
+		if (!e.ctrlKey) {
+			return;
+		}
+
+		if (!panzoomInstance || !verticalScrollerElement || !panzoomWrapper || !panzoomElement) return;
+
+		e.preventDefault();
+		e.stopPropagation();
+
+		const originalHeight = panzoomElement.offsetHeight;
+
+		// Zoom Logic
+		const scroll = e.deltaY > 0 ? -1 : 1;
+		const zoomStep = panzoomInstance.getOptions().step ?? 0.3;
+		const scaleAmount = 1 + scroll * zoomStep;
+		const currentScale = panzoomInstance.getScale();
+		const newScale = Math.max(Math.min(currentScale * scaleAmount, 10), 0.3);
+
+		// Calculate scroll adjustment to keep view centered
+		const currentScroll = verticalScrollerElement.scrollTop;
+
+		// Apply changes
+		panzoomInstance.zoom(newScale);
+		panzoomWrapper.style.height = `${originalHeight * newScale}px`;
+		verticalScrollerElement.scrollTop = (currentScroll * newScale) / currentScale;
+	};
+</script>
+
+<div
+	class="h-full w-full overflow-y-auto bg-transparent"
+	bind:this={verticalScrollerElement}
+	onwheel={handleWheel}
+>
+	<div class="w-full" bind:this={panzoomWrapper}>
+		<div
+			class="relative mx-auto w-full max-w-4xl pt-16 pb-16"
+			bind:this={panzoomElement}
+			use:panzoom={{
+				options: {
+					canvas: true,
+					maxScale: 10,
+					cursor: 'default',
+					origin: '50% 0', // Zoom from top-center to prevent jumping
+					disableYAxis: true,
+					touchAction: 'pan-y'
+				},
+				onInit: (pz) => (panzoomInstance = pz)
+			}}
+		>
+			{#if reader.mokuroData}
+				{#each reader.mokuroData.pages as page, i (page.img_path)}
+					<div
+						class="relative flex-shrink-0 bg-white mb-2 shadow-lg"
+						style={`aspect-ratio: ${page.img_width} / ${page.img_height};`}
+						data-page-index={i}
+					>
+						{#if visiblePages[i]}
+							<CachedImage src={`/api/files/volume/${reader.id}/image/${page.img_path}`} />
+							<OcrOverlay
+								{page}
+								{panzoomInstance}
+								{isEditMode}
+								{isBoxEditMode}
+								{isSmartResizeMode}
+								{showTriggerOutline}
+								readingDirection={reader.readingDirection}
+								{isSliderHovered}
+								{onOcrChange}
+								{onLineFocus}
+							/>
+						{/if}
+					</div>
+				{/each}
+			{/if}
+		</div>
+	</div>
+</div>
