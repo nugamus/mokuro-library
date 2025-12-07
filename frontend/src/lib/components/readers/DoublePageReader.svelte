@@ -3,7 +3,7 @@
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
 	import CachedImage from '$lib/components/CachedImage.svelte';
-	import OcrOverlay from '$lib/components/OcrOverlay.svelte';
+	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
@@ -64,21 +64,20 @@
 		onInit: (pz) => (panzoomInstance = pz)
 	}}
 >
-	{#each reader.visiblePages as page (page.img_path)}
+	{#each reader.visiblePages as page, i (page.img_path)}
 		<div
 			class="relative flex-shrink-0 shadow-2xl"
 			style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
 		>
 			<CachedImage src={`/api/files/volume/${reader.id}/image/${page.img_path}`} />
 			<OcrOverlay
-				{page}
+				page={reader.visiblePages[i]}
 				{panzoomInstance}
 				{isEditMode}
 				{isBoxEditMode}
 				{isSmartResizeMode}
 				{showTriggerOutline}
 				readingDirection={reader.readingDirection}
-				{isSliderHovered}
 				{onOcrChange}
 				{onLineFocus}
 			/>

@@ -3,7 +3,7 @@
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
 	import CachedImage from '$lib/components/CachedImage.svelte';
-	import OcrOverlay from '$lib/components/OcrOverlay.svelte';
+	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
@@ -78,7 +78,6 @@
 				{isSmartResizeMode}
 				{showTriggerOutline}
 				readingDirection={reader.readingDirection}
-				{isSliderHovered}
 				{onOcrChange}
 				{onLineFocus}
 			/>
