@@ -42,10 +42,12 @@ function drainStream(stream: Readable): Promise<void> {
 interface UploadMetadata {
   series_title?: string;
   volume_title?: string;
-  // ADDED: Progress Interface
+  // Progress Interface
   volume_progress?: {
     page: number;
-    completed: boolean;
+    isCompleted: boolean;
+    timeRead: number;
+    charsRead: number;
   };
 }
 
@@ -365,7 +367,9 @@ const libraryRoutes: FastifyPluginAsync = async (
 
       // 3. Update Progress (if provided)
       if (metadata.volume_progress) {
-        // We upsert progress for the *current uploading user*
+        // We upsert progress for the current uploading user
+        // Although user progress shouldn't exist at this point,
+        // we use upsert as insurance
         await fastify.prisma.userProgress.upsert({
           where: {
             userId_volumeId: {
@@ -375,13 +379,13 @@ const libraryRoutes: FastifyPluginAsync = async (
           },
           update: {
             page: metadata.volume_progress.page,
-            completed: metadata.volume_progress.completed
+            completed: metadata.volume_progress.isCompleted
           },
           create: {
             userId: userId,
             volumeId: volume.id,
             page: metadata.volume_progress.page,
-            completed: metadata.volume_progress.completed
+            completed: metadata.volume_progress.isCompleted
           }
         });
       }

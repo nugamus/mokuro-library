@@ -176,7 +176,7 @@ const generateSeriesMetadata = (
   const volumeMap: MokuroSeriesMetadata['volumes'] = {};
 
   for (const vol of volumes) {
-    const fileName = `${vol.folderName}.mokuro`;
+    const fileName = `${vol.folderName}`;
     // Find progress for this specific user
     const userProgress = vol.progress.find((p: any) => p.userId === userId);
 
@@ -192,7 +192,7 @@ const generateSeriesMetadata = (
   }
 
   return {
-    version: "1.0",
+    version: "0.2.0",
     series: {
       title: series.title,
       originalFolderName: series.folderName
