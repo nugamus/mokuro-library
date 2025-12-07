@@ -73,6 +73,7 @@ The system will be a decoupled client-server application.
   * [ ] Customization
     * [ ] Custom keymapping
     * [ ] Custom ligatures
+* [ ] History/undo/redo for OCR edits
 * [ ] The ability to export the library in different format (e.g. pdf, cbz, ...)
   * [x] zip
   * [x] pdf with selectable text
