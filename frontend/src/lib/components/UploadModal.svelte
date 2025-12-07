@@ -256,18 +256,20 @@
 				job.status = 'uploading';
 
 				const formData = new FormData();
-				// ... (append fields and files as before) ...
+
+				// Append fields and files
 
 				// Metadata FIRST
 				formData.append('series_folder_name', job.seriesFolderName);
 				formData.append('volume_folder_name', job.volumeFolderName);
 
-				if (job.metadata.seriesTitle || job.metadata.volumeTitle) {
+				if (job.metadata.seriesTitle || job.metadata.volumeTitle || job.metadata.volumeProgress) {
 					formData.append(
 						'metadata',
 						JSON.stringify({
 							series_title: job.metadata.seriesTitle,
-							volume_title: job.metadata.volumeTitle
+							volume_title: job.metadata.volumeTitle,
+							volume_progress: job.metadata.volumeProgress
 						})
 					);
 				}
