@@ -150,7 +150,6 @@ The original **[ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader)**
 * **You Self-Host on a NAS/Server:** You want a centralized "Source of Truth" that streams images directly from your hard drive without duplicating data into browser storage.
 * **You want centralized OCR edits (Write-Back):** You want your text corrections saved directly back to the source `.mokuro` files on your disk, ensuring your library remains portable and platform-agnostic.
 * **You require Multi-User separation:** You want to host a private library for multiple users (family/friends) with completely separate accounts, progress tracking, and settings databases.
-* **You prefer LAN Streaming:** You want to browse and read your entire collection instantly on any device in your network without waiting for imports or downloads.
 
 ### 2. Non-essential stretch features:
 * [x] Optional Reader features
