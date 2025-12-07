@@ -42,7 +42,6 @@ Enables geometry manipulation tools.
 * **Resizing:**
     * **Handles:** 8-point resize handles available for both Blocks and Lines.
     * **Behavior:** Updates the underlying polygon coordinates in real-time.
-    * **Smart Resize Integration:** If `isSmartResizeMode` is active, releasing a resize handle on a **Line** will immediately trigger a font size recalculation to fit the new box.
 
 ### 3.3. Smart Resize Mode (`isSmartResizeMode`)
 A helper state that can be active alongside other modes.
