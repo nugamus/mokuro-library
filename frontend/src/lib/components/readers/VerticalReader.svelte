@@ -127,6 +127,42 @@
 		};
 	});
 
+	// Handle Pinch-to-Zoom (Mobile) & Sync Wrapper Height
+	let currentPanzoomScale: number;
+	// Effect to initialize currentPanzoomScale
+	$effect(() => {
+		if (panzoomInstance) currentPanzoomScale = panzoomInstance.getScale();
+	});
+	const onPinchZoom = (e: CustomEvent) => {
+		if (!panzoomInstance || !verticalScrollerElement || !panzoomWrapper || !panzoomElement) return;
+
+		// The library passes the new scale in the event detail
+		const newScale = e.detail.scale;
+
+		// offsetHeight returns the unscaled layout height, which is what we want
+		const originalHeight = panzoomElement.offsetHeight;
+		// Sync the wrapper height to match the new visual scale
+		panzoomWrapper.style.height = `${originalHeight * newScale}px`;
+
+		// Calculate scroll adjustment to keep view centered
+		const currentScroll = verticalScrollerElement.scrollTop;
+		verticalScrollerElement.scrollTop = (currentScroll * newScale) / currentPanzoomScale;
+
+		// cache new scale
+		currentPanzoomScale = newScale;
+	};
+
+	// Register the listener specifically for the library's event
+	$effect(() => {
+		if (!panzoomElement) return;
+
+		panzoomElement.addEventListener('panzoomzoom', onPinchZoom as EventListener);
+
+		return () => {
+			panzoomElement?.removeEventListener('panzoomzoom', onPinchZoom as EventListener);
+		};
+	});
+
 	// Re-run observers if the data changes (e.g. forced refresh)
 	$effect(() => {
 		if (reader.mokuroData) {
@@ -137,7 +173,6 @@
 	// Custom Zoom Handler for Vertical Mode
 	const handleWheel = (e: WheelEvent) => {
 		// Only intercept if Ctrl is pressed (Zoom intent)
-		console.log('wheel!');
 		if (!e.ctrlKey) {
 			return;
 		}
@@ -147,8 +182,6 @@
 		e.preventDefault();
 		e.stopPropagation();
 
-		const originalHeight = panzoomElement.offsetHeight;
-
 		// Zoom Logic
 		const scroll = e.deltaY > 0 ? -1 : 1;
 		const zoomStep = panzoomInstance.getOptions().step ?? 0.3;
@@ -156,13 +189,8 @@
 		const currentScale = panzoomInstance.getScale();
 		const newScale = Math.max(Math.min(currentScale * scaleAmount, 10), 0.3);
 
-		// Calculate scroll adjustment to keep view centered
-		const currentScroll = verticalScrollerElement.scrollTop;
-
 		// Apply changes
 		panzoomInstance.zoom(newScale);
-		panzoomWrapper.style.height = `${originalHeight * newScale}px`;
-		verticalScrollerElement.scrollTop = (currentScroll * newScale) / currentScale;
 	};
 </script>
 
