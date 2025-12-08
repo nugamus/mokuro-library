@@ -324,13 +324,13 @@
 		if (ocrState.isBoxEditMode) {
 			options.push({ label: 'Add Line', action: () => handleAddLine(e) });
 		}
-		options.push({
-			label: 'Re-order Lines...',
-			action: () => lineOrderStore.open(block, ocrState.onOcrChange)
-		});
 		// Add Delete Block option
 		if (ocrState.isBoxEditMode || ocrState.isEditMode) {
 			options.push({ separator: true });
+			options.push({
+				label: 'Re-order Lines...',
+				action: () => lineOrderStore.open(block, ocrState.onOcrChange)
+			});
 			options.push({ label: 'Delete Block', action: onDelete });
 		}
 
