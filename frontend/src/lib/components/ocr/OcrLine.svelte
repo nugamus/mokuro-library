@@ -51,11 +51,10 @@
 		onReorderRequest: () => void;
 	}>();
 
-	// --- Local Text State (for ContentEditable) ---
-	// We need a local state to bind to contenteditable to prevent cursor jumping,
-	// while keeping the upstream data flow via callback.
 	let lineElement: HTMLElement | undefined = $state();
 	let textHoldingElement: HTMLElement | undefined = $state();
+	let DPR: number | undefined = $state();
+	let finalFontSize = $derived((ocrState.fontScale / (DPR ?? 1)) * fontSize);
 
 	// Clipboard Logic
 	const execCommand = async (command: 'cut' | 'copy' | 'paste') => {
@@ -174,8 +173,8 @@
 		const handleDragMove = (moveEvent: MouseEvent) => {
 			// 1. Visual Update
 			const currentZoom = ocrState.panzoomInstance?.getScale() ?? 1.0;
-			totalScreenDeltaX += moveEvent.movementX / currentZoom;
-			totalScreenDeltaY += moveEvent.movementY / currentZoom;
+			totalScreenDeltaX += moveEvent.movementX / currentZoom / devicePixelRatio;
+			totalScreenDeltaY += moveEvent.movementY / currentZoom / devicePixelRatio;
 
 			if (lineElement) {
 				lineElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
@@ -379,6 +378,7 @@
 	};
 </script>
 
+<svelte:window bind:devicePixelRatio={DPR} />
 {#if ocrState.isBoxEditMode}
 	<div
 		bind:this={lineElement}
@@ -397,7 +397,7 @@
 			bind:this={textHoldingElement}
 			class="w-fit h-fit whitespace-nowrap pointer-events-none ocr-line-text"
 			class:vertical-text={isVertical}
-			style:font-size="{ocrState.fontScale * fontSize}px"
+			style:font-size="{finalFontSize}px"
 		>
 			{ligaturize(line)}
 		</div>
@@ -419,7 +419,7 @@
 			class="w-fit h-fit outline-none p-0 m-0 leading-none whitespace-nowrap ocr-line-text"
 			class:vertical-text={isVertical}
 			style:cursor={isVertical ? 'vertical-text' : 'text'}
-			style:font-size="{ocrState.fontScale * fontSize}px"
+			style:font-size="{finalFontSize}px"
 			bind:innerText={line}
 			onkeydown={handleKeyDown}
 			oninput={handleInput}
@@ -445,7 +445,7 @@
 			bind:this={textHoldingElement}
 			class="w-fit h-fit whitespace-nowrap ocr-line-text"
 			class:vertical-text={isVertical}
-			style:font-size="{ocrState.fontScale * fontSize}px"
+			style:font-size="{finalFontSize}px"
 			ondblclick={(e) => {
 				console.log(isVertical);
 				if (ocrState.isSmartResizeMode && textHoldingElement) {
@@ -471,7 +471,7 @@
 		style:height="{relativeStyles.height}%"
 		style:margin-bottom="-{isVertical ? relativeStyles.height : 0}%"
 		style:margin-left="-{isVertical ? 0 : relativeStyles.width}%"
-		style:font-size="{ocrState.fontScale * fontSize}px"
+		style:font-size="{finalFontSize}px"
 		style:border-color={ocrState.isSmartResizeMode ? 'red' : 'transparent'}
 		style:cursor={isVertical ? 'vertical-text' : 'text'}
 		role="button"

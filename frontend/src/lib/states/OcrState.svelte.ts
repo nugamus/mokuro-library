@@ -39,7 +39,7 @@ export class OcrState {
     if (!rect.height) return 1;
 
     // Font scale is ratio of Rendered Height / Image Height / Zoom
-    return rect.height / this.page.img_height / this.panzoomInstance.getScale();
+    return rect.height / this.page.img_height / this.panzoomInstance.getScale() * devicePixelRatio;
   });
 
   imgWidth = $derived(this.page?.img_width ?? 0);

@@ -50,7 +50,7 @@ export const getRelativeCoords = (
   event: MouseEvent,
   containerElement: HTMLElement,
   imgWidth: number,
-  imgHeight: number
+  imgHeight: number,
 ) => {
   if (!containerElement.parentElement) {
     return { imgX: 0, imgY: 0 };
@@ -80,7 +80,7 @@ export const getDeltas = (
   moveEvent: MouseEvent,
   containerElement: HTMLElement,
   imgWidth: number,
-  imgHeight: number
+  imgHeight: number,
 ) => {
   const { scaleRatioX, scaleRatioY } = getScaleRatios(containerElement, imgWidth, imgHeight);
 
@@ -90,8 +90,8 @@ export const getDeltas = (
   const relativeDeltaY = moveEvent.movementY;
 
   // 2. Convert container-relative delta to image-absolute delta
-  const imageDeltaX = relativeDeltaX * scaleRatioX;
-  const imageDeltaY = relativeDeltaY * scaleRatioY;
+  const imageDeltaX = relativeDeltaX * scaleRatioX / devicePixelRatio;
+  const imageDeltaY = relativeDeltaY * scaleRatioY / devicePixelRatio;
 
   return { imageDeltaX, imageDeltaY };
 };
@@ -126,7 +126,7 @@ export function smartResizeFont(
   const range = document.createRange();
   range.selectNodeContents(lineElement);
   const measure = (size: number): number => {
-    lineElement.style.fontSize = `${fontScale * size}px`;
+    lineElement.style.fontSize = `${fontScale / devicePixelRatio * size}px`;
     const rect = lineElement.getBoundingClientRect();
     return isVertical ? rect.height : rect.width;
   };

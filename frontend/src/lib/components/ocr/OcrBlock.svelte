@@ -57,8 +57,8 @@
 		const handleDragMove = (moveEvent: MouseEvent) => {
 			// 1. Visual Update (Screen Space)
 			const currentZoom = ocrState.panzoomInstance?.getScale() ?? 1.0;
-			totalScreenDeltaX += moveEvent.movementX / currentZoom;
-			totalScreenDeltaY += moveEvent.movementY / currentZoom;
+			totalScreenDeltaX += moveEvent.movementX / currentZoom / window.devicePixelRatio;
+			totalScreenDeltaY += moveEvent.movementY / currentZoom / window.devicePixelRatio;
 
 			if (blockElement) {
 				blockElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
