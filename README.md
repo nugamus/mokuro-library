@@ -148,7 +148,7 @@ After installing and starting the container, here are your first steps:
 * [ ] **Reading Stats:** UI to visualize reading time and characters read (data is already being tracked).
 * [ ] **CBZ Export:** Support for standard comic book archives.
 * [ ] **Customization:** Custom keymappings and user-defined ligatures.
-* [ ] Version Control: History/undo/redo for OCR edits
+* [ ] **Version Control:** History/undo/redo for OCR edits
 
 ## 📚 FAQ
 
