@@ -41,13 +41,6 @@
 		}
 	}
 
-	function handleKeyDown(e: KeyboardEvent) {
-		if (e.key === 'Enter' || e.key === ' ') {
-			e.preventDefault();
-			isOpen = !isOpen;
-		}
-	}
-
 	function handleFocusIn() {
 		containsFocus = true;
 	}
@@ -115,7 +108,6 @@
 	onpointerdown={handlePointerDown}
 	onpointerup={handlePointerUp}
 	onpointermove={handlePointerMove}
-	onkeydown={handleKeyDown}
 	onfocusin={handleFocusIn}
 	onfocusout={handleFocusOut}
 	role="button"
