@@ -53,6 +53,7 @@
 
 	let lineElement: HTMLElement | undefined = $state();
 	let textHoldingElement: HTMLElement | undefined = $state();
+	let isEmpty = $state(line === ''); // desync only happens on hot-reload
 	let DPR: number | undefined = $state();
 	let finalFontSize = $derived((ocrState.fontScale / (DPR ?? 1)) * fontSize);
 
@@ -161,7 +162,9 @@
 	};
 
 	const handleInput = () => {
-		if (ocrState.isSmartResizeMode && textHoldingElement) onSmartResizeRequest(textHoldingElement);
+		isEmpty = textHoldingElement?.textContent === '';
+		if (ocrState.isSmartResizeMode && textHoldingElement && textHoldingElement.textContent !== '')
+			onSmartResizeRequest(textHoldingElement);
 
 		// Sync local -> parent (upsync)
 		let innerText = textHoldingElement?.innerText;
@@ -363,7 +366,6 @@
 			if (dir) {
 				onNavigate(e, lineIndex, dir, offset);
 			}
-			return;
 		}
 
 		if (e.key === 'Enter') {
@@ -448,7 +450,9 @@
 			contenteditable="true"
 			role="textbox"
 			tabindex="0"
-			class="w-fit h-fit outline-none p-0 m-0 leading-none whitespace-nowrap ocr-line-text"
+			class="{isEmpty
+				? 'w-full h-full'
+				: 'w-fit h-fit'} bg-blue outline-none p-0 m-0 leading-none whitespace-nowrap ocr-line-text"
 			class:vertical-text={isVertical}
 			style:cursor={isVertical ? 'vertical-text' : 'text'}
 			style:font-size="{finalFontSize}px"
@@ -457,7 +461,11 @@
 			oninput={handleInput}
 			onfocus={(e) => {
 				onFocusRequest(e.currentTarget);
-				if (ocrState.isSmartResizeMode && textHoldingElement)
+				if (
+					ocrState.isSmartResizeMode &&
+					textHoldingElement &&
+					textHoldingElement.textContent !== ''
+				)
 					onSmartResizeRequest(textHoldingElement);
 			}}
 			oncontextmenu={handleContextMenu}
