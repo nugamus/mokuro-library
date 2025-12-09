@@ -336,7 +336,7 @@
 		}
 		// Add Delete Block option
 		if (ocrState.isBoxEditMode || ocrState.isEditMode) {
-			options.push({ separator: true });
+			if (options.length > 0) options.push({ separator: true });
 			options.push({
 				label: 'Re-order Lines...',
 				action: () => lineOrderStore.open(block, ocrState.onOcrChange)
