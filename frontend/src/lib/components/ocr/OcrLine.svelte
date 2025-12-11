@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
-	import { getDeltas, ligaturize } from '$lib/utils/ocrMath';
+	import { getImageDeltas, ligaturize } from '$lib/utils/ocrMath';
 	import ResizeHandles from './ResizeHandles.svelte';
 	import type { OcrState } from '$lib/states/OcrState.svelte';
 	import { stopPropagation } from 'svelte/legacy';
@@ -61,6 +61,10 @@
 	// handle drag or double click
 	let doubleClickTimer: ReturnType<typeof setTimeout> | null = null;
 	let isPendingDoubleClick = false;
+
+	// handle resize handle visibility on mobile
+	let resizeHandleTimer: ReturnType<typeof setTimeout> | null = null;
+	let resizeHandleIsVisible = $state(false);
 
 	// Clipboard Logic
 	const handleClipboardAction = async (command: 'cut' | 'copy' | 'paste') => {
@@ -218,7 +222,7 @@
 		event.stopPropagation();
 	};
 
-	const handleDragStart = (startEvent: MouseEvent) => {
+	const handleDragStart = (startEvent: PointerEvent) => {
 		// Double click hybrid handling
 
 		// If we are in the middle of a potential double-click,
@@ -241,6 +245,18 @@
 			doubleClickTimer = null;
 		}, 300); // Standard double-click interval (e.g., 300ms)
 
+		// Make handle visible on touch devices
+		if (startEvent.pointerType !== 'mouse') {
+			resizeHandleIsVisible = true;
+			if (resizeHandleTimer) {
+				clearTimeout(resizeHandleTimer); // Clear any old timer just in case
+			}
+			resizeHandleTimer = setTimeout(() => {
+				resizeHandleIsVisible = false;
+				resizeHandleTimer = null;
+			}, 1000);
+		}
+
 		// Actual handle drag start
 		if (ocrState.ocrMode === 'TEXT') ocrState.setMode('BOX');
 		if (!ocrState.overlayElement || !lineElement) return;
@@ -252,19 +268,29 @@
 		let totalImageDeltaX = 0;
 		let totalImageDeltaY = 0;
 
-		const handleDragMove = (moveEvent: MouseEvent) => {
+		let lastX = startEvent.clientX;
+		let lastY = startEvent.clientY;
+
+		const handleDragMove = (moveEvent: PointerEvent) => {
+			// 0. Compute delta
+			// We do this manually because movementX and movementY is inconsistent
+			const deltaX = moveEvent.clientX - lastX;
+			const deltaY = moveEvent.clientY - lastY;
+			lastX = moveEvent.clientX;
+			lastY = moveEvent.clientY;
+
 			// 1. Visual Update
 			const currentZoom = ocrState.panzoomInstance?.getScale() ?? 1.0;
-			totalScreenDeltaX += moveEvent.movementX / currentZoom / devicePixelRatio;
-			totalScreenDeltaY += moveEvent.movementY / currentZoom / devicePixelRatio;
+			totalScreenDeltaX += deltaX / currentZoom / devicePixelRatio;
+			totalScreenDeltaY += deltaY / currentZoom / devicePixelRatio;
 
 			if (lineElement) {
 				lineElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
 			}
 
 			// 2. Data Calculation
-			const { imageDeltaX, imageDeltaY } = getDeltas(
-				moveEvent,
+			const { imageDeltaX, imageDeltaY } = getImageDeltas(
+				{ movementX: deltaX, movementY: deltaY },
 				ocrState.overlayElement!,
 				ocrState.imgWidth,
 				ocrState.imgHeight
@@ -274,8 +300,8 @@
 		};
 
 		const handleDragEnd = () => {
-			window.removeEventListener('mousemove', handleDragMove);
-			window.removeEventListener('mouseup', handleDragEnd);
+			window.removeEventListener('pointermove', handleDragMove);
+			window.removeEventListener('pointerup', handleDragEnd);
 
 			if (lineElement) {
 				lineElement.style.transform = '';
@@ -296,11 +322,11 @@
 			ocrState.markDirty();
 		};
 
-		window.addEventListener('mousemove', handleDragMove);
-		window.addEventListener('mouseup', handleDragEnd);
+		window.addEventListener('pointermove', handleDragMove);
+		window.addEventListener('pointerup', handleDragEnd);
 	};
 
-	const handleResizeStart = (startEvent: MouseEvent, handleType: string) => {
+	const handleResizeStart = (startEvent: PointerEvent, handleType: string) => {
 		if (ocrState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
@@ -313,9 +339,19 @@
 		const blockW = blockBox[2] - blockBox[0];
 		const blockH = blockBox[3] - blockBox[1];
 
+		let lastX = startEvent.clientX;
+		let lastY = startEvent.clientY;
+
 		const handleDragMove = (moveEvent: MouseEvent) => {
-			const { imageDeltaX, imageDeltaY } = getDeltas(
-				moveEvent,
+			// 0. Compute delta
+			// We do this manually because movementX and movementY is inconsistent
+			const deltaX = moveEvent.clientX - lastX;
+			const deltaY = moveEvent.clientY - lastY;
+			lastX = moveEvent.clientX;
+			lastY = moveEvent.clientY;
+
+			const { imageDeltaX, imageDeltaY } = getImageDeltas(
+				{ movementX: deltaX, movementY: deltaY },
 				ocrState.overlayElement!,
 				ocrState.imgWidth,
 				ocrState.imgHeight
@@ -385,8 +421,8 @@
 		};
 
 		const handleDragEnd = () => {
-			window.removeEventListener('mousemove', handleDragMove);
-			window.removeEventListener('mouseup', handleDragEnd);
+			window.removeEventListener('pointermove', handleDragMove);
+			window.removeEventListener('pointerup', handleDragEnd);
 
 			// 4. Commit Data
 			// NOTE: No need to clean up style since svelte reactivity will clear it on update
@@ -398,8 +434,8 @@
 			}
 		};
 
-		window.addEventListener('mousemove', handleDragMove);
-		window.addEventListener('mouseup', handleDragEnd);
+		window.addEventListener('pointermove', handleDragMove);
+		window.addEventListener('pointerup', handleDragEnd);
 	};
 
 	// --- Text Interaction ---
@@ -474,10 +510,14 @@
 		style:height="{relativeStyles.height}%"
 		role="button"
 		tabindex="-1"
-		onmousedown={handleDragStart}
+		onpointerdown={handleDragStart}
 		oncontextmenu={handleContextMenu}
 	>
-		<ResizeHandles variant="line" onResizeStart={handleResizeStart} />
+		<ResizeHandles
+			variant="line"
+			forceVisible={resizeHandleIsVisible}
+			onResizeStart={handleResizeStart}
+		/>
 		<div
 			bind:this={textHoldingElement}
 			class="w-fit h-fit whitespace-nowrap pointer-events-none ocr-line-text"
@@ -495,7 +535,7 @@
 		style:top="{relativeStyles.top}%"
 		style:width="{relativeStyles.width}%"
 		style:height="{relativeStyles.height}%"
-		onmousedown={handleDragStart}
+		onpointerdown={handleDragStart}
 		role="button"
 		tabindex="-1"
 	>
@@ -511,7 +551,7 @@
 			style:cursor={isVertical ? 'vertical-text' : 'text'}
 			style:font-size="{finalFontSize}px"
 			bind:innerText={line}
-			onmousedown={(e) => e.stopPropagation()}
+			onpointerdown={(e) => e.stopPropagation()}
 			onkeydown={handleKeyDown}
 			oninput={handleInput}
 			onfocus={(e) => {

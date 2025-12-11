@@ -1,18 +1,26 @@
 <script lang="ts">
-	let { variant = 'block', onResizeStart } = $props<{
+	let {
+		variant = 'block',
+		forceVisible = false,
+		onResizeStart
+	} = $props<{
 		variant?: 'block' | 'line';
-		onResizeStart: (e: MouseEvent, handle: string) => void;
+		forceVisible?: boolean;
+		onResizeStart: (e: PointerEvent, handle: string) => void;
 	}>();
 
 	// Styles from original OcrOverlay.svelte
 	// Block: h-2 w-2 bg-blue-500 z-10
 	// Line: h-1.5 w-1.5 bg-yellow-400 z-20 (positioned at -left-0.75 etc which is approx -3px)
 
-	const baseClass =
-		'absolute rounded-full opacity-0 group-hover/block:opacity-100 group-hover/line:opacity-100 transition-opacity';
+	const baseClass = $derived(
+		`absolute rounded-full ${forceVisible ? 'opacity-100' : 'opacity-0'} transition-opacity`
+	);
 
 	const variantClass =
-		variant === 'block' ? 'z-10 h-2 w-2 bg-blue-500' : 'z-20 h-1.5 w-1.5 bg-yellow-400';
+		variant === 'block'
+			? 'z-10 h-2 w-2 bg-blue-500 group-hover/block:opacity-100'
+			: 'z-20 h-1.5 w-1.5 bg-yellow-400 group-hover/line:opacity-100 ';
 
 	// Offset classes
 
@@ -41,56 +49,56 @@
 
 <div
 	class="{baseClass} {variantClass} {pos('tl')} cursor-nwse-resize"
-	onmousedown={(e) => onResizeStart(e, 'top-left')}
+	onpointerdown={(e) => onResizeStart(e, 'top-left')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('tc')} cursor-ns-resize"
-	onmousedown={(e) => onResizeStart(e, 'top-center')}
+	onpointerdown={(e) => onResizeStart(e, 'top-center')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('tr')} cursor-nesw-resize"
-	onmousedown={(e) => onResizeStart(e, 'top-right')}
+	onpointerdown={(e) => onResizeStart(e, 'top-right')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('ml')} cursor-ew-resize"
-	onmousedown={(e) => onResizeStart(e, 'middle-left')}
+	onpointerdown={(e) => onResizeStart(e, 'middle-left')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('mr')} cursor-ew-resize"
-	onmousedown={(e) => onResizeStart(e, 'middle-right')}
+	onpointerdown={(e) => onResizeStart(e, 'middle-right')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('bl')} cursor-nesw-resize"
-	onmousedown={(e) => onResizeStart(e, 'bottom-left')}
+	onpointerdown={(e) => onResizeStart(e, 'bottom-left')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('bc')} cursor-ns-resize"
-	onmousedown={(e) => onResizeStart(e, 'bottom-center')}
+	onpointerdown={(e) => onResizeStart(e, 'bottom-center')}
 	role="button"
 	tabindex="-1"
 ></div>
 
 <div
 	class="{baseClass} {variantClass} {pos('br')} cursor-nwse-resize"
-	onmousedown={(e) => onResizeStart(e, 'bottom-right')}
+	onpointerdown={(e) => onResizeStart(e, 'bottom-right')}
 	role="button"
 	tabindex="-1"
 ></div>

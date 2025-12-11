@@ -76,8 +76,8 @@ export const getRelativeCoords = (
  * Gets the real image pixel deltas from a mouse move event,
  * accounting for the current panzoom scale.
  */
-export const getDeltas = (
-  moveEvent: MouseEvent,
+export const getImageDeltas = (
+  moveEvent: { movementX: number, movementY: number },
   containerElement: HTMLElement,
   imgWidth: number,
   imgHeight: number,

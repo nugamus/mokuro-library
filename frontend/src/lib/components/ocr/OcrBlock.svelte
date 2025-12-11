@@ -3,13 +3,12 @@
 	import type { MokuroBlock } from '$lib/types';
 	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
 	import { lineOrderStore } from '$lib/lineOrderStore';
-	import { getDeltas, smartResizeFont, getRelativeCoords } from '$lib/utils/ocrMath';
+	import { getImageDeltas, smartResizeFont, getRelativeCoords } from '$lib/utils/ocrMath';
 	import type { OcrState } from '$lib/states/OcrState.svelte';
 
 	import OcrLine from './OcrLine.svelte';
 	import ResizeHandles from './ResizeHandles.svelte';
 	import TouchToggle from '$lib/components/TouchToggle.svelte';
-	import { preventDefault } from 'svelte/legacy';
 
 	// --- Props ---
 	let { block, ocrState, onDelete } = $props<{
@@ -25,6 +24,15 @@
 	// Registry of child line components for focus management
 	// We use a Map or Array to store bound references
 	let lineComponents: Record<number, any> = $state({});
+
+	// handle drag or double click
+	// on the block level, this helps reject trivial edits
+	let doubleClickTimer: ReturnType<typeof setTimeout> | null = null;
+	let isPendingDoubleClick = false;
+
+	// handle resize handle visibility on mobile
+	let resizeHandleTimer: ReturnType<typeof setTimeout> | null = null;
+	let resizeHandleIsVisible = $state(false);
 
 	// --- Derived Styles ---
 	let geometry = $derived.by(() => {
@@ -44,7 +52,41 @@
 	// --- Interactions ---
 
 	// 1. Block Drag
-	const handleBlockDragStart = (startEvent: MouseEvent) => {
+	const handleBlockDragStart = (startEvent: PointerEvent) => {
+		// Double click hybrid handling
+
+		// If we are in the middle of a potential double-click,
+		// we stop the drag sequence immediately.
+		if (isPendingDoubleClick) {
+			// put what ever future handle double click here
+			startEvent.stopPropagation();
+			return;
+		}
+
+		// If this is the start of a new interaction,
+		// set the double-click timer.
+		isPendingDoubleClick = true;
+		if (doubleClickTimer) {
+			clearTimeout(doubleClickTimer); // Clear any old timer just in case
+		}
+
+		doubleClickTimer = setTimeout(() => {
+			// If the timer expires before a second click, it was a single click/drag
+			isPendingDoubleClick = false;
+			doubleClickTimer = null;
+		}, 300); // Standard double-click interval (e.g., 300ms)
+
+		// Make handle visible on touch devices
+		if (startEvent.pointerType !== 'mouse') {
+			resizeHandleIsVisible = true;
+			if (resizeHandleTimer) {
+				clearTimeout(resizeHandleTimer); // Clear any old timer just in case
+			}
+			resizeHandleTimer = setTimeout(() => {
+				resizeHandleIsVisible = false;
+				resizeHandleTimer = null;
+			}, 1000);
+		}
 		if (ocrState.ocrMode === 'READ') return;
 		if (ocrState.ocrMode === 'TEXT') ocrState.setMode('BOX');
 		if (!ocrState.overlayElement || !blockElement) return;
@@ -56,19 +98,29 @@
 		let totalImageDeltaX = 0;
 		let totalImageDeltaY = 0;
 
-		const handleDragMove = (moveEvent: MouseEvent) => {
+		let lastX = startEvent.clientX;
+		let lastY = startEvent.clientY;
+
+		const handleDragMove = (moveEvent: PointerEvent) => {
+			// 0. Compute delta
+			// We do this manually because movementX and movementY is inconsistent
+			const deltaX = moveEvent.clientX - lastX;
+			const deltaY = moveEvent.clientY - lastY;
+			lastX = moveEvent.clientX;
+			lastY = moveEvent.clientY;
+
 			// 1. Visual Update (Screen Space)
 			const currentZoom = ocrState.panzoomInstance?.getScale() ?? 1.0;
-			totalScreenDeltaX += moveEvent.movementX / currentZoom / window.devicePixelRatio;
-			totalScreenDeltaY += moveEvent.movementY / currentZoom / window.devicePixelRatio;
+			totalScreenDeltaX += deltaX / currentZoom / devicePixelRatio;
+			totalScreenDeltaY += deltaY / currentZoom / devicePixelRatio;
 
 			if (blockElement) {
 				blockElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
 			}
 
 			// 2. Data Calculation (Image Space)
-			const { imageDeltaX, imageDeltaY } = getDeltas(
-				moveEvent,
+			const { imageDeltaX, imageDeltaY } = getImageDeltas(
+				{ movementX: deltaX, movementY: deltaY },
 				ocrState.overlayElement!,
 				ocrState.imgWidth,
 				ocrState.imgHeight
@@ -78,13 +130,17 @@
 		};
 
 		const handleDragEnd = () => {
-			window.removeEventListener('mousemove', handleDragMove);
-			window.removeEventListener('mouseup', handleDragEnd);
+			window.removeEventListener('pointermove', handleDragMove);
+			window.removeEventListener('pointerup', handleDragEnd);
 
 			// Reset Transform
 			if (blockElement) {
 				blockElement.style.transform = '';
 			}
+
+			// If drag time is too short, it's probably a double click.
+			// Do not commit, do not mark dirty
+			if (isPendingDoubleClick) return;
 
 			// Commit Data Changes
 			const box = block.box; // circumvent mutation warning
@@ -104,19 +160,27 @@
 			ocrState.markDirty();
 		};
 
-		window.addEventListener('mousemove', handleDragMove);
-		window.addEventListener('mouseup', handleDragEnd);
+		window.addEventListener('pointermove', handleDragMove);
+		window.addEventListener('pointerup', handleDragEnd);
 	};
 
 	// 2. Block Resize
-	const handleResizeStart = (startEvent: MouseEvent, handleType: string) => {
+	const handleResizeStart = (startEvent: PointerEvent, handleType: string) => {
 		if (ocrState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
 
-		const handleDragMove = (moveEvent: MouseEvent) => {
-			const { imageDeltaX, imageDeltaY } = getDeltas(
-				moveEvent,
+		let lastX = startEvent.clientX;
+		let lastY = startEvent.clientY;
+
+		const handleDragMove = (moveEvent: PointerEvent) => {
+			const deltaX = moveEvent.clientX - lastX;
+			const deltaY = moveEvent.clientY - lastY;
+			lastX = moveEvent.clientX;
+			lastY = moveEvent.clientY;
+
+			const { imageDeltaX, imageDeltaY } = getImageDeltas(
+				{ movementX: deltaX, movementY: deltaY },
 				ocrState.overlayElement!,
 				ocrState.imgWidth,
 				ocrState.imgHeight
@@ -156,13 +220,13 @@
 		};
 
 		const handleDragEnd = () => {
-			window.removeEventListener('mousemove', handleDragMove);
-			window.removeEventListener('mouseup', handleDragEnd);
+			window.removeEventListener('pointermove', handleDragMove);
+			window.removeEventListener('pointerup', handleDragEnd);
 			ocrState.markDirty();
 		};
 
-		window.addEventListener('mousemove', handleDragMove);
-		window.addEventListener('mouseup', handleDragEnd);
+		window.addEventListener('pointermove', handleDragMove);
+		window.addEventListener('pointerup', handleDragEnd);
 	};
 
 	// 3. Child Line Actions (Bubbled Up)
@@ -368,20 +432,23 @@
 	bind:this={blockElement}
 	onmouseenter={() => (isHovered = true)}
 	onmouseleave={() => (isHovered = false)}
-	onmousedown={handleBlockDragStart}
+	onpointerdown={handleBlockDragStart}
 	oncontextmenu={handleContextMenu}
 	role="textbox"
 	tabindex="-1"
 >
 	{#if ocrState.ocrMode === 'BOX'}
-		<ResizeHandles variant="block" onResizeStart={handleResizeStart} />
+		<ResizeHandles
+			variant="block"
+			forceVisible={resizeHandleIsVisible}
+			onResizeStart={handleResizeStart}
+		/>
 	{/if}
 
 	<TouchToggle
 		class="relative h-full w-full"
 		forceVisible={ocrState.ocrMode === 'BOX' ||
-			(ocrState.ocrMode === 'TEXT' &&
-				(isHovered || ocrState.focusedBlock === block || $contextMenu.isOpen))}
+			(ocrState.ocrMode === 'TEXT' && (ocrState.focusedBlock === block || $contextMenu.isOpen))}
 		mode="overlay"
 	>
 		{#snippet trigger()}
