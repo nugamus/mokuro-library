@@ -11,6 +11,7 @@ export default defineConfig({
     sveltekit(),
   ],
   server: {
+    allowedHosts: ["homemachine"],
     proxy: {
       // 2. Proxy all requests starting with /api
       '/api': {
