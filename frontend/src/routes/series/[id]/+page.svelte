@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { apiFetch, triggerDownload } from '$lib/api';
 	import { user } from '$lib/authStore';
+	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 	import { confirmation } from '$lib/confirmationStore';
 	import { contextMenu } from '$lib/contextMenuStore';
 	import { renameStore } from '$lib/renameStore';
@@ -42,6 +44,17 @@
 	// Get the series ID from the URL
 	// Get the 'params' prop from SvelteKit's router
 	let { params } = $props<{ params: { id: string } }>();
+
+	// --- Auth Effect ---
+	$effect(() => {
+		if (browser) {
+			// ONLY redirect if $user is NULL (check complete, no user)
+			// DO NOT redirect if $user is UNDEFINED (still loading)
+			if ($user === null) {
+				goto('/login');
+			}
+		}
+	});
 
 	// --- Fetch Data ---
 	$effect(() => {
