@@ -91,6 +91,7 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         // Find the user by their unique username
         const user = await fastify.prisma.user.findUnique({
           where: { username },
+
         });
 
         // Case 1: User not found
@@ -117,12 +118,20 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         // Case 4: Success
         // We will use the user's ID as the session token
         // This is a simple session strategy.
+        // TODO: make more secure
         reply.setCookie('sessionId', user.id, {
           path: '/',          // Available to the entire site
           httpOnly: true,     // Not accessible via client-side JS
           secure: false,      // Allow over HTTP (for LAN/VPN)
           // maxAge: 60 * 60 * 24 * 7 // Optional: 1 week expiry
         });
+        // only send back non-sensitive fields
+        const user_response = {
+          id: user.id,
+          username: user.username,
+          settings: user.settings,
+        }
+        return reply.status(200).send(user_response);
 
       } catch (error) {
         // Generic server error
