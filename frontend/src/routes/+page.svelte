@@ -318,7 +318,7 @@
 
 								<!-- Cover Image -->
 								<div
-									class="aspect-[2/3] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
+									class="aspect-[7/11] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
 								>
 									{#if series.coverPath}
 										<img

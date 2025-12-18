@@ -372,11 +372,11 @@
 						<img
 							src={`/api/files/series/${series.id}/cover?t=${coverRefreshTrigger}`}
 							alt={series.folderName}
-							class="w-full h-auto object-cover aspect-[2/3]"
+							class="w-full h-auto object-cover aspect-[7/11]"
 						/>
 					{:else}
 						<div
-							class="w-full h-full aspect-[2/3] flex items-center justify-center text-4xl font-bold text-gray-600"
+							class="w-full h-full aspect-[7/11] flex items-center justify-center text-4xl font-bold text-gray-600"
 						>
 							{series.folderName.charAt(0).toUpperCase()}
 						</div>
@@ -747,7 +747,7 @@
 
 							<!-- Cover Image Area  - pointer-events-none allows clicks to pass to card link -->
 							<div
-								class="aspect-[2/3] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
+								class="aspect-[7/11] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
 							>
 								{#if volume.coverImageName}
 									<img
@@ -765,7 +765,7 @@
 
 								<!-- Overlay Actions (Hover) -->
 								<div
-									class="absolute inset-0 hover-hover:bg-black/40 opacity-100 hover-hover:opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2 pointer-events-none"
+									class="absolute inset-0 hover-hover:bg-black/40 hover-none:opacity-100 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2 pointer-events-none"
 								>
 									<div class="flex justify-end gap-1">
 										<!-- Download Btn -->
@@ -868,7 +868,7 @@
 									<!-- Rename Icon -->
 									<button
 										onclick={(e) => openRenameVolume(e, volume)}
-										class="pointer-events-auto opacity-100 hover-hover:opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white z-10 relative"
+										class="pointer-events-auto hover-none:opacity-100 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white z-10 relative"
 										title="Rename"
 									>
 										<svg
@@ -958,7 +958,7 @@
 									<!-- Rename Button -->
 									<button
 										onclick={(e) => openRenameVolume(e, volume)}
-										class="pointer-events-auto opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white relative z-10"
+										class="pointer-events-auto hover-none:opacity-100 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white relative z-10"
 										title="Rename"
 									>
 										<svg
