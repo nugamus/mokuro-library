@@ -68,11 +68,11 @@
 	});
 </script>
 
-<!-- // Container: Dark Navy Surface -->
+<!-- Container: Dark Navy Surface -->
 <div
 	class="flex flex-col gap-4 md:flex-row md:items-center bg-[#161b2e] p-1 rounded-xl border border-gray-800 shadow-xl mb-8"
 >
-	<!-- // Search Input -->
+	<!-- Search Input -->
 	<div class="relative flex-1 group">
 		<div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
 			<svg
@@ -97,7 +97,7 @@
 	</div>
 
 	<div class="flex flex-row items-center justify-center gap-1 sm:gap-4">
-		<!-- // Sort Controls -->
+		<!-- Sort Controls -->
 		<div class="flex items-center gap-3">
 			<span class="hidden sm:inline text-xs uppercase tracking-wider font-bold text-gray-500">
 				Sort
@@ -122,10 +122,10 @@
 			</div>
 		</div>
 
-		<!-- // Separator -->
+		<!-- Separator -->
 		<div class="hidden sm:block h-8 w-px bg-gray-800"></div>
 
-		<!-- // View Toggle -->
+		<!-- View Toggle -->
 		<div class="flex rounded-lg shadow-sm bg-[#0a0e17] p-1 border border-gray-800">
 			<button
 				onclick={() => updateView('grid')}
