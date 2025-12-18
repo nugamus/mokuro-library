@@ -2,6 +2,7 @@
 	import { apiFetch } from '$lib/api';
 	import { user } from '$lib/authStore';
 	import { goto } from '$app/navigation';
+	import type { AuthUser } from '$lib/authStore';
 
 	let username = '';
 	let password = '';
@@ -19,7 +20,7 @@
 			});
 
 			// Update the global store with the user data
-			user.set(userData);
+			user.set(userData as AuthUser);
 
 			// Redirect to the homepage
 			await goto('/');

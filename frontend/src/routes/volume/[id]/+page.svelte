@@ -90,7 +90,7 @@
 	// --- Settings Management ---
 	let settingsInitialized = false;
 
-	// Load Settings on Mount/User Load
+	// Load Settings on Mount/User Load, kicks to login page if user is null
 	$effect(() => {
 		if ($user && !settingsInitialized) {
 			const s = $user.settings;
@@ -101,6 +101,10 @@
 			navZoneWidth = s.navZoneWidth ?? 15;
 			showTriggerOutline = s.showTriggerOutline ?? false;
 			settingsInitialized = true;
+		} else if ($user === null && browser) {
+			// ONLY redirect if $user is NULL (check complete, no user)
+			// DO NOT redirect if $user is UNDEFINED (still loading)
+			goto('/login');
 		}
 	});
 
