@@ -8,6 +8,45 @@ interface FileParams {
   imageName: string;
 }
 
+// Helper function
+
+/**
+ * Resolves a file path by checking both NFC and NFD normalization forms.
+ * This ensures cross-platform compatibility (Linux/Windows/macOS).
+ * * @param baseDir The root directory (e.g., fastify.projectRoot).
+ * @param relativePath The path stored in the database.
+ * @returns The verified absolute path in its correct normalization, or null if not found.
+ */
+export async function resolveNormalizedPath(
+  baseDir: string,
+  relativePath: string
+): Promise<string | null> {
+  // 1. Generate the primary target (NFC)
+  const absolutePathNFC = path.join(baseDir, relativePath).normalize('NFC');
+
+  try {
+    // Check if the NFC version exists on disk
+    await fs.promises.access(absolutePathNFC, fs.constants.R_OK);
+    return absolutePathNFC;
+  } catch {
+    // 2. Generate the fallback (NFD)
+    const absolutePathNFD = absolutePathNFC.normalize('NFD');
+
+    // If the strings are identical, there is no need for a second disk check
+    if (absolutePathNFC === absolutePathNFD) {
+      return null;
+    }
+
+    try {
+      await fs.promises.access(absolutePathNFD, fs.constants.R_OK);
+      return absolutePathNFD;
+    } catch {
+      // File does not exist in either form
+      return null;
+    }
+  }
+}
+
 const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   // Protect all routes in this file
   fastify.addHook('preHandler', fastify.authenticate);
@@ -53,16 +92,15 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
 
         // Construct the absolute file path
         // path.resolve() turns our relative DB path into an absolute one
-        const absolutePath = path.join(
-          fastify.projectRoot,
+        const relativePath = path.join(
           volume.filePath,
           cleanImageName
         );
 
-        // 4. Check if file exists before sending
-        try {
-          await fs.promises.access(absolutePath, fs.constants.R_OK);
-        } catch (fileAccessError) {
+        // Check if file exists before sending
+        const validPath = await resolveNormalizedPath(fastify.projectRoot, relativePath);
+
+        if (!validPath) {
           return reply.status(404).send({
             statusCode: 404,
             error: 'Not Found',
@@ -73,7 +111,7 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
         // 5. Securely stream the file
         // 'reply.sendFile' handles Content-Type, ETag, and
         // range requests automatically.
-        return reply.sendFile(absolutePath);
+        return reply.sendFile(validPath);
 
       } catch (error) {
         fastify.log.error({ err: error }, 'File serving error');
@@ -111,12 +149,12 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           return reply.status(404).send('Cover not found');
         }
 
-        const absolutePath = path.join(fastify.projectRoot, series.coverPath);
+        const absolutePath = path.join(fastify.projectRoot, series.coverPath.normalize('NFC'));
 
         // Ensure file exists before trying to send it
-        try {
-          await fs.promises.access(absolutePath, fs.constants.R_OK);
-        } catch {
+        const validPath = await resolveNormalizedPath(fastify.projectRoot, series.coverPath);
+
+        if (!validPath) {
           return reply.status(404).send('Cover file missing from disk');
         }
 
