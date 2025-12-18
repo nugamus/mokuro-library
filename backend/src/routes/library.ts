@@ -509,7 +509,8 @@ const libraryRoutes: FastifyPluginAsync = async (
                     page: true,
                     completed: true,
                     timeRead: true,
-                    charsRead: true
+                    charsRead: true,
+                    lastReadAt: true
                   }
                 }
               }

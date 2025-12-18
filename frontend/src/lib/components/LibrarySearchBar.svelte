@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state'; // New SvelteKit 5 state source
 	import { goto } from '$app/navigation';
+	import { browser } from '$app/environment';
 
 	// Read directly from the reactive page object
 	let q = $state(page.url.searchParams.get('q') || '');
@@ -8,6 +9,7 @@
 	// Derived state for styling active buttons
 	let currentSort = $derived(page.url.searchParams.get('sort') || 'title');
 	let currentOrder = $derived(page.url.searchParams.get('order') || 'asc');
+	let currentView = $derived(page.url.searchParams.get('view') || 'grid');
 
 	let timer: ReturnType<typeof setTimeout>;
 
@@ -29,6 +31,14 @@
 		updateUrl({ sort: newSort, order: newOrder, page: '1' });
 	};
 
+	const updateView = (newView: string) => {
+		if (browser) {
+			localStorage.setItem('library_view_mode', newView);
+		}
+		// Changing view doesn't need to reset the page
+		updateUrl({ view: newView });
+	};
+
 	const updateUrl = (changes: Record<string, string | null>) => {
 		const params = new URLSearchParams(page.url.searchParams);
 
@@ -40,8 +50,22 @@
 			}
 		}
 
-		goto(`/?${params.toString()}`, { keepFocus: true, replaceState: true });
+		// keepFocus: true prevents input blur, replaceState: true keeps history clean
+		goto(`${page.url.pathname}?${params.toString()}`, { keepFocus: true, replaceState: true });
 	};
+
+	// Restore persistence on mount
+	$effect(() => {
+		if (browser) {
+			const savedView = localStorage.getItem('library_view_mode');
+			const currentViewParam = page.url.searchParams.get('view');
+
+			// If we have a saved preference and no URL override, apply it
+			if (savedView && !currentViewParam) {
+				updateUrl({ view: savedView });
+			}
+		}
+	});
 </script>
 
 <div
@@ -84,6 +108,64 @@
 					{/if}
 				</button>
 			{/each}
+		</div>
+
+		<div class="hidden sm:block h-6 w-px bg-gray-300 dark:bg-gray-600"></div>
+
+		<div class="flex rounded-md shadow-sm">
+			<button
+				onclick={() => updateView('grid')}
+				class={`relative inline-flex items-center p-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 rounded-l-md hover:bg-gray-50 focus:z-10 dark:ring-gray-600 dark:hover:bg-gray-700
+          ${currentView === 'grid' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-200' : 'bg-white text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}
+				title="Grid View"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect
+						x="14"
+						y="14"
+						width="7"
+						height="7"
+					/><rect x="3" y="14" width="7" height="7" /></svg
+				>
+			</button>
+			<button
+				onclick={() => updateView('list')}
+				class={`relative inline-flex items-center p-2 text-sm font-semibold ring-1 ring-inset ring-gray-300 rounded-r-md -ml-px hover:bg-gray-50 focus:z-10 dark:ring-gray-600 dark:hover:bg-gray-700
+          ${currentView === 'list' ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-900 dark:text-indigo-200' : 'bg-white text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}
+				title="List View"
+			>
+				<svg
+					xmlns="http://www.w3.org/2000/svg"
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					><line x1="8" y1="6" x2="21" y2="6" /><line x1="8" y1="12" x2="21" y2="12" /><line
+						x1="8"
+						y1="18"
+						x2="21"
+						y2="18"
+					/><line x1="3" y1="6" x2="3.01" y2="6" /><line x1="3" y1="12" x2="3.01" y2="12" /><line
+						x1="3"
+						y1="18"
+						x2="3.01"
+						y2="18"
+					/></svg
+				>
+			</button>
 		</div>
 	</div>
 </div>
