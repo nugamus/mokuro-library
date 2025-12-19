@@ -2,9 +2,10 @@ services:
   mokuro:
     container_name: mokuro-library
     # Option 1: Build from the current directory
-    build: .
-    # Option 2: Use a pre-built image name (if built manually before)
-    # image: mokuro-library
+    build:
+      context: .
+      args:
+        - COMMIT_HASH=${COMMIT_HASH}
     # restart: unless-stopped
     ports:
       # Maps port 80 on computer to port 3001 inside the container.
