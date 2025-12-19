@@ -21,6 +21,8 @@ model Series {
   folderName  String
   coverPath   String?   // Path to the cover image
 
+  description String?
+
   // Always contains either 'title' or 'folderName'
   sortTitle   String
 
@@ -62,7 +64,46 @@ model Volume {
 
   progress    UserProgress[]
 
+  // Points to the UUID of the latest patch currently applied in the "Live Draft".
+  // If null, it means Head == Disk Version (Clean state).
+  headPatchId String?
+
+  // Relation to the history log
+  history   HistoryChunk[]
+
   @@unique([seriesId, folderName]) // Prevent duplicate volumes within a series
+}
+
+model HistoryChunk {
+  // Unique ID of this Chunk (not the patch ID)
+  id              String   @id @default(uuid())
+
+  // Relation to Volume
+  volumeId        String
+  volume          Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+
+  // Linked List of CHUNKS (Coarse Grain)
+  // Used to traverse history backwards if we need to load older chunks.
+  previousChunkId String?
+
+  // --- Metadata for Efficient Seeking ---
+  // The UUID of the FIRST patch inside this compressed blob
+  startPatchId    String
+  // The UUID of the LAST patch inside this compressed blob
+  endPatchId      String
+
+  // --- The Payload ---
+  // GZIP Compressed JSON Array of PatchOperation[] objects.
+  // We use Bytes (Blob) to store binary data efficiently in SQLite.
+  payload         Bytes
+
+  createdAt       DateTime @default(now())
+
+  // --- Indexes ---
+  // 1. [volumeId, endPatchId]: 
+  // Critical for the "Time Machine" lookup: "Find the chunk that contains Patch X".
+  // logic: findFirst where volumeId=V and endPatchId >= TargetPatchId order by createdAt asc
+  @@index([volumeId, endPatchId])
 }
 
 // Stores user accounts and their settings

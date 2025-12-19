@@ -5,7 +5,8 @@
 	import { browser } from '$app/environment';
 	import { confirmation } from '$lib/confirmationStore';
 	import { contextMenu } from '$lib/contextMenuStore';
-	import { renameStore } from '$lib/renameStore';
+	import EditSeriesModal from '$lib/components/EditSeriesModal.svelte';
+	import RenameModal from '$lib/components/RenameModal.svelte';
 
 	// --- Type definitions ---
 	interface UserProgress {
@@ -30,6 +31,7 @@
 		id: string;
 		title: string | null;
 		folderName: string;
+		description: string | null;
 		coverPath: string | null;
 		volumes: Volume[];
 	}
@@ -47,6 +49,11 @@
 	let itemsPerPage = $state(50);
 	let fileInput: HTMLInputElement | null = $state(null);
 	let coverRefreshTrigger = $state(0);
+	let isEditModalOpen = $state(false);
+	let isRenameOpen = $state(false);
+	let renameTarget = $state<{ id: string; title: string | null; type: 'series' | 'volume' } | null>(
+		null
+	);
 
 	// UI State (with Persistence)
 	// Initialize from LocalStorage if available to restore user preference
@@ -237,29 +244,44 @@
 		);
 	};
 
-	const openRenameSeries = () => {
+	const saveSeriesMetadata = async (newTitle: string | null, newDescription: string | null) => {
 		if (!series) return;
-		renameStore.open(series.title ?? '', async (newTitle) => {
-			newTitle = newTitle === '' ? null : newTitle;
-			await apiFetch(`/api/metadata/series/${series!.id}`, {
+		try {
+			await apiFetch(`/api/metadata/series/${series.id}`, {
 				method: 'PATCH',
-				body: { title: newTitle }
+				body: { title: newTitle, description: newDescription }
 			});
-			await fetchSeriesData(params.id);
-		});
+			await fetchSeriesData(series.id);
+		} catch (e) {
+			error = `Failed to save changes: ${(e as Error).message}`;
+		}
 	};
 
 	const openRenameVolume = (e: Event, vol: Volume) => {
 		e.preventDefault();
 		e.stopPropagation();
-		renameStore.open(vol.title ?? '', async (newTitle) => {
-			newTitle = newTitle === '' ? null : newTitle;
-			await apiFetch(`/api/metadata/volume/${vol.id}`, {
-				method: 'PATCH',
-				body: { title: newTitle }
-			});
-			await fetchSeriesData(params.id);
+		renameTarget = {
+			id: vol.id,
+			title: vol.title,
+			type: 'volume'
+		};
+		isRenameOpen = true;
+	};
+
+	const handleRenameSave = async (newTitle: string | null) => {
+		if (!renameTarget) return;
+
+		const endpoint =
+			renameTarget.type === 'series'
+				? `/api/metadata/series/${renameTarget.id}`
+				: `/api/metadata/volume/${renameTarget.id}`;
+
+		await apiFetch(endpoint, {
+			method: 'PATCH',
+			body: { title: newTitle }
 		});
+
+		await fetchSeriesData(params.id);
 	};
 
 	const openDownloadMenu = (event: MouseEvent, id: string, kind: 'series' | 'volume') => {
@@ -372,11 +394,11 @@
 						<img
 							src={`/api/files/series/${series.id}/cover?t=${coverRefreshTrigger}`}
 							alt={series.folderName}
-							class="w-full h-auto object-cover aspect-[2/3]"
+							class="w-full h-auto object-cover aspect-[7/11]"
 						/>
 					{:else}
 						<div
-							class="w-full h-full aspect-[2/3] flex items-center justify-center text-4xl font-bold text-gray-600"
+							class="w-full h-full aspect-[7/11] flex items-center justify-center text-4xl font-bold text-gray-600"
 						>
 							{series.folderName.charAt(0).toUpperCase()}
 						</div>
@@ -408,7 +430,7 @@
 									{series.title ?? series.folderName}
 								</h1>
 								<button
-									onclick={openRenameSeries}
+									onclick={() => (isEditModalOpen = true)}
 									class="text-gray-500 hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity"
 									title="Rename"
 								>
@@ -428,12 +450,16 @@
 									>
 								</button>
 							</div>
-							<!-- Placeholder Description -->
-							<p class="mt-4 text-gray-400 text-sm leading-relaxed max-w-2xl">
-								A placeholder description for the {series.title ?? series.folderName} collection. Perfect
-								for learners mastering complex grammar and varied vocabulary. Dive into stories that
-								challenge your comprehension while keeping you engaged.
-							</p>
+							<!-- Description (Dynamic) -->
+							{#if series.description}
+								<p class="mt-4 text-gray-400 text-sm leading-relaxed max-w-2xl whitespace-pre-wrap">
+									{series.description}
+								</p>
+							{:else}
+								<p class="mt-4 text-gray-600 text-sm leading-relaxed max-w-2xl italic">
+									No description available. Click the edit button to add one.
+								</p>
+							{/if}
 						</div>
 
 						<!-- Download Button -->
@@ -747,7 +773,7 @@
 
 							<!-- Cover Image Area  - pointer-events-none allows clicks to pass to card link -->
 							<div
-								class="aspect-[2/3] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
+								class="aspect-[7/11] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
 							>
 								{#if volume.coverImageName}
 									<img
@@ -765,7 +791,7 @@
 
 								<!-- Overlay Actions (Hover) -->
 								<div
-									class="absolute inset-0 hover-hover:bg-black/40 opacity-100 hover-hover:opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2 pointer-events-none"
+									class="absolute inset-0 hover-hover:bg-black/40 hover-none:opacity-100 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-between p-2 pointer-events-none"
 								>
 									<div class="flex justify-end gap-1">
 										<!-- Download Btn -->
@@ -868,7 +894,7 @@
 									<!-- Rename Icon -->
 									<button
 										onclick={(e) => openRenameVolume(e, volume)}
-										class="pointer-events-auto opacity-100 hover-hover:opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white z-10 relative"
+										class="pointer-events-auto hover-none:opacity-100 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white z-10 relative"
 										title="Rename"
 									>
 										<svg
@@ -958,7 +984,7 @@
 									<!-- Rename Button -->
 									<button
 										onclick={(e) => openRenameVolume(e, volume)}
-										class="pointer-events-auto opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white relative z-10"
+										class="pointer-events-auto hover-none:opacity-100 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-white relative z-10"
 										title="Rename"
 									>
 										<svg
@@ -1105,4 +1131,19 @@
 			{/if}
 		{/if}
 	</div>
+
+	<EditSeriesModal
+		isOpen={isEditModalOpen}
+		onClose={() => (isEditModalOpen = false)}
+		onSave={saveSeriesMetadata}
+		initialTitle={series?.title ?? null}
+		initialDescription={series?.description ?? null}
+	/>
+
+	<RenameModal
+		bind:isOpen={isRenameOpen}
+		initialTitle={renameTarget?.title ?? null}
+		onSave={handleRenameSave}
+		onClose={() => (renameTarget = null)}
+	/>
 </div>

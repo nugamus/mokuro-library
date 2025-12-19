@@ -21,6 +21,7 @@
 		volumeFolderName: string;
 		metadata: {
 			seriesTitle?: string | null;
+			seriesDescription?: string | null;
 			volumeTitle?: string | null;
 			volumeProgress?: { page: number; completed: boolean } | null;
 		};
@@ -34,7 +35,10 @@
 	};
 
 	type SeriesMetadata = {
-		series: { title: string | null };
+		series: {
+			title: string | null;
+			description?: string | null;
+		};
 		volumes: Record<
 			string,
 			{
@@ -197,6 +201,7 @@
 
 						// Extract Data
 						const seriesTitle = currentMetadata?.series?.title ?? null;
+						const seriesDescription = currentMetadata?.series?.description ?? null;
 						const volMeta = currentMetadata?.volumes?.[node.name];
 						const volumeTitle = volMeta?.displayTitle ?? null;
 						const volumeProgress = volMeta?.progress ?? null;
@@ -209,7 +214,7 @@
 							progress: 0,
 							seriesFolderName: seriesFolder,
 							volumeFolderName: volumeFolder,
-							metadata: { seriesTitle, volumeTitle, volumeProgress }
+							metadata: { seriesTitle, seriesDescription, volumeTitle, volumeProgress }
 						});
 					}
 				}
@@ -268,6 +273,7 @@
 						'metadata',
 						JSON.stringify({
 							series_title: job.metadata.seriesTitle,
+							series_description: job.metadata.seriesDescription,
 							volume_title: job.metadata.volumeTitle,
 							volume_progress: job.metadata.volumeProgress
 						})

@@ -53,3 +53,7 @@
 
 
 @import 'tailwindcss';
+@variant hover-none (@media (hover: none));
+@variant hover-hover (@media (hover: hover));
+
+@plugin "@tailwindcss/forms";
