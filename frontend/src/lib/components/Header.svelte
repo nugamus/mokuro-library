@@ -147,7 +147,7 @@
 
 		<div
 			class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden w-full md:block z-0 px-4 transition-all duration-300"
-			style="max-width: {isScrolled ? 'min(26rem, calc(100vw - 42rem))' : 'min(32rem, calc(100vw - 40rem))'};"
+			style="max-width: 32rem;"
 		>
 			<div class="relative group">
 				<div
@@ -334,7 +334,8 @@
 											: 'border-theme-border-light'}
 
 						<button
-							onclick={() => (uiState.filterStatus = filter)}
+							onclick={() =>
+								(uiState.filterStatus = filter as 'all' | 'unread' | 'in_progress' | 'read')}
 							class="w-10 h-10 flex items-center justify-center rounded-2xl border-2 transition-all duration-200 hover:border-theme-primary/50 {iconColor} {borderColor}"
 							title={filter.replace('_', ' ')}
 							aria-label="Filter by {filter.replace('_', ' ')}"
@@ -430,7 +431,9 @@
 	</div>
 
 	{#if !uiState.isSelectionMode && isMobileSearchOpen}
-		<div class="absolute inset-0 bg-theme-main/95 backdrop-blur-md px-4 md:hidden z-50 flex items-center gap-3">
+		<div
+			class="absolute inset-0 bg-theme-main/95 backdrop-blur-md px-4 md:hidden z-50 flex items-center gap-3"
+		>
 			<div class="flex-1 relative group">
 				<div
 					class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4 text-theme-secondary group-focus-within:text-accent"
@@ -453,7 +456,6 @@
 					bind:value={uiState.searchQuery}
 					placeholder={uiState.context === 'library' ? 'Search library...' : 'Search volumes...'}
 					aria-label="Search"
-					autofocus
 					class="block w-full rounded-full border border-theme-border-light bg-theme-main py-3 pl-12 pr-4 text-base text-theme-primary placeholder-theme-secondary focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent shadow-inner transition-all"
 				/>
 			</div>

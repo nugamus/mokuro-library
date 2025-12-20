@@ -5,7 +5,9 @@
 	import MenuGrid from '$lib/components/menu/MenuGrid.svelte';
 </script>
 
-<MenuWrapper className="w-80 py-2">
+<MenuWrapper
+	className="w-80 !bg-theme-surface/70 backdrop-blur-xl !border-theme-border/20 shadow-2xl ring-1 ring-inset ring-white/10 shadow-[inset_0_1px_1px_0_rgba(255,255,255,0.3)]"
+>
 	<MenuGroup title="Layout Style">
 		<div class="px-5">
 			<div

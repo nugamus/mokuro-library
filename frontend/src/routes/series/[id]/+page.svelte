@@ -70,8 +70,7 @@
 	const getVolumeStats = (vol: Volume) => {
 		const p = vol.progress?.[0];
 		const currentPage = p?.page ?? 0;
-		// Only consider completed if page number has reached the last page
-		const isRead = p?.completed && currentPage >= vol.pageCount ? true : false;
+		const isRead = p?.completed ?? false;
 		const percent = isRead
 			? 100
 			: Math.min(100, Math.max(0, (currentPage / (vol.pageCount || 1)) * 100));
@@ -245,16 +244,20 @@
 		event.stopPropagation();
 		const rect = (event.currentTarget as HTMLButtonElement).getBoundingClientRect();
 		contextMenu.open(rect.left, rect.bottom, [
-			{ label: 'View Files', action: () => console.log('View Files - TBD') },
-			{ label: 'Version History', action: () => console.log('Version History - TBD') },
-			{ separator: true },
 			{
-				label: 'Download',
+				label: 'Download ZIP',
 				action: () => triggerDownload(`/api/export/series/${seriesId}/zip`)
+			},
+			{
+				label: 'Download PDF',
+				action: () => triggerDownload(`/api/export/series/${seriesId}/pdf`)
+			},
+			{
+				label: 'Download Metadata',
+				action: () => triggerDownload(`/api/export/series/${seriesId}/zip?include_images=false`)
 			},
 			{ separator: true },
 			{ label: 'Bookmark Series', action: () => console.log('Bookmark Series - TBD') },
-			{ separator: true },
 			{ label: 'Delete Series', action: handleDeleteSeries }
 		]);
 	};
@@ -288,7 +291,10 @@
 				action: () => triggerDownload(`/api/export/volume/${vol.id}/zip`)
 			},
 			{ separator: true },
-			{ label: 'Delete Volume', action: () => handleDeleteVolume(vol.id, vol.title || vol.folderName) }
+			{
+				label: 'Delete Volume',
+				action: () => handleDeleteVolume(vol.id, vol.title || vol.folderName)
+			}
 		]);
 	};
 
@@ -337,17 +343,6 @@
 			e.stopPropagation();
 			uiState.toggleSelection(volId);
 		}
-	};
-
-	const handleContinueReading = () => {
-		if (!series) return;
-		// Find first volume that isn't actually completed (page hasn't reached last page)
-		const nextVol =
-			series.volumes.find((v) => {
-				const p = v.progress[0];
-				return !(p?.completed && p.page >= v.pageCount);
-			}) || series.volumes[0];
-		if (nextVol) goto(`/volume/${nextVol.id}`);
 	};
 
 	// --- Effects ---
@@ -439,28 +434,34 @@
 								: ''}
 							onSelect={(e) => handleVolumeClick(e, vol.id)}
 						>
-							{#snippet menuAction()}
+							{#snippet circleAction()}
 								<button
-									onclick={(e) => openGridVolumeMenu(e, vol)}
-									class="p-2 text-theme-secondary hover:text-accent active:bg-theme-main rounded-full transition-colors"
-									title="Actions"
+									onclick={(e) => {
+										e.preventDefault();
+										e.stopPropagation();
+										toggleComplete(vol.id);
+									}}
+									class={`z-30 col-start-1 row-start-1 flex items-center justify-center w-9 h-9 rounded-full transition-transform duration-200 active:scale-90 active:w-10 active:h-10 pointer-events-auto ${
+										stats.isRead
+											? 'bg-status-success text-white shadow-sm'
+											: 'text-theme-secondary hover:bg-white/5'
+									}`}
+									title={stats.isRead ? 'Mark Unread' : 'Mark Read'}
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
-										width="20"
-										height="20"
+										height="18"
+										width="18"
 										viewBox="0 0 24 24"
 										fill="none"
 										stroke="currentColor"
-										stroke-width="2"
+										stroke-width="3.5"
 										stroke-linecap="round"
 										stroke-linejoin="round"
-										><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle
-											cx="12"
-											cy="19"
-											r="1"
-										/></svg
+										class="transform translate-x-[0.5px]"
 									>
+										<polyline points="20 6 9 17 4 12" />
+									</svg>
 								</button>
 							{/snippet}
 
