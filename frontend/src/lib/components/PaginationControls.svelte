@@ -93,9 +93,7 @@
 <svelte:window onclick={handleOutsideClick} />
 
 {#if meta.total >= 0}
-	<div
-		class="flex justify-center animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-10"
-	>
+	<div class="flex justify-center relative z-10">
 		<nav
 			class="flex items-center gap-1 p-1.5 pl-4 rounded-full bg-theme-surface/60 backdrop-blur-xl border border-white/10 shadow-2xl ring-1 ring-black/5"
 			aria-label="Pagination"
