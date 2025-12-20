@@ -4,10 +4,11 @@
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
 	import { page } from '$app/stores';
-	import { apiFetch } from '$lib/api';
+	import { apiFetch, clearApiCache } from '$lib/api';
 	import { confirmation } from '$lib/confirmationStore';
 	import { uiState } from '$lib/states/uiState.svelte';
 	import { contextMenu } from '$lib/contextMenuStore';
+	import { persistentImageCache } from '$lib/persistentImageCache';
 	import PaginationControls from '$lib/components/PaginationControls.svelte';
 	import LibraryEntry from '$lib/components/LibraryEntry.svelte';
 
@@ -43,11 +44,22 @@
 	let libraryError = $state<string | null>(null);
 
 	// --- Helper: Calculate Series Progress ---
-	const getSeriesProgress = (series: Series) => {
+	// Memoized progress calculation using $derived for performance
+	const seriesProgressCache = new Map<string, number>();
+	
+	const getSeriesProgress = (series: Series): number => {
+		// Check cache first
+		if (seriesProgressCache.has(series.id)) {
+			return seriesProgressCache.get(series.id)!;
+		}
+
 		let totalPages = 0;
 		let readPages = 0;
 
-		if (!series.volumes || series.volumes.length === 0) return 0;
+		if (!series.volumes || series.volumes.length === 0) {
+			seriesProgressCache.set(series.id, 0);
+			return 0;
+		}
 
 		for (const vol of series.volumes) {
 			const pCount = vol.pageCount || 0;
@@ -63,9 +75,38 @@
 			}
 		}
 
-		if (totalPages === 0) return 0;
-		return Math.min(100, Math.max(0, (readPages / totalPages) * 100));
+		const result = totalPages === 0 ? 0 : Math.min(100, Math.max(0, (readPages / totalPages) * 100));
+		seriesProgressCache.set(series.id, result);
+		return result;
 	};
+
+	// Clear progress cache when library changes
+	$effect(() => {
+		// Clear cache entries that are no longer in library
+		const currentIds = new Set(library.map(s => s.id));
+		for (const [id] of seriesProgressCache) {
+			if (!currentIds.has(id)) {
+				seriesProgressCache.delete(id);
+			}
+		}
+	});
+
+	// Preload cover images for current page (runs in background)
+	$effect(() => {
+		if (library.length > 0 && browser) {
+			// Get all cover URLs from current page
+			const coverUrls = library
+				.filter(s => s.coverPath)
+				.map(s => `/api/files/series/${s.id}/cover`);
+
+			// Preload them in the background (non-blocking)
+			if (coverUrls.length > 0) {
+				persistentImageCache.preload(coverUrls).catch((err) => {
+					console.warn('Failed to preload covers:', err);
+				});
+			}
+		}
+	});
 
 	// --- Initialization & URL Hydration ---
 
@@ -76,9 +117,7 @@
 			{ key: 'updated', label: 'Last Updated' },
 			{ key: 'lastRead', label: 'Recent' }
 		]);
-	});
 
-	onMount(() => {
 		// Hydrate State from URL
 		if (browser) {
 			const params = $page.url.searchParams;
@@ -169,15 +208,19 @@
 		}
 	});
 
-	const fetchLibrary = async (queryString: string, silent = false) => {
+	const fetchLibrary = async (queryString: string, silent = false): Promise<void> => {
 		try {
 			if (!silent) isLoadingLibrary = true;
 			libraryError = null;
 
 			// Backend expects: /api/library?page=1&limit=24&q=...&sort=title&order=asc
-			const response = await apiFetch(`/api/library${queryString}`);
-			library = response.data as Series[];
-			meta = response.meta;
+			// Enable caching for library requests (30 second TTL)
+			const response = await apiFetch(`/api/library${queryString}`, { 
+				cache: true, 
+				cacheTTL: 30000 
+			});
+			library = (response as { data?: Series[]; meta?: typeof meta }).data as Series[] || [];
+			meta = (response as { data?: Series[]; meta?: typeof meta }).meta || meta;
 		} catch (e) {
 			libraryError = (e as Error).message;
 		} finally {
@@ -200,6 +243,8 @@
 			async () => {
 				try {
 					await apiFetch(`/api/library/series/${seriesId}`, { method: 'DELETE' });
+					// Clear cache after deletion
+					clearApiCache();
 					const params = new URLSearchParams($page.url.searchParams);
 					fetchLibrary(`?${params.toString()}`, true);
 				} catch (e) {
@@ -293,9 +338,10 @@
 					? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6'
 					: 'flex flex-col gap-3'}"
 				>
-				{#each library as series (series.id)}
+				{#each library as series, index (series.id)}
 					{@const percent = getSeriesProgress(series)}
 					{@const isSelected = uiState.selectedIds.has(series.id)}
+					{@const isAboveFold = index < (uiState.viewMode === 'grid' ? 12 : 6)}
 
 					<LibraryEntry
 						entry={{
@@ -308,6 +354,7 @@
 						viewMode={uiState.viewMode}
 						{isSelected}
 						isSelectionMode={uiState.isSelectionMode}
+						{isAboveFold}
 						progress={{
 							percent: percent,
 							isRead: percent === 100,

@@ -210,14 +210,18 @@ class ThemeStore {
 		
 		// Load saved preferences from localStorage
 		if (browser) {
-			const savedColorMode = localStorage.getItem('mokuro_color_mode');
-			if (savedColorMode === 'dark' || savedColorMode === 'light' || savedColorMode === 'system') {
-				this.colorMode = savedColorMode;
+			try {
+				const savedColorMode = localStorage.getItem('mokuro_color_mode');
+				if (savedColorMode === 'dark' || savedColorMode === 'light' || savedColorMode === 'system') {
+					this.colorMode = savedColorMode;
+				}
+			} catch (e) {
+				console.warn('Failed to read color mode from localStorage:', e);
 			}
 			
-			const savedTheme = localStorage.getItem('mokuro_theme');
-			if (savedTheme) {
-				try {
+			try {
+				const savedTheme = localStorage.getItem('mokuro_theme');
+				if (savedTheme) {
 					const theme = JSON.parse(savedTheme);
 					if (theme.id === 'custom') {
 						this.isCustomThemeEnabled = true;
@@ -228,11 +232,10 @@ class ThemeStore {
 							this.currentTheme = foundTheme;
 						}
 					}
-				} catch (e) {
-					console.error('Failed to load saved theme:', e);
 				}
+			} catch (e) {
+				console.warn('Failed to load saved theme:', e);
 			}
-			
 		}
 		
 		// Apply initial theme
@@ -245,33 +248,30 @@ class ThemeStore {
 	/**
 	 * Apply theme colors based on current color mode
 	 */
-	applyThemeColors(colors: ThemeColors) {
+	applyThemeColors(colors: ThemeColors): void {
 		if (!browser) return;
 
 		const root = document.documentElement;
 		
 		// Map theme colors to CSS variables
-		// Main background colors
-		root.style.setProperty('--color-theme-main', colors['main-background']);
-		root.style.setProperty('--color-theme-surface', colors['card-background']);
-		root.style.setProperty('--color-theme-surface-hover', colors['card-highlight']);
+		const mappings: [string, keyof ThemeColors][] = [
+			['--color-theme-main', 'main-background'],
+			['--color-theme-surface', 'card-background'],
+			['--color-theme-surface-hover', 'card-highlight'],
+			['--color-theme-border', 'border-color'],
+			['--color-theme-border-light', 'border-color'],
+			['--color-theme-border-active', 'primary-color'],
+			['--color-theme-primary', 'main-text'],
+			['--color-theme-secondary', 'muted-text'],
+			['--color-theme-tertiary', 'muted-text'],
+			['--color-accent', 'primary-color'],
+			['--color-accent-hover', 'primary-hover'],
+			['--color-progress', 'reading-color']
+		];
 		
-		// Border colors
-		root.style.setProperty('--color-theme-border', colors['border-color']);
-		root.style.setProperty('--color-theme-border-light', colors['border-color']);
-		root.style.setProperty('--color-theme-border-active', colors['primary-color']);
-		
-		// Text colors
-		root.style.setProperty('--color-theme-primary', colors['main-text']);
-		root.style.setProperty('--color-theme-secondary', colors['muted-text']);
-		root.style.setProperty('--color-theme-tertiary', colors['muted-text']); // Using muted-text for tertiary
-		
-		// Accent colors (primary color)
-		root.style.setProperty('--color-accent', colors['primary-color']);
-		root.style.setProperty('--color-accent-hover', colors['primary-hover']);
-		
-		// Reading color (used for progress indicators)
-		root.style.setProperty('--color-progress', colors['reading-color']);
+		mappings.forEach(([cssVar, colorKey]) => {
+			root.style.setProperty(cssVar, colors[colorKey]);
+		});
 		
 		// Note: We do NOT override these colors (they remain fixed):
 		// - --color-status-success: #10b981 (green for read status)
@@ -285,7 +285,7 @@ class ThemeStore {
 	 * Apply a theme by setting CSS variables on the document root
 	 * Maps theme colors to CSS variables used throughout the app
 	 */
-	applyTheme(theme: Theme) {
+	applyTheme(theme: Theme): void {
 		const mode = this.getResolvedColorMode();
 		this.applyThemeColors(theme.colors[mode]);
 	}
@@ -293,7 +293,7 @@ class ThemeStore {
 	/**
 	 * Apply current theme (handles custom vs preset)
 	 */
-	applyCurrentTheme() {
+	applyCurrentTheme(): void {
 		if (this.isCustomThemeEnabled) {
 			this.applyCustomTheme();
 		} else if (this.currentTheme) {
@@ -304,7 +304,7 @@ class ThemeStore {
 	/**
 	 * Apply custom theme colors
 	 */
-	applyCustomTheme() {
+	applyCustomTheme(): void {
 		const mode = this.getResolvedColorMode();
 		this.applyThemeColors(this.customColors[mode]);
 	}
@@ -312,10 +312,14 @@ class ThemeStore {
 	/**
 	 * Set color mode (dark, light, or system)
 	 */
-	setColorMode(mode: 'dark' | 'light' | 'system') {
+	setColorMode(mode: 'dark' | 'light' | 'system'): void {
 		this.colorMode = mode;
 		if (browser) {
-			localStorage.setItem('mokuro_color_mode', mode);
+			try {
+				localStorage.setItem('mokuro_color_mode', mode);
+			} catch (e) {
+				console.warn('Failed to save color mode to localStorage:', e);
+			}
 		}
 		this.applyCurrentTheme();
 	}
@@ -324,7 +328,7 @@ class ThemeStore {
 	 * Initialize reactive theme updates
 	 * This should be called after the store is created to set up reactive updates
 	 */
-	initReactiveUpdates() {
+	initReactiveUpdates(): void {
 		if (!browser) return;
 		
 		// Watch for system theme changes
@@ -340,15 +344,19 @@ class ThemeStore {
 	/**
 	 * Set the active theme
 	 */
-	setTheme(themeId: string) {
+	setTheme(themeId: string): void {
 		if (themeId === 'custom') {
 			this.isCustomThemeEnabled = true;
 			this.applyCustomTheme();
 			if (browser) {
-				localStorage.setItem('mokuro_theme', JSON.stringify({
-					id: 'custom',
-					colors: this.customColors
-				}));
+				try {
+					localStorage.setItem('mokuro_theme', JSON.stringify({
+						id: 'custom',
+						colors: this.customColors
+					}));
+				} catch (e) {
+					console.warn('Failed to save custom theme to localStorage:', e);
+				}
 			}
 		} else {
 			this.isCustomThemeEnabled = false;
@@ -357,7 +365,11 @@ class ThemeStore {
 				this.currentTheme = theme;
 				this.applyTheme(theme);
 				if (browser) {
-					localStorage.setItem('mokuro_theme', JSON.stringify({ id: theme.id }));
+					try {
+						localStorage.setItem('mokuro_theme', JSON.stringify({ id: theme.id }));
+					} catch (e) {
+						console.warn('Failed to save theme to localStorage:', e);
+					}
 				}
 			}
 		}
@@ -366,15 +378,30 @@ class ThemeStore {
 	/**
 	 * Update custom theme color
 	 */
-	updateCustomColor(mode: 'dark' | 'light', key: keyof ThemeColors, value: string) {
+	// Debounce timer for localStorage writes
+	private debounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private readonly DEBOUNCE_DELAY = 300; // 300ms debounce
+
+	updateCustomColor(mode: 'dark' | 'light', key: keyof ThemeColors, value: string): void {
 		this.customColors[mode][key] = value;
 		if (this.isCustomThemeEnabled) {
 			this.applyCustomTheme();
 			if (browser) {
-				localStorage.setItem('mokuro_theme', JSON.stringify({
-					id: 'custom',
-					colors: this.customColors
-				}));
+				// Debounce localStorage writes
+				if (this.debounceTimer) {
+					clearTimeout(this.debounceTimer);
+				}
+				this.debounceTimer = setTimeout(() => {
+					try {
+						localStorage.setItem('mokuro_theme', JSON.stringify({
+							id: 'custom',
+							colors: this.customColors
+						}));
+					} catch (e) {
+						console.warn('Failed to save custom color to localStorage:', e);
+					}
+					this.debounceTimer = null;
+				}, this.DEBOUNCE_DELAY);
 			}
 		}
 	}
@@ -382,7 +409,7 @@ class ThemeStore {
 	/**
 	 * Reset custom colors to default (Mokuro theme)
 	 */
-	resetCustomColors() {
+	resetCustomColors(): void {
 		this.customColors = {
 			dark: {
 				'main-background': '#0f172a',

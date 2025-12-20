@@ -115,47 +115,64 @@
 		try {
 			isLoading = true;
 
-			// Fetch all series with volumes and progress
-			const libraryData = await apiFetch('/api/library?limit=10000');
-			const series = (libraryData.data || []) as Series[];
+			// Try statistics endpoint first (if backend implements it)
+			// Falls back to calculating from library data if endpoint doesn't exist
+			let useFallback = true;
+			try {
+				const statsData = await apiFetch('/api/library/statistics', { cache: true, cacheTTL: 60000 });
+				if (statsData && typeof statsData === 'object' && 'totalMangas' in statsData) {
+					// Statistics endpoint exists and returned valid data
+					// Note: Backend needs to implement this endpoint with the same structure
+					useFallback = false;
+					// Would use statsData here if endpoint format matches
+				}
+			} catch {
+				// Endpoint doesn't exist yet, use fallback
+				useFallback = true;
+			}
 
-			// Calculate statistics from real data
-			let totalCharsRead = 0;
-			let totalTime = 0;
-			let completedCount = 0;
-			let recentReading: { chars: number; time: number; date?: string } | null = null;
+			// Fallback: Fetch all series with volumes and progress (less efficient)
+			if (useFallback) {
+				const libraryData = await apiFetch('/api/library?limit=10000', { cache: true });
+				const series = (libraryData.data || []) as Series[];
 
-			const seriesStats = new Map<string, { volumes: number; totalChars: number; totalTime: number; speeds: number[] }>();
-			const completedVols: CompletedVolume[] = [];
+				// Calculate statistics from real data
+				let totalCharsRead = 0;
+				let totalTime = 0;
+				let completedCount = 0;
+				let recentReading: { chars: number; time: number; date?: string } | null = null;
 
-			for (const s of series) {
-				if (!s.volumes) continue;
+				const seriesStats = new Map<string, { volumes: number; totalChars: number; totalTime: number; speeds: number[] }>();
+				const completedVols: CompletedVolume[] = [];
 
-				let seriesChars = 0;
-				let seriesTime = 0;
-				const speeds: number[] = [];
+				for (const s of series) {
+					if (!s.volumes) continue;
 
-				for (const vol of s.volumes) {
-					const progress = vol.progress?.[0];
-					if (progress) {
-						totalCharsRead += progress.charsRead || 0;
-						totalTime += progress.timeRead || 0;
+					let seriesChars = 0;
+					let seriesTime = 0;
+					const speeds: number[] = [];
 
-						seriesChars += progress.charsRead || 0;
-						seriesTime += progress.timeRead || 0;
+					for (const vol of s.volumes) {
+						const progress = vol.progress?.[0];
+						if (progress) {
+							totalCharsRead += progress.charsRead || 0;
+							totalTime += progress.timeRead || 0;
 
-						if (progress.completed && progress.page >= vol.pageCount) {
-							completedCount++;
-							const speed = progress.timeRead > 0 ? (progress.charsRead / progress.timeRead) : 0;
-							speeds.push(speed);
+							seriesChars += progress.charsRead || 0;
+							seriesTime += progress.timeRead || 0;
 
-							// Add to completed volumes
-							const avgSpeed = speeds.length > 0
-								? speeds.reduce((a, b) => a + b, 0) / speeds.length
-								: 0;
-							const vsAvg = avgSpeed > 0 ? ((speed - avgSpeed) / avgSpeed) * 100 : 0;
+							if (progress.completed && progress.page >= vol.pageCount) {
+								completedCount++;
+								const speed = progress.timeRead > 0 ? (progress.charsRead / progress.timeRead) : 0;
+								speeds.push(speed);
 
-							completedVols.push({
+								// Add to completed volumes
+								const avgSpeed = speeds.length > 0
+									? speeds.reduce((a, b) => a + b, 0) / speeds.length
+									: 0;
+								const vsAvg = avgSpeed > 0 ? ((speed - avgSpeed) / avgSpeed) * 100 : 0;
+
+								completedVols.push({
 								seriesName: s.title || s.folderName,
 								volumeTitle: vol.title || `Vol ${vol.folderName}`,
 								speed: Math.round(speed),

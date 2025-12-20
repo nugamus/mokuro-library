@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
+	import { onMount } from 'svelte';
+	import { persistentImageCache } from '$lib/persistentImageCache';
 
 	// --- Types ---
 	interface EntryData {
@@ -22,6 +24,7 @@
 		viewMode = 'grid',
 		isSelected = false,
 		isSelectionMode = false,
+		isAboveFold = false,
 		progress = { percent: 0, isRead: false, showBar: false },
 		href = '#',
 		mainStat = '',
@@ -38,6 +41,8 @@
 		viewMode?: 'grid' | 'list';
 		isSelected?: boolean;
 		isSelectionMode?: boolean;
+		/** Whether this entry is above the fold (eager load images) */
+		isAboveFold?: boolean;
 		progress?: ProgressData;
 		href?: string;
 		mainStat?: string | number;
@@ -60,6 +65,41 @@
 	const status = $derived(getStatusBadge());
 
 	const gridAspectClass = type === 'series' ? 'aspect-[7/11]' : 'aspect-[2/3]';
+
+	// Cover image state with instant loading from cache
+	let coverBlobUrl = $state<string | null>(null);
+	let isCoverLoaded = $state(false);
+
+	// Load cover from persistent cache immediately, then revalidate in background
+	$effect(() => {
+		if (entry.coverUrl && typeof window !== 'undefined') {
+			// Reset state when cover URL changes
+			isCoverLoaded = false;
+			coverBlobUrl = null;
+
+			persistentImageCache
+				.get(entry.coverUrl, (newUrl) => {
+					// Background update completed - reset and reload
+					isCoverLoaded = false;
+					coverBlobUrl = newUrl;
+				})
+				.then((url) => {
+					coverBlobUrl = url;
+				})
+				.catch((err) => {
+					console.warn('Failed to load cover:', err);
+					coverBlobUrl = entry.coverUrl; // Fallback to direct URL
+				});
+		}
+	});
+
+	// Handle image load event - this fires when the image is fully loaded
+	function handleImageLoad() {
+		// Small delay to ensure browser has painted the image
+		setTimeout(() => {
+			isCoverLoaded = true;
+		}, 10);
+	}
 </script>
 
 {#if viewMode === 'grid'}
@@ -71,6 +111,7 @@
 				: 'border-white/5 hover:border-white/10 z-10'
 		}
     ${isSelectionMode && !isSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}`}
+		style={!isAboveFold ? 'content-visibility: auto; contain-intrinsic-size: 0 400px;' : ''}
 	>
 		<a
 			{href}
@@ -82,13 +123,21 @@
 		<div
 			class={`${gridAspectClass} w-full bg-theme-main relative overflow-hidden pointer-events-none z-10`}
 		>
-			{#if entry.coverUrl}
+			{#if entry.coverUrl && coverBlobUrl}
 				<img
-					src={entry.coverUrl}
+					src={coverBlobUrl}
 					alt={entry.folderName}
-					loading="lazy"
-					class="h-full w-full object-cover transition-transform duration-700 md:group-hover:scale-110"
+					loading={isAboveFold ? 'eager' : 'lazy'}
+					decoding="async"
+					fetchpriority={isAboveFold ? 'high' : 'auto'}
+					onload={handleImageLoad}
+					class="h-full w-full object-cover transition-opacity duration-500 ease-out will-change-opacity md:group-hover:scale-110 md:transition-transform md:group-hover:duration-700"
+					class:opacity-0={!isCoverLoaded}
+					class:opacity-100={isCoverLoaded}
 				/>
+			{:else if entry.coverUrl}
+				<!-- Loading skeleton -->
+				<div class="h-full w-full bg-gradient-to-br from-theme-surface via-theme-surface-hover to-theme-surface animate-pulse"></div>
 			{:else}
 				<div
 					class="flex h-full w-full items-center justify-center text-theme-tertiary bg-theme-surface font-bold text-xl"
@@ -184,6 +233,7 @@
 				: 'border-white/5 hover:border-white/10 z-10'
 		}
     ${isSelectionMode && !isSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}`}
+		style={!isAboveFold ? 'content-visibility: auto; contain-intrinsic-size: 0 128px;' : ''}
 	>
 		<a
 			{href}
@@ -195,12 +245,21 @@
 		<div
 			class="relative h-full aspect-[7/11] bg-theme-main flex-shrink-0 pointer-events-none border-r border-white/5 overflow-hidden z-10"
 		>
-			{#if entry.coverUrl}
+			{#if entry.coverUrl && coverBlobUrl}
 				<img
-					src={entry.coverUrl}
+					src={coverBlobUrl}
 					alt=""
-					class="h-full w-full object-cover transition-transform duration-700 md:group-hover:scale-110"
+					loading={isAboveFold ? 'eager' : 'lazy'}
+					decoding="async"
+					fetchpriority={isAboveFold ? 'high' : 'auto'}
+					onload={handleImageLoad}
+					class="h-full w-full object-cover transition-opacity duration-500 ease-out will-change-opacity md:group-hover:scale-110 md:transition-transform md:group-hover:duration-700"
+					class:opacity-0={!isCoverLoaded}
+					class:opacity-100={isCoverLoaded}
 				/>
+			{:else if entry.coverUrl}
+				<!-- Loading skeleton -->
+				<div class="h-full w-full bg-gradient-to-br from-theme-surface via-theme-surface-hover to-theme-surface animate-pulse"></div>
 			{:else}
 				<div
 					class="h-full w-full flex items-center justify-center text-2xl font-bold text-theme-tertiary"

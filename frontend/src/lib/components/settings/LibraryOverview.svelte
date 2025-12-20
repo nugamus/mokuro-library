@@ -56,19 +56,37 @@
 	let users = $state<Array<{ id: string; username: string }>>([]);
 
 	// Fetch statistics from the database
-	async function fetchStatistics() {
+	async function fetchStatistics(): Promise<void> {
 		if (!browser) return;
 
 		try {
 			isLoading = true;
 
+			// Try to use dedicated statistics endpoint first
+			// Falls back to calculating from library data if endpoint doesn't exist
+			try {
+				const statsData = await apiFetch('/api/library/statistics', { cache: true, cacheTTL: 60000 });
+				if (statsData && typeof statsData === 'object' && 'totalMangas' in statsData) {
+					statistics = statsData as Statistics;
+					return;
+				}
+			} catch (e) {
+				// Endpoint doesn't exist yet, fall back to calculation method
+				console.log('Statistics endpoint not available, calculating from library data...');
+			}
+
+			// Fallback: Calculate from library data (less efficient)
+			// Constants
+			const MAX_LIBRARY_FETCH_LIMIT = 10000; // Large limit for statistics calculation
+
 			// Fetch all series to calculate statistics
-			const libraryData = await apiFetch('/api/library?limit=10000');
-			const series = libraryData.data || [];
+			// TODO: Backend should implement /api/library/statistics endpoint
+			const libraryData = await apiFetch(`/api/library?limit=${MAX_LIBRARY_FETCH_LIMIT}`, { cache: true });
+			const series = (libraryData as { data?: unknown[] })?.data || [];
 
 			// Calculate total pages
 			let totalPages = 0;
-			for (const s of series) {
+			for (const s of series as Array<{ volumes?: Array<{ pageCount?: number }> }>) {
 				if (s.volumes) {
 					for (const vol of s.volumes) {
 						totalPages += vol.pageCount || 0;
@@ -81,10 +99,14 @@
 			// TODO: Create a users endpoint if needed
 			const totalUsers = 3; // Placeholder
 
+			// Constants for reading time calculation
+			const MINUTES_PER_PAGE = 0.11; // Rough estimate: 0.11 min per page
+			const MINUTES_PER_HOUR = 60;
+
 			// Calculate reading time from progress
 			// We'll need to aggregate timeRead from UserProgress
 			// For now, using a calculated value based on pages
-			const readingTime = Math.round((totalPages * 0.11) / 60); // Rough estimate: 0.11 min per page
+			const readingTime = Math.round((totalPages * MINUTES_PER_PAGE) / MINUTES_PER_HOUR);
 
 			statistics = {
 				totalMangas: series.length,
@@ -369,17 +391,18 @@
 
 			<div class="space-y-3">
 				{#each recentActivity as activity (activity.username)}
+					{@const typedActivity: RecentActivity = activity}
 					<div class="flex items-center gap-4 p-3 rounded-xl bg-black/20 hover:bg-black/30 transition-colors">
 						<div
 							class="w-10 h-10 rounded-full bg-accent/20 border border-accent/50 flex items-center justify-center text-xs font-bold text-accent flex-shrink-0"
 						>
-							{activity.username.charAt(0).toUpperCase()}
+							{typedActivity.username.charAt(0).toUpperCase()}
 						</div>
 						<div class="flex-1 min-w-0">
-							<p class="text-sm font-semibold text-white truncate">{activity.username}</p>
-							<p class="text-xs text-gray-400 truncate">{activity.action}</p>
+							<p class="text-sm font-semibold text-white truncate">{typedActivity.username}</p>
+							<p class="text-xs text-gray-400 truncate">{typedActivity.action}</p>
 						</div>
-						<span class="text-xs text-gray-500 whitespace-nowrap">{activity.timeAgo}</span>
+						<span class="text-xs text-gray-500 whitespace-nowrap">{typedActivity.timeAgo}</span>
 					</div>
 				{/each}
 			</div>
