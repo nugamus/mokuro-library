@@ -40,8 +40,10 @@
 	};
 </script>
 
-<MenuWrapper className="w-80">
-	<div class="px-6 py-2">
+<MenuWrapper
+	className="w-80 !bg-theme-surface/70 backdrop-blur-xl !border-theme-border/20 shadow-2xl ring-1 ring-inset ring-white/10 shadow-[inset_0_1px_1px_0_rgba(255,255,255,0.3)]"
+>
+	<div class="px-6 py-3">
 		<span class="text-[11px] font-black text-theme-tertiary uppercase tracking-[0.2em]">Menu</span>
 	</div>
 
@@ -155,23 +157,23 @@
 
 	{#if isDownloadOpen && uiState.context !== 'reader'}
 		<div
-			class="mx-4 mb-3 bg-theme-main/30 border border-theme-border-light rounded-xl overflow-hidden animate-in slide-in-from-top-2 duration-150"
+			class="mx-4 mb-3 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl overflow-hidden animate-in slide-in-from-top-2 duration-150 shadow-inner"
 		>
 			<button
 				onclick={() => handleDownload('zip')}
-				class="w-full pl-4 pr-4 py-2.5 text-left text-xs font-medium text-theme-secondary hover:text-white hover:bg-white/5 transition-colors border-b border-theme-border-light/50"
+				class="w-full pl-4 pr-4 py-2.5 text-left text-xs font-medium text-theme-secondary hover:text-white hover:bg-white/10 transition-colors border-b border-white/5"
 			>
 				Download as ZIP
 			</button>
 			<button
 				onclick={() => handleDownload('meta')}
-				class="w-full pl-4 pr-4 py-2.5 text-left text-xs font-medium text-theme-secondary hover:text-white hover:bg-white/5 transition-colors border-b border-theme-border-light/50"
+				class="w-full pl-4 pr-4 py-2.5 text-left text-xs font-medium text-theme-secondary hover:text-white hover:bg-white/10 transition-colors border-b border-white/5"
 			>
 				Metadata Only (ZIP)
 			</button>
 			<button
 				onclick={() => handleDownload('pdf')}
-				class="w-full pl-4 pr-4 py-2.5 text-left text-xs font-medium text-theme-secondary hover:text-white hover:bg-white/5 transition-colors"
+				class="w-full pl-4 pr-4 py-2.5 text-left text-xs font-medium text-theme-secondary hover:text-white hover:bg-white/10 transition-colors"
 			>
 				Download as PDF
 			</button>
@@ -180,14 +182,14 @@
 
 	<MenuSeparator />
 
-	<div class="px-2 space-y-0.5">
+	<div class="px-2 pb-2 space-y-0.5">
 		<MenuItem
 			label="About"
 			onClick={() => {
 				uiState.isAboutOpen = true;
 				contextMenu.close();
 			}}
-			className="rounded-xl"
+			className="rounded-xl hover:bg-white/5"
 		>
 			{#snippet icon()}
 				<svg
@@ -205,7 +207,12 @@
 			{/snippet}
 		</MenuItem>
 
-		<MenuItem label="Logout" variant="danger" onClick={handleLogout} className="rounded-xl">
+		<MenuItem
+			label="Logout"
+			variant="danger"
+			onClick={handleLogout}
+			className="rounded-xl hover:bg-red-500/10"
+		>
 			{#snippet icon()}
 				<svg
 					xmlns="http://www.w3.org/2000/svg"

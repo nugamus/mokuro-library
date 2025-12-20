@@ -7,6 +7,7 @@
 	import { apiFetch } from '$lib/api';
 	import { confirmation } from '$lib/confirmationStore';
 	import { uiState } from '$lib/states/uiState.svelte';
+	import { contextMenu } from '$lib/contextMenuStore';
 	import PaginationControls from '$lib/components/PaginationControls.svelte';
 	import LibraryEntry from '$lib/components/LibraryEntry.svelte';
 
@@ -32,6 +33,7 @@
 		volumes: Volume[];
 		updatedAt: string;
 		lastReadAt?: string | null;
+		isBookmarked?: boolean;
 	}
 
 	// --- State ---
@@ -53,11 +55,7 @@
 
 			const progress = vol.progress?.[0];
 			if (progress) {
-				// Only consider completed if page number has reached the last page (pageCount)
-				// Note: page numbers are typically 1-indexed, so we check if page >= pageCount
-				const actuallyCompleted = progress.completed && progress.page >= pCount;
-
-				if (actuallyCompleted) {
+				if (progress.completed) {
 					readPages += pCount;
 				} else {
 					readPages += progress.page || 0;
@@ -187,6 +185,11 @@
 		}
 	};
 
+	const toggleBookmark = async (series: Series) => {
+		// TODO: actually implement this with backend
+		series.isBookmarked = !series.isBookmarked;
+	};
+
 	// --- Actions ---
 	const handleDeleteSeries = (seriesId: string, seriesTitle: string) => {
 		confirmation.open(
@@ -204,31 +207,6 @@
 				}
 			}
 		);
-	};
-
-	const openSeriesContextMenu = (e: MouseEvent, series: Series) => {
-		e.preventDefault();
-		e.stopPropagation();
-		const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-		contextMenu.open(rect.left, rect.bottom, [
-			{ label: 'View Files', action: () => console.log('View Files - TBD') },
-			{ label: 'Version History', action: () => console.log('Version History - TBD') },
-			{ separator: true },
-			{
-				label: 'Download',
-				action: () => {
-					// TODO: Add download functionality
-					console.log('Download series:', series.id);
-				}
-			},
-			{ separator: true },
-			{ label: 'Bookmark Series', action: () => console.log('Bookmark Series - TBD') },
-			{ separator: true },
-			{
-				label: 'Delete Series',
-				action: () => handleDeleteSeries(series.id, series.title ?? series.folderName)
-			}
-		]);
 	};
 
 	const handleCardClick = (e: MouseEvent, seriesId: string) => {
@@ -330,55 +308,65 @@
 							: ''}
 						onSelect={(e) => handleCardClick(e, series.id)}
 					>
-						{#snippet menuAction()}
+						{#snippet circleAction()}
 							<button
-								type="button"
-								onclick={(e) => openSeriesContextMenu(e, series)}
-								class="p-1.5 bg-black/60 backdrop-blur-md rounded-full text-white hover:bg-theme-surface-hover transition-colors shadow-lg"
-								title="Series Actions"
+								onclick={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									toggleBookmark(series);
+								}}
+								class={`z-30 col-start-1 row-start-1 relative flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200 pointer-events-auto hover:bg-white/10 active:scale-75 ${
+									series.isBookmarked ? 'text-status-warning' : 'text-theme-secondary'
+								}`}
+								title={series.isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
-									width="14"
-									height="14"
+									height="18"
+									width="18"
 									viewBox="0 0 24 24"
-									fill="none"
+									fill={series.isBookmarked ? 'currentColor' : 'none'}
 									stroke="currentColor"
-									stroke-width="2"
+									stroke-width="2.5"
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle
-										cx="12"
-										cy="19"
-										r="1"
-									/></svg
+									class={`relative transition-all ${
+										series.isBookmarked ? 'animate-pop neon-glow' : 'neon-off'
+									}`}
 								>
+									<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+								</svg>
 							</button>
 						{/snippet}
 
 						{#snippet listActions()}
 							<button
-								type="button"
-								onclick={(e) => openSeriesContextMenu(e, series)}
-								class="p-2 text-theme-secondary hover:text-white transition-colors rounded-md hover:bg-theme-surface-hover"
-								title="Series Actions"
+								onclick={(e) => {
+									e.preventDefault();
+									e.stopPropagation();
+									toggleBookmark(series);
+								}}
+								class={`z-30 col-start-1 row-start-1 relative flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200 pointer-events-auto hover:bg-white/10 active:scale-75 ${
+									series.isBookmarked ? 'text-status-warning' : 'text-theme-secondary'
+								}`}
+								title={series.isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
-									width="16"
-									height="16"
+									height="18"
+									width="18"
 									viewBox="0 0 24 24"
-									fill="none"
+									fill={series.isBookmarked ? 'currentColor' : 'none'}
 									stroke="currentColor"
-									stroke-width="2"
+									stroke-width="2.5"
 									stroke-linecap="round"
 									stroke-linejoin="round"
-									><circle cx="12" cy="12" r="1" /><circle cx="12" cy="5" r="1" /><circle
-										cx="12"
-										cy="19"
-										r="1"
-									/></svg
+									class={`relative transition-all ${
+										series.isBookmarked ? 'animate-pop neon-glow' : 'neon-off'
+									}`}
 								>
+									<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+								</svg>
 							</button>
 						{/snippet}
 					</LibraryEntry>
@@ -393,3 +381,37 @@
 		</div>
 	{/if}
 </div>
+
+<style>
+	/* Intensity Control: Change the % next to transparent to adjust glow strength */
+	.neon-glow {
+		transition: filter 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+		filter: drop-shadow(0 0 1px color-mix(in srgb, var(--color-status-warning), transparent 30%))
+			drop-shadow(0 0 3px color-mix(in srgb, var(--color-status-warning), transparent 50%))
+			drop-shadow(0 0 6px color-mix(in srgb, var(--color-status-warning), transparent 70%));
+	}
+
+	.neon-off {
+		transition: filter 0.8s ease-in;
+		/* Transitioning to 100% transparent version of the SAME variable */
+		filter: drop-shadow(0 0 0px color-mix(in srgb, var(--color-status-warning), transparent 100%))
+			drop-shadow(0 0 0px color-mix(in srgb, var(--color-status-warning), transparent 100%))
+			drop-shadow(0 0 0px color-mix(in srgb, var(--color-status-warning), transparent 100%));
+	}
+
+	@keyframes bookmark-pop {
+		0% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.4);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	.animate-pop {
+		animation: bookmark-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+	}
+</style>
