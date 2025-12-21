@@ -1,5 +1,6 @@
 <script lang="ts" generics="T">
 	import { type Snippet } from 'svelte';
+	import SettingTooltip from './SettingTooltip.svelte';
 
 	// Allow the option object to carry extra data (like color arrays)
 	type Option<T> = {
@@ -11,6 +12,7 @@
 
 	let {
 		title,
+		tooltip,
 		value = $bindable(),
 		options,
 		layout, // Optional: if provided, splits into rows. If undefined, uses single grid.
@@ -19,6 +21,7 @@
 		children // Optional snippet for custom content: (option, selected)
 	} = $props<{
 		title?: string;
+		tooltip?: string;
 		value: T;
 		options: Option<T>[];
 		layout?: number[];
@@ -52,9 +55,14 @@
 >
 	{#if title}
 		<div class="mb-1 flex items-center justify-between">
-			<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
-				{title}
-			</p>
+			<div class="flex items-center">
+				<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
+					{title}
+				</p>
+				{#if tooltip}
+					<SettingTooltip content={tooltip} />
+				{/if}
+			</div>
 			<span class="text-xs font-bold text-accent uppercase tracking-wider">
 				{selectedLabel}
 			</span>
