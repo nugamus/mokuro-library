@@ -3,6 +3,8 @@
 	import { apiFetch } from '$lib/api';
 	import { browser } from '$app/environment';
 
+	let { inReader = false }: { inReader?: boolean } = $props();
+
 	interface Statistics {
 		totalMangas: number;
 		totalPages: number;
@@ -126,17 +128,17 @@
 	});
 </script>
 
-<div class="w-full max-w-4xl p-10 rounded-3xl bg-black/20 backdrop-blur-3xl border border-white/5 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]">
+<div class="w-full p-8 {inReader ? 'max-w-2xl' : 'max-w-4xl'}">
 	<div class="mb-8">
 		<h1 class="text-3xl font-bold text-white mb-2">Library Overview</h1>
-		<p class="text-base text-gray-400">View statistics and usage of your library.</p>
+		<p class="text-base text-theme-secondary">View statistics and usage of your library.</p>
 	</div>
 
 	<div class="space-y-5">
 		<!-- Overview Statistics -->
 		<div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
 			<!-- Total Mangas -->
-			<div class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg">
+			<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 				<div class="flex items-center justify-between mb-4">
 					<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Total Mangas</p>
 					<svg
@@ -164,7 +166,7 @@
 			</div>
 
 			<!-- Total Pages -->
-			<div class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg">
+			<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 				<div class="flex items-center justify-between mb-4">
 					<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Total Pages</p>
 					<svg
@@ -196,7 +198,7 @@
 			</div>
 
 			<!-- Total Users -->
-			<div class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg">
+			<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 				<div class="flex items-center justify-between mb-4">
 					<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Total Users</p>
 					<svg
@@ -244,7 +246,7 @@
 			</div>
 
 			<!-- Reading Time -->
-			<div class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg">
+			<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 				<div class="flex items-center justify-between mb-4">
 					<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Reading Time</p>
 					<svg
@@ -272,7 +274,7 @@
 		</div>
 
 		<!-- Storage Usage -->
-		<div class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg">
+		<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 			<div class="mb-4 flex items-center gap-2">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -293,7 +295,7 @@
 			</div>
 
 			<div class="mb-4 flex items-center justify-between">
-				<div class="relative w-full h-4 rounded-full bg-black/40 overflow-hidden">
+				<div class="relative w-full h-4 rounded-full bg-theme-surface overflow-hidden">
 					<!-- Images (Green) -->
 					<div
 						class="absolute left-0 top-0 h-full bg-status-success"
@@ -348,7 +350,7 @@
 		</div>
 
 		<!-- Recent Activity -->
-		<div class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg">
+		<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 			<div class="mb-4 flex items-center gap-2">
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -369,7 +371,7 @@
 
 			<div class="space-y-3">
 				{#each recentActivity as activity (activity.username)}
-					<div class="flex items-center gap-4 p-3 rounded-xl bg-black/20 hover:bg-black/30 transition-colors">
+					<div class="flex items-center gap-4 p-3 rounded-xl bg-theme-surface hover:bg-theme-surface-hover transition-colors">
 						<div
 							class="w-10 h-10 rounded-full bg-accent/20 border border-accent/50 flex items-center justify-center text-xs font-bold text-accent flex-shrink-0"
 						>

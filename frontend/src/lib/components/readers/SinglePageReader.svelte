@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { browser } from '$app/environment';
 	import type { ReaderState } from '$lib/states/ReaderState.svelte';
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
@@ -34,56 +35,129 @@
 	const handleClickRight = () => {
 		reader.readingDirection === 'rtl' ? reader.prevPage() : reader.nextPage();
 	};
+
+	function applyReaderSettings() {
+		if (!browser) return;
+		try {
+			const nightEnabled = JSON.parse(localStorage.getItem('mokuro_night_mode_enabled') ?? 'false');
+			const scheduleEnabled = JSON.parse(localStorage.getItem('mokuro_night_mode_schedule_enabled') ?? 'false');
+			const brightness = JSON.parse(localStorage.getItem('mokuro_night_mode_brightness') ?? '100');
+			const startHour = JSON.parse(localStorage.getItem('mokuro_night_mode_start_hour') ?? '22');
+			const endHour = JSON.parse(localStorage.getItem('mokuro_night_mode_end_hour') ?? '6');
+
+			const invertEnabled = JSON.parse(localStorage.getItem('mokuro_invert_enabled') ?? 'false');
+			const invertScheduleEnabled = JSON.parse(localStorage.getItem('mokuro_invert_schedule_enabled') ?? 'false');
+			const invertIntensity = JSON.parse(localStorage.getItem('mokuro_invert_intensity') ?? '100');
+			const invertStart = JSON.parse(localStorage.getItem('mokuro_invert_start_hour') ?? '22');
+			const invertEnd = JSON.parse(localStorage.getItem('mokuro_invert_end_hour') ?? '6');
+
+			const now = new Date();
+			const h = now.getHours();
+
+			let b = 100;
+			if (nightEnabled) {
+				let active = true;
+				if (scheduleEnabled) {
+					active = startHour <= endHour ? h >= startHour && h < endHour : h >= startHour || h < endHour;
+				}
+				if (active) b = brightness;
+			}
+
+			let inv = 0;
+			let invBright = 100;
+			if (invertEnabled) {
+				let active = true;
+				if (invertScheduleEnabled) {
+					active = invertStart <= invertEnd ? h >= invertStart && h < invertEnd : h >= invertStart || h < invertEnd;
+				}
+				if (active) {
+					inv = 100;
+					invBright = 40 + (invertIntensity * 0.6);
+				}
+			}
+
+			document.documentElement.style.setProperty('--reader-brightness', `${b}%`);
+			document.documentElement.style.setProperty('--reader-invert', `${inv}%`);
+			document.documentElement.style.setProperty('--reader-invert-brightness', `${invBright}%`);
+		} catch (e) {
+			console.error('Error applying reader settings', e);
+		}
+	}
+
+	$effect(() => {
+		applyReaderSettings();
+		const interval = setInterval(applyReaderSettings, 60000);
+		return () => clearInterval(interval);
+	});
+
+	function handleZoneClick(e: MouseEvent) {
+		// If text is selected, don't navigate
+		if (window.getSelection()?.toString()) return;
+
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		const width = rect.width;
+		const percent = (x / width) * 100;
+
+		if (percent <= navZoneWidth) {
+			handleClickLeft();
+		} else if (percent >= 100 - navZoneWidth) {
+			handleClickRight();
+		}
+	}
 </script>
 
-<button
-	onclick={handleClickLeft}
-	type="button"
-	class="panzoom-exclude absolute left-0 z-10 h-full hover:cursor-pointer bg-transparent border-none p-0"
-	aria-label="Previous Page"
-	style={`width: ${navZoneWidth}%`}
-></button>
+<div class="relative h-full w-full flex flex-col" onclick={handleZoneClick} role="presentation">
+	<div
+		class="panzoom-exclude absolute left-0 z-10 h-full bg-accent transition-opacity duration-200 pointer-events-none"
+		style={`width: ${navZoneWidth}%; opacity: var(--nav-zone-opacity, 0);`}
+	></div>
 
-<div
-	class="relative flex h-full flex-1 items-center justify-center"
-	use:panzoom={{
-		options: {
-			canvas: true,
-			maxScale: 10,
-			minScale: 0.5,
-			cursor: 'default',
-			origin: '50% 50%',
-			disableYAxis: false
-		},
-		onInit: (pz) => (panzoomInstance = pz)
-	}}
->
-	{#if reader.visiblePages[0]}
-		{@const page = reader.visiblePages[0]}
-		<div
-			class="relative flex-shrink-0 shadow-2xl"
-			style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
-		>
-			<CachedImage src={`/api/files/volume/${reader.id}/image/${page.img_path}`} />
-			<OcrOverlay
-				{page}
-				{panzoomInstance}
-				ocrMode={reader.ocrMode}
-				isSmartResizeMode={reader.isSmartResizeMode}
-				{showTriggerOutline}
-				readingDirection={reader.readingDirection}
-				{onOcrChange}
-				{onLineFocus}
-				onChangeMode={onOcrChangeMode}
-			/>
-		</div>
-	{/if}
+	<div
+		class="relative flex h-full flex-1 items-center justify-center"
+		use:panzoom={{
+			options: {
+				canvas: true,
+				maxScale: 10,
+				minScale: 0.5,
+				cursor: 'default',
+				origin: '50% 50%',
+				disableYAxis: false
+			},
+			onInit: (pz) => (panzoomInstance = pz)
+		}}
+	>
+		{#if reader.visiblePages[0]}
+			{@const page = reader.visiblePages[0]}
+			<div
+				class="relative flex-shrink-0 shadow-2xl reader-page"
+				style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
+			>
+				<CachedImage src={`/api/files/volume/${reader.id}/image/${page.img_path}`} />
+				<OcrOverlay
+					{page}
+					{panzoomInstance}
+					ocrMode={reader.ocrMode}
+					isSmartResizeMode={reader.isSmartResizeMode}
+					{showTriggerOutline}
+					readingDirection={reader.readingDirection}
+					{onOcrChange}
+					{onLineFocus}
+					onChangeMode={onOcrChangeMode}
+				/>
+			</div>
+		{/if}
+	</div>
+
+	<div
+		class="panzoom-exclude absolute right-0 z-10 h-full bg-accent transition-opacity duration-200 pointer-events-none"
+		style={`width: ${navZoneWidth}%; opacity: var(--nav-zone-opacity, 0);`}
+	></div>
 </div>
 
-<button
-	onclick={handleClickRight}
-	type="button"
-	class="panzoom-exclude absolute right-0 z-10 h-full hover:cursor-pointer bg-transparent border-none p-0"
-	aria-label="Next Page"
-	style={`width: ${navZoneWidth}%`}
-></button>
+<style>
+	.reader-page {
+		filter: brightness(var(--reader-brightness, 100%)) brightness(var(--reader-invert-brightness, 100%)) invert(var(--reader-invert, 0%));
+	}
+</style>

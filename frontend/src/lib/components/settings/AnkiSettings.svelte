@@ -5,6 +5,8 @@
 	import MenuStepper from '$lib/components/menu/MenuStepper.svelte';
 	import MenuSlider from '$lib/components/menu/MenuSlider.svelte';
 
+	let { inReader = false }: { inReader?: boolean } = $props();
+
 	// This component displays Anki Connect settings
 	// Since these are default values, we'll create a local state management
 	// In a real implementation, you'd want to persist these to localStorage or backend
@@ -25,15 +27,15 @@
 </script>
 
 <div
-	class="w-full max-w-4xl p-10 rounded-3xl bg-black/20 backdrop-blur-3xl border border-white/5 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)]"
+	class="w-full p-8 {inReader ? 'max-w-2xl' : 'max-w-4xl'}"
 >
 	<div class="mb-8 flex items-center justify-between">
 		<div>
 			<h1 class="text-3xl font-bold text-white mb-2">Anki Connect</h1>
-			<p class="text-base text-gray-400">WIP docs coming soon</p>
+			<p class="text-base text-theme-secondary">WIP docs coming soon</p>
 		</div>
 		<button
-			class="flex items-center gap-2 px-4 py-2 rounded-xl bg-black/30 backdrop-blur-2xl border border-white/5 text-gray-400 hover:text-white hover:bg-black/40 transition-all duration-200"
+			class="flex items-center gap-2 px-4 py-2 rounded-xl bg-theme-main border border-theme-border-light text-theme-secondary hover:text-white hover:bg-theme-surface-hover transition-all duration-200"
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -56,7 +58,7 @@
 		<MenuToggle label="AnkiConnect Integration Enabled" bind:checked={ankiConnectEnabled} />
 
 		<div
-			class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg space-y-4"
+			class="rounded-2xl bg-theme-main p-6 border border-theme-border-light space-y-4"
 		>
 			<div class="mb-2">
 				<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Field Settings</p>
@@ -66,7 +68,7 @@
 		</div>
 
 		<div
-			class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg space-y-3"
+			class="rounded-2xl bg-theme-main p-6 border border-theme-border-light space-y-3"
 		>
 			<div class="mb-2">
 				<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
@@ -92,7 +94,7 @@
 		/>
 
 		<div
-			class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg space-y-4"
+			class="rounded-2xl bg-theme-main p-6 border border-theme-border-light space-y-4"
 		>
 			<div class="mb-2">
 				<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-2">
