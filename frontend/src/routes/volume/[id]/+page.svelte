@@ -11,7 +11,7 @@
 	import { uiState } from '$lib/states/uiState.svelte';
 
 	// Components
-	import ReaderSettings from '$lib/components/ReaderSettings.svelte';
+	import ReaderSettings from '$lib/components/settings/ReaderSettings.svelte';
 	import SinglePageReader from '$lib/components/readers/SinglePageReader.svelte';
 	import DoublePageReader from '$lib/components/readers/DoublePageReader.svelte';
 	import VerticalReader from '$lib/components/readers/VerticalReader.svelte';
@@ -25,6 +25,19 @@
 	// --- UI State (View Specific) ---
 	let settingsOpen = $state(false);
 	let panzoomInstance = $state<PanzoomObject | null>(null);
+	let hideHUD = $state(false);
+
+	function enforceFullscreen() {
+		if (!browser) return;
+		try {
+			const autoFs = JSON.parse(localStorage.getItem('mokuro_auto_fullscreen') ?? 'false');
+			if (autoFs && !document.fullscreenElement) {
+				document.documentElement.requestFullscreen().catch(() => {});
+			}
+		} catch (e) {
+			// ignore
+		}
+	}
 
 	// --- Initialization ---
 	$effect(() => {
@@ -34,6 +47,14 @@
 		return () => {
 			readerState.cleanup();
 			imageStore.clear();
+			if (browser) {
+				try {
+					const autoFs = JSON.parse(localStorage.getItem('mokuro_auto_fullscreen') ?? 'false');
+					if (autoFs && document.fullscreenElement) {
+						document.exitFullscreen().catch(() => {});
+					}
+				} catch (e) {}
+			}
 		};
 	});
 
@@ -118,6 +139,11 @@
 			const mq = window.matchMedia('(hover: none)');
 			hasHover = !mq.matches;
 			const listener = (e: MediaQueryListEvent) => (hasHover = !e.matches);
+
+			const storedHUD = localStorage.getItem('mokuro_hide_hud');
+			if (storedHUD) {
+				try { hideHUD = JSON.parse(storedHUD); } catch {}
+			}
 			mq.addEventListener('change', listener);
 
 			// Set Context for header
@@ -134,6 +160,14 @@
 	const onOcrChange = () => readerState.onOcrChange();
 	const onLineFocus = (block: MokuroBlock | null, page: MokuroPage | null) =>
 		readerState.setFocusedBlock(block, page);
+
+	$effect(() => {
+		enforceFullscreen();
+	});
+
+	$effect(() => {
+		if (browser) localStorage.setItem('mokuro_hide_hud', JSON.stringify(hideHUD));
+	});
 </script>
 
 <svelte:head>
@@ -153,14 +187,17 @@
 		</div>
 	{:else if readerState.volume}
 		<header
-			class="absolute top-0 left-0 right-0 z-20 flex h-16 items-center justify-between bg-gradient-to-b from-black/70 to-transparent px-4 text-white touch-none"
+			class="absolute top-0 left-0 right-0 z-50 flex h-16 items-center justify-between bg-gradient-to-b from-black/70 to-transparent px-4 text-white touch-none transition-opacity duration-300"
+			class:opacity-0={hideHUD}
+			class:hover:opacity-100={hideHUD}
 		>
 			<div class="flex-1 justify-start overflow-hidden">
 				<button
-					onclick={() => goto(`/series/${readerState.seriesId}`)}
-					class="flex-1 truncate whitespace-nowrap pr-2 text-sm hover:text-indigo-400 sm:text-base cursor-pointer"
+					onclick={(e) => { e.stopPropagation(); goto(`/series/${readerState.seriesId}`); }}
+					class="group relative cursor-pointer flex-1 truncate whitespace-nowrap pr-2 text-sm font-medium text-white shadow-black drop-shadow-md hover:text-indigo-400 sm:text-base bg-transparent border-none p-0"
 				>
-					&larr; {readerState.seriesTitle}
+					<div class="absolute -inset-4 bg-transparent"></div>
+					← {readerState.seriesTitle}
 				</button>
 			</div>
 
@@ -173,6 +210,7 @@
 						onmousedown={(e) => {
 							if ((e.target as HTMLElement).id !== 'headerFontSizeSlider') e.preventDefault();
 						}}
+						onclick={(e) => e.stopPropagation()}
 					>
 						<label
 							for="headerFontSizeSlider"
@@ -212,7 +250,7 @@
 
 				{#if readerState.hasUnsavedChanges}
 					<button
-						onclick={() => readerState.saveOcr()}
+						onclick={(e) => { e.stopPropagation(); readerState.saveOcr(); }}
 						disabled={readerState.isSaving}
 						class="text-gray-400 hover:text-white disabled:opacity-50 cursor-pointer p-1"
 						title="Save OCR"
@@ -234,7 +272,7 @@
 				{/if}
 
 				<button
-					onclick={() => readerState.toggleSmartResizeMode()}
+					onclick={(e) => { e.stopPropagation(); readerState.toggleSmartResizeMode(); }}
 					class="flex justify-center items-center rounded p-1 transition-colors aspect-square w-8 cursor-pointer"
 					class:bg-amber-300={readerState.isSmartResizeMode}
 					class:hover:bg-gray-700={!readerState.isSmartResizeMode}
@@ -251,7 +289,7 @@
 				</button>
 
 				<button
-					onclick={() => readerState.setOcrMode(readerState.ocrMode === 'BOX' ? 'READ' : 'BOX')}
+					onclick={(e) => { e.stopPropagation(); readerState.setOcrMode(readerState.ocrMode === 'BOX' ? 'READ' : 'BOX'); }}
 					class="flex justify-center items-center rounded p-1 transition-colors aspect-square w-8 cursor-pointer"
 					class:bg-indigo-600={readerState.ocrMode !== 'READ'}
 					class:hover:bg-gray-700={readerState.ocrMode === 'READ'}
@@ -284,7 +322,7 @@
 				</button>
 
 				<button
-					onclick={() => (settingsOpen = true)}
+					onclick={(e) => { e.stopPropagation(); settingsOpen = true; }}
 					class="text-gray-400 hover:text-white cursor-pointer p-1"
 					title="Settings"
 				>
@@ -338,27 +376,18 @@
 			{/if}
 		</main>
 
-		<ReaderSettings
-			bind:isOpen={settingsOpen}
-			layoutMode={readerState.layoutMode}
-			readingDirection={readerState.readingDirection}
-			doublePageOffset={readerState.doublePageOffset}
-			retainZoom={readerState.retainZoom}
-			currentPageIndex={readerState.currentPageIndex}
-			totalPages={readerState.totalPages}
-			currentPages={readerState.visiblePages}
-			navZoneWidth={readerState.navZoneWidth}
-			volumeTitle={readerState.volumeTitle}
-			showTriggerOutline={readerState.showTriggerOutline}
-			onSetLayout={(m) => readerState.setLayout(m)}
-			onToggleDirection={() =>
-				(readerState.readingDirection = readerState.readingDirection === 'rtl' ? 'ltr' : 'rtl')}
-			onToggleOffset={() => readerState.toggleOffset()}
-			onToggleZoom={() => (readerState.retainZoom = !readerState.retainZoom)}
-			onNavZoneChange={(e) => (readerState.navZoneWidth = +(e.target as HTMLInputElement).value)}
-			onToggleTriggerOutline={() =>
-				(readerState.showTriggerOutline = !readerState.showTriggerOutline)}
-		/>
+		{#if settingsOpen}
+			<button
+				onclick={() => (settingsOpen = false)}
+				type="button"
+				class="fixed inset-0 z-[60] h-full w-full cursor-auto bg-black/60 backdrop-blur-sm"
+				aria-label="Close settings"
+			></button>
+
+			<div class="fixed right-0 top-0 z-[70] h-full" onclick={(e) => e.stopPropagation()} role="presentation">
+				<ReaderSettings onClose={() => (settingsOpen = false)} inReader={true} bind:hideHUD={hideHUD} />
+			</div>
+		{/if}
 		<LineOrderModal />
 	{/if}
 </div>

@@ -1,6 +1,9 @@
 <script lang="ts">
+	import SettingTooltip from './SettingTooltip.svelte';
+
 	let {
 		label,
+		tooltip,
 		value = $bindable(),
 		min = 0,
 		max = 1,
@@ -9,6 +12,7 @@
 		onInput
 	} = $props<{
 		label: string;
+		tooltip?: string;
 		value: number;
 		min?: number;
 		max?: number;
@@ -20,7 +24,12 @@
 
 <div>
 	<div class="flex items-center justify-between mb-2">
-		<div class="block text-sm font-semibold text-gray-400">{label}</div>
+		<div class="flex items-center">
+			<div class="block text-sm font-semibold text-gray-400">{label}</div>
+			{#if tooltip}
+				<SettingTooltip content={tooltip} />
+			{/if}
+		</div>
 		{#if displayValue}
 			<span class="text-xs font-semibold text-accent">{displayValue}</span>
 		{/if}

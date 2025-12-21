@@ -622,6 +622,10 @@
 		white-space: nowrap;
 		user-select: text;
 
+		/* AI NOTE: Text color is always black for readability in all OCR modes.
+		   DO NOT change this to use theme colors - text must remain black. */
+		color: black;
+
 		/* Ensure a high-quality CJK font is used */
 		font-family: 'Source Han Serif JP', 'Noto Sans JP', sans-serif;
 		line-height: 1;

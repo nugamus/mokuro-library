@@ -5,7 +5,7 @@ import { apiFetch } from './api';
 export interface ReaderSettingsData {
   layoutMode?: 'single' | 'double' | 'vertical';
   readingDirection?: 'ltr' | 'rtl';
-  doublePageOffset?: 'even' | 'odd';
+  firstPageIsCover?: boolean;
   retainZoom?: boolean;
   navZoneWidth?: number;
   showTriggerOutline?: boolean;

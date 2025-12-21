@@ -459,11 +459,17 @@
 			></div>
 		{/snippet}
 
+		<!--
+			AI NOTE: Text color is forced to black when hovering over OCR text blocks (READ mode).
+			This ensures text is always readable against the white background, regardless of theme.
+			DO NOT change text-black to use theme colors - text must always be black for readability.
+		-->
 		<div
 			class="relative h-full w-full p-0"
 			class:vertical-text={block.vertical}
 			class:bg-transparent={ocrState.ocrMode !== 'READ'}
 			class:bg-white={ocrState.ocrMode !== 'BOX' && ocrState.ocrMode !== 'TEXT'}
+			class:text-black={ocrState.ocrMode !== 'BOX' && ocrState.ocrMode !== 'TEXT'}
 		>
 			{#each block.lines as line, i}
 				<OcrLine

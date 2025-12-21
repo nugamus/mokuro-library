@@ -5,7 +5,6 @@ import { fromStore, get } from 'svelte/store';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
-export type PageOffset = 'even' | 'odd';
 
 class ReaderState {
   // --- Core State ---
@@ -18,7 +17,7 @@ class ReaderState {
   // --- Persisted Settings ---
   layoutMode = $state<LayoutMode>('single');
   readingDirection = $state<ReadingDirection>('rtl');
-  doublePageOffset = $state<PageOffset>('odd');
+  firstPageIsCover = $state(false);
   retainZoom = $state(false);
   navZoneWidth = $state(15);
   showTriggerOutline = $state(false);
@@ -56,7 +55,7 @@ class ReaderState {
           // Apply DB values to state
           if (s.layoutMode) this.layoutMode = s.layoutMode;
           if (s.readingDirection) this.readingDirection = s.readingDirection;
-          if (s.doublePageOffset) this.doublePageOffset = s.doublePageOffset;
+          if (s.firstPageIsCover !== undefined) this.firstPageIsCover = s.firstPageIsCover;
           if (s.retainZoom !== undefined) this.retainZoom = s.retainZoom;
           if (s.navZoneWidth !== undefined) this.navZoneWidth = s.navZoneWidth;
           if (s.showTriggerOutline !== undefined) this.showTriggerOutline = s.showTriggerOutline;
@@ -71,7 +70,7 @@ class ReaderState {
         const _ = {
           l: this.layoutMode,
           d: this.readingDirection,
-          o: this.doublePageOffset,
+          c: this.firstPageIsCover,
           z: this.retainZoom,
           n: this.navZoneWidth,
           t: this.showTriggerOutline
@@ -185,7 +184,7 @@ class ReaderState {
       const currentSettings: ReaderSettingsData = {
         layoutMode: this.layoutMode,
         readingDirection: this.readingDirection,
-        doublePageOffset: this.doublePageOffset,
+        firstPageIsCover: this.firstPageIsCover,
         retainZoom: this.retainZoom,
         navZoneWidth: this.navZoneWidth,
         showTriggerOutline: this.showTriggerOutline
@@ -240,8 +239,8 @@ class ReaderState {
     }
 
     if (this.layoutMode === 'double') {
-      const hasOddOffset = this.doublePageOffset === 'odd';
-      if (hasOddOffset && page1Index === 0) {
+      // If first page is cover and we're on page 1, show it alone
+      if (this.firstPageIsCover && page1Index === 0) {
         return [page1];
       }
 
@@ -270,9 +269,9 @@ class ReaderState {
       return;
     }
 
-    const hasOddOffset = this.doublePageOffset === 'odd';
+    // In double mode: jump by 2, unless we're on the cover (page 0) and firstPageIsCover is true
     let jump = 2;
-    if (hasOddOffset && this.currentPageIndex === 0) {
+    if (this.firstPageIsCover && this.currentPageIndex === 0) {
       jump = 1;
     }
     this.currentPageIndex = Math.min(this.totalPages - 1, this.currentPageIndex + jump);
@@ -287,11 +286,10 @@ class ReaderState {
       return;
     }
 
-    const hasOddOffset = this.doublePageOffset === 'odd';
-    const pageIsEven = this.currentPageIndex % 2 === 0;
+    // In double mode: jump by 2, but handle cover page specially
     let jump = 2;
-    if (hasOddOffset === pageIsEven) {
-      jump = 1;
+    if (this.firstPageIsCover && this.currentPageIndex === 1) {
+      jump = 1; // From page 1 (after cover), go back to page 0 (cover)
     }
     this.currentPageIndex = Math.max(0, this.currentPageIndex - jump);
   }
@@ -304,11 +302,7 @@ class ReaderState {
 
   setLayout(mode: LayoutMode) {
     this.layoutMode = mode;
-    if (mode === 'double' && this.currentPageIndex > 0) {
-      const hasOddOffset = this.doublePageOffset === 'odd';
-      const pageIsEven = this.currentPageIndex % 2 === 0;
-      if (hasOddOffset === pageIsEven) this.currentPageIndex -= 1;
-    }
+    // No special adjustment needed with firstPageIsCover - pages align naturally
   }
 
   setOcrMode(mode: 'READ' | 'BOX' | 'TEXT') {
@@ -318,19 +312,6 @@ class ReaderState {
 
   toggleSmartResizeMode() {
     this.isSmartResizeMode = !this.isSmartResizeMode;
-  }
-
-  toggleOffset() {
-    this.doublePageOffset = this.doublePageOffset === 'odd' ? 'even' : 'odd';
-    if (this.layoutMode !== 'double') return;
-    if (this.currentPageIndex === 0) return;
-
-    const hasOddOffset = this.doublePageOffset === 'odd';
-    const pageIsEven = this.currentPageIndex % 2 === 0;
-
-    if (hasOddOffset === pageIsEven) {
-      this.currentPageIndex -= 1;
-    }
   }
 
   onOcrChange() {
