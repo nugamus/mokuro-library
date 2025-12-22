@@ -135,10 +135,10 @@ Higher = easier nav, smaller OCR area."
 	</div>
 
 	<div class="grid grid-cols-2 gap-4">
-		<MenuToggle label="First Page is Cover" bind:checked={readerState.firstPageIsCover} />
+		<MenuToggle label="First Page Cover" bind:checked={readerState.firstPageIsCover} />
 		<MenuToggle label="Auto fullscreen" bind:checked={readerState.autoFullscreen} />
-		<MenuToggle label="Hide HUD unless hovered" bind:checked={readerState.hideHUD} />
-		<MenuToggle label="Show Character Count" bind:checked={showCharacterCount} />
+		<MenuToggle label="Autohide HUD" bind:checked={readerState.hideHUD} />
+		<MenuToggle label="Show Char Count" bind:checked={showCharacterCount} />
 		<MenuToggle label="Show Timer" bind:checked={showTimer} />
 		<MenuToggle label="OCR Outline" bind:checked={readerState.showTriggerOutline} />
 	</div>
