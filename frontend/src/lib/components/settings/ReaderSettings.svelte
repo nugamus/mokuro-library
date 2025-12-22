@@ -5,11 +5,7 @@
 	import MenuSlider from '$lib/components/menu/MenuSlider.svelte';
 	import { readerState } from '$lib/states/ReaderState.svelte';
 
-	let {
-		onClose,
-		inReader = false,
-		hideHUD = $bindable(false)
-	}: { onClose?: () => void; inReader?: boolean; hideHUD?: boolean } = $props();
+	let { onClose, inReader = false }: { onClose?: () => void; inReader?: boolean } = $props();
 
 	// Helper Proxy for Zoom Mode (Boolean in State <-> String in UI)
 	class ZoomProxy {
@@ -122,12 +118,8 @@ Keep Zoom: maintain level"
 	<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light space-y-4">
 		<div
 			role="group"
-			onmousedown={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0.3')}
-			onmouseup={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0')}
-			onmouseleave={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0')}
-			ontouchstart={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0.3')}
-			ontouchend={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0')}
-			ontouchcancel={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0')}
+			onpointerenter={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0.3')}
+			onpointerleave={() => document.documentElement.style.setProperty('--nav-zone-opacity', '0')}
 		>
 			<MenuSlider
 				label="Nav Zone Width (%)"
@@ -145,7 +137,7 @@ Higher = easier nav, smaller OCR area."
 	<div class="grid grid-cols-2 gap-4">
 		<MenuToggle label="First Page is Cover" bind:checked={readerState.firstPageIsCover} />
 		<MenuToggle label="Auto fullscreen" bind:checked={readerState.autoFullscreen} />
-		<MenuToggle label="Hide HUD unless hovered" bind:checked={hideHUD} />
+		<MenuToggle label="Hide HUD unless hovered" bind:checked={readerState.hideHUD} />
 		<MenuToggle label="Show Character Count" bind:checked={showCharacterCount} />
 		<MenuToggle label="Show Timer" bind:checked={showTimer} />
 		<MenuToggle label="OCR Outline" bind:checked={readerState.showTriggerOutline} />
