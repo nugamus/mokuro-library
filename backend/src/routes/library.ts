@@ -108,7 +108,7 @@ const libraryRoutes: FastifyPluginAsync = async (
     const sort = request.query.sort ?? 'title';
     const order = request.query.order ?? 'asc';
     const status = request.query.status ?? 'all';
-    const bookmarked = request.query.bookmarked === 'false';
+    const bookmarked = request.query.bookmarked === 'true';
 
     // 2. Build Where Clause (Search)
     const where: Prisma.SeriesWhereInput = {
