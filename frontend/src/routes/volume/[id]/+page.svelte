@@ -25,19 +25,9 @@
 	// --- UI State (View Specific) ---
 	let settingsOpen = $state(false);
 	let panzoomInstance = $state<PanzoomObject | null>(null);
-	let hideHUD = $state(false);
-
-	function enforceFullscreen() {
-		if (!browser) return;
-		try {
-			const autoFs = JSON.parse(localStorage.getItem('mokuro_auto_fullscreen') ?? 'false');
-			if (autoFs && !document.fullscreenElement) {
-				document.documentElement.requestFullscreen().catch(() => {});
-			}
-		} catch (e) {
-			// ignore
-		}
-	}
+	// handle header visibility on mobile
+	let headerTimer: ReturnType<typeof setTimeout> | null = null;
+	let headerIsVisible = $state(false);
 
 	// --- Initialization ---
 	$effect(() => {
@@ -47,14 +37,6 @@
 		return () => {
 			readerState.cleanup();
 			imageStore.clear();
-			if (browser) {
-				try {
-					const autoFs = JSON.parse(localStorage.getItem('mokuro_auto_fullscreen') ?? 'false');
-					if (autoFs && document.fullscreenElement) {
-						document.exitFullscreen().catch(() => {});
-					}
-				} catch (e) {}
-			}
 		};
 	});
 
@@ -140,12 +122,6 @@
 			hasHover = !mq.matches;
 			const listener = (e: MediaQueryListEvent) => (hasHover = !e.matches);
 
-			const storedHUD = localStorage.getItem('mokuro_hide_hud');
-			if (storedHUD) {
-				try {
-					hideHUD = JSON.parse(storedHUD);
-				} catch {}
-			}
 			mq.addEventListener('change', listener);
 
 			// Set Context for header
@@ -162,14 +138,6 @@
 	const onOcrChange = () => readerState.onOcrChange();
 	const onLineFocus = (block: MokuroBlock | null, page: MokuroPage | null) =>
 		readerState.setFocusedBlock(block, page);
-
-	$effect(() => {
-		enforceFullscreen();
-	});
-
-	$effect(() => {
-		if (browser) localStorage.setItem('mokuro_hide_hud', JSON.stringify(hideHUD));
-	});
 </script>
 
 <svelte:head>
@@ -190,8 +158,20 @@
 	{:else if readerState.volume}
 		<header
 			class="absolute top-0 left-0 right-0 z-50 flex h-16 items-center justify-between bg-gradient-to-b from-black/70 to-transparent px-4 text-white touch-none transition-opacity duration-300"
-			class:opacity-0={hideHUD}
-			class:hover:opacity-100={hideHUD}
+			class:opacity-0={readerState.hideHUD && !headerIsVisible}
+			class:hover:opacity-100={readerState.hideHUD}
+			onpointerdown={(e: PointerEvent) => {
+				// Make header visible on touch devices
+				if (e.pointerType !== 'mouse') {
+					headerIsVisible = true;
+					if (headerTimer) clearTimeout(headerTimer); // Clear any old timer just in case
+
+					headerTimer = setTimeout(() => {
+						headerIsVisible = false;
+						headerTimer = null;
+					}, 3000);
+				}
+			}}
 		>
 			<div class="flex-1 justify-start overflow-hidden">
 				<button
@@ -309,7 +289,7 @@
 					class:hover:bg-gray-700={readerState.ocrMode === 'READ'}
 					class:text-white={readerState.ocrMode !== 'READ'}
 					class:text-gray-400={readerState.ocrMode === 'READ'}
-					title={hasHover ? 'Box Edit Mode' : 'Disabled for non-mouse devices'}
+					title={'Edit Mode'}
 				>
 					{#if readerState.ocrMode === 'BOX'}
 						<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"
@@ -403,7 +383,7 @@
 				onclick={(e) => e.stopPropagation()}
 				role="presentation"
 			>
-				<ReaderSettings onClose={() => (settingsOpen = false)} inReader={true} bind:hideHUD />
+				<ReaderSettings onClose={() => (settingsOpen = false)} inReader={true} />
 			</div>
 		{/if}
 		<LineOrderModal />

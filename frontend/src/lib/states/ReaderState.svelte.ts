@@ -3,6 +3,7 @@ import { user, updateSettings, type ReaderSettingsData } from '$lib/authStore';
 import { apiFetch } from '$lib/api';
 import { fromStore, get } from 'svelte/store';
 import { browser } from '$app/environment';
+import { untrack } from 'svelte';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
@@ -23,6 +24,7 @@ class ReaderState {
   navZoneWidth = $state(15);
   showTriggerOutline = $state(false);
   autoFullscreen = $state(false);
+  hideHUD = $state(false);
   nightMode = $state({
     enabled: false,
     scheduleEnabled: false,
@@ -98,9 +100,10 @@ class ReaderState {
           // Apply DB values to state
           if (s.layoutMode) this.layoutMode = s.layoutMode;
           if (s.readingDirection) this.readingDirection = s.readingDirection;
-          if (s.autoFullscreen !== undefined) this.autoFullscreen = s.autoFullscreen;
           if (s.nightMode) this.nightMode = s.nightMode;
           if (s.invertColor) this.invertColor = s.invertColor;
+          if (s.autoFullscreen !== undefined) this.autoFullscreen = s.autoFullscreen;
+          if (s.hideHUD !== undefined) this.hideHUD = s.hideHUD;
           if (s.firstPageIsCover !== undefined) this.firstPageIsCover = s.firstPageIsCover;
           if (s.retainZoom !== undefined) this.retainZoom = s.retainZoom;
           if (s.navZoneWidth !== undefined) this.navZoneWidth = s.navZoneWidth;
@@ -117,6 +120,7 @@ class ReaderState {
           l: this.layoutMode,
           d: this.readingDirection,
           a: this.autoFullscreen,
+          h: this.hideHUD,
           b: this.nightMode,
           i: this.invertColor,
           c: this.firstPageIsCover,
@@ -155,7 +159,8 @@ class ReaderState {
     this.error = null;
 
     const handleError = (e: any) => console.log(`Set fullscreen state failed ${e}`);
-    if (browser && readerState.autoFullscreen && !document.fullscreenElement)
+    const shouldFullscreen = untrack(() => this.autoFullscreen);
+    if (browser && shouldFullscreen && !document.fullscreenElement)
       document.documentElement.requestFullscreen().catch(handleError);
 
     try {
@@ -194,8 +199,8 @@ class ReaderState {
 
     // 4. Exit fullscreen if automated
     const handleError = (e: any) => console.log(`Set fullscreen state failed ${e}`);
-    if (!browser) return;
-    if (readerState.autoFullscreen && document.fullscreenElement)
+    const shouldExitFullscreen = untrack(() => this.autoFullscreen);
+    if (browser && shouldExitFullscreen && document.fullscreenElement)
       document.exitFullscreen().catch(handleError);
   }
 
@@ -265,6 +270,7 @@ class ReaderState {
         layoutMode: this.layoutMode,
         readingDirection: this.readingDirection,
         autoFullscreen: this.autoFullscreen,
+        hideHUD: this.hideHUD,
         nightMode: this.nightMode,
         invertColor: this.invertColor,
         firstPageIsCover: this.firstPageIsCover,
