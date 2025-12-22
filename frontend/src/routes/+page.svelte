@@ -18,9 +18,6 @@
 	}
 
 	interface Volume {
-		id: string;
-		title: string | null;
-		folderName: string;
 		pageCount: number;
 		progress: UserProgress[];
 	}
@@ -46,8 +43,9 @@
 	const getSeriesProgress = (series: Series) => {
 		let totalPages = 0;
 		let readPages = 0;
+		let completedCount = 0;
 
-		if (!series.volumes || series.volumes.length === 0) return 0;
+		if (!series.volumes || series.volumes.length === 0) return { percent: 0, isRead: false };
 
 		for (const vol of series.volumes) {
 			const pCount = vol.pageCount || 0;
@@ -57,14 +55,18 @@
 			if (progress) {
 				if (progress.completed) {
 					readPages += pCount;
+					completedCount += 1;
 				} else {
 					readPages += progress.page || 0;
 				}
 			}
 		}
 
-		if (totalPages === 0) return 0;
-		return Math.min(100, Math.max(0, (readPages / totalPages) * 100));
+		if (totalPages === 0) return { percent: 0, isRead: false };
+		return {
+			percent: Math.min(100, Math.max(0, (readPages / totalPages) * 100)),
+			isRead: completedCount === series.volumes.length
+		};
 	};
 
 	// --- Initialization & URL Hydration ---
@@ -321,7 +323,7 @@
 						: 'flex flex-col gap-3'}"
 				>
 					{#each library as series (series.id)}
-						{@const percent = getSeriesProgress(series)}
+						{@const { percent, isRead } = getSeriesProgress(series)}
 						{@const isSelected = uiState.selectedIds.has(series.id)}
 
 						<LibraryEntry
@@ -337,7 +339,7 @@
 							isSelectionMode={uiState.isSelectionMode}
 							progress={{
 								percent: percent,
-								isRead: percent === 100,
+								isRead: isRead,
 								showBar: percent > 0
 							}}
 							href={`/series/${series.id}`}
