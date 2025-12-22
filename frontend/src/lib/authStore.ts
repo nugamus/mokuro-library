@@ -10,6 +10,7 @@ export interface ReaderSettingsData {
   navZoneWidth?: number;
   showTriggerOutline?: boolean;
   autoFullscreen?: boolean;
+  hideHUD?: boolean;
   nightMode?: {
     enabled: boolean;
     scheduleEnabled: boolean;
