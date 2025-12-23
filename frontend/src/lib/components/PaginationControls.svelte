@@ -99,16 +99,17 @@
 			aria-label="Pagination"
 		>
 			<div
-				class="hidden sm:block text-[12px] font-bold text-theme-tertiary uppercase tracking-wider mr-2 select-none"
+				class="block text-[12px] font-bold text-theme-tertiary uppercase tracking-wider mr-2 select-none"
 			>
 				<span class="text-theme-primary">{(meta.page - 1) * meta.limit + 1}</span>
 				-
 				<span class="text-theme-primary">{Math.min(meta.page * meta.limit, meta.total)}</span>
-				of
+				<span class="hidden sm:inline">of</span>
+				<span class="inline sm:hidden">/</span>
 				<span class="text-theme-primary">{meta.total}</span>
 			</div>
 
-			<div class="hidden sm:block w-px h-5 bg-white/10 mr-1"></div>
+			<div class="block w-px h-5 bg-white/10 mr-1"></div>
 
 			<button
 				onclick={() => setPage(meta.page - 1)}
@@ -129,10 +130,15 @@
 				>
 			</button>
 
+			<div
+				class="w-8 h-9 flex sm:hidden items-center justify-center text-theme-secondary font-bold select-none text-xs tracking-widest"
+			>
+				{meta.page}/{meta.totalPages}
+			</div>
 			{#each pages as pageNum}
 				{#if pageNum === '...'}
 					<div
-						class="w-8 h-9 flex items-center justify-center text-theme-secondary/50 font-bold select-none text-xs tracking-widest"
+						class="w-8 h-9 hidden sm:flex items-center justify-center text-theme-secondary/50 font-bold select-none text-xs tracking-widest"
 					>
 						•••
 					</div>
@@ -140,7 +146,7 @@
 					<button
 						onclick={() => setPage(Number(pageNum))}
 						disabled={meta.totalPages <= 1}
-						class={`min-w-[36px] h-9 px-3 flex items-center justify-center rounded-full text-sm font-bold transition-all duration-300
+						class={`min-w-[36px] h-9 px-3 hidden sm:flex items-center justify-center rounded-full text-sm font-bold transition-all duration-300
                         ${
 													meta.page === pageNum
 														? 'bg-accent text-white shadow-lg shadow-accent/25 scale-105 cursor-default'
