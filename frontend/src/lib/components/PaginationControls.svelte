@@ -95,7 +95,7 @@
 {#if meta.total >= 0}
 	<div class="flex justify-center relative z-10">
 		<nav
-			class="flex items-center gap-1 p-1.5 pl-4 rounded-full bg-theme-surface/60 backdrop-blur-md border border-white/10 shadow-2xl ring-1 ring-black/5"
+			class="flex items-center gap-1 p-1.5 pl-4 rounded-full bg-theme-surface/60 backdrop-blur-md border border-theme-primary/10 shadow-2xl ring-1 ring-black/5"
 			aria-label="Pagination"
 		>
 			<div
@@ -109,7 +109,7 @@
 				<span class="text-theme-primary">{meta.total}</span>
 			</div>
 
-			<div class="block w-px h-5 bg-white/10 mr-1"></div>
+			<div class="block w-px h-5 bg-theme-tertiary/50 mr-1"></div>
 
 			<button
 				onclick={() => setPage(meta.page - 1)}
@@ -150,7 +150,7 @@
                         ${
 													meta.page === pageNum
 														? 'bg-accent text-white shadow-lg shadow-accent/25 scale-105 cursor-default'
-														: 'text-theme-secondary hover:bg-white/10 hover:text-white'
+														: 'text-theme-secondary hover:bg-white/10 hover:text-theme-primary'
 												}`}
 					>
 						{pageNum}
@@ -177,7 +177,7 @@
 				>
 			</button>
 
-			<div class="w-px h-5 bg-white/10 mx-1"></div>
+			<div class="w-px h-5 bg-theme-tertiary/50 mx-1"></div>
 
 			<div class="relative" bind:this={limitMenuRef}>
 				<button

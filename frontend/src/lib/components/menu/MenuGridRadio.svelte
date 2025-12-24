@@ -32,7 +32,7 @@
 </script>
 
 <div
-	class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-white/5 shadow-lg space-y-3"
+	class="rounded-2xl backdrop-blur-2xl p-6 border border-theme-primary/10 shadow-theme-secondary/20 shadow-lg space-y-3"
 >
 	{#if title}
 		<div class="mb-1 flex items-center justify-between">
@@ -63,7 +63,7 @@
 		onclick={() => (value = option.value)}
 		class="{itemClass} rounded-xl border-2 transition-all duration-200 {isSelected
 			? 'bg-accent-surface border-accent text-accent shadow-lg shadow-accent/50'
-			: 'bg-black/20 border-white/10 text-gray-500 hover:border-accent/40 hover:bg-black/30 hover:text-gray-300'}"
+			: 'bg-black/20 border-theme-primary/20 text-gray-500 hover:border-accent/40 hover:bg-black/30 hover:text-theme-tertiary'}"
 	>
 		{#if children}
 			{@render children(option, isSelected)}

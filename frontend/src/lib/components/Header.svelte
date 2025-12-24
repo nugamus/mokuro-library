@@ -175,7 +175,7 @@
 
 					<button
 						onclick={() => goto('/')}
-						class="group flex items-center gap-2 text-theme-secondary hover:text-white"
+						class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
 						title="Back to Library"
 						aria-label="Back to Library"
 					>
@@ -395,7 +395,7 @@
 
 					<!-- Bookmarked filter button -->
 					{#if uiState.context === 'library'}
-						<div class="w-[2px] h-6 bg-white/10 mx-1"></div>
+						<div class="w-[2px] h-6 bg-theme-tertiary mx-1"></div>
 						<button
 							onclick={() => (uiState.filterBookmarked = !uiState.filterBookmarked)}
 							class="w-10 h-10 flex items-center justify-center rounded-2xl border-2 transition-all duration-200 hover:border-theme-primary/50 {uiState.filterBookmarked

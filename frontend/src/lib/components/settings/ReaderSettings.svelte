@@ -146,7 +146,7 @@ Higher = easier nav, smaller OCR area."
 	<!-- Night Mode Settings -->
 	<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light space-y-4">
 		<div class="flex items-center justify-between">
-			<h3 class="text-lg font-semibold text-white">Night Mode</h3>
+			<h3 class="text-lg font-semibold text-theme-primary">Night Mode</h3>
 			<div class="clean-toggle">
 				<MenuToggle bind:checked={readerState.nightMode.enabled} />
 			</div>
@@ -201,7 +201,7 @@ Higher = easier nav, smaller OCR area."
 	<!-- Invert Colors Settings -->
 	<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light space-y-4">
 		<div class="flex items-center justify-between">
-			<h3 class="text-lg font-semibold text-white">Invert Colors</h3>
+			<h3 class="text-lg font-semibold text-theme-primary">Invert Colors</h3>
 			<div class="clean-toggle">
 				<MenuToggle bind:checked={readerState.invertColor.enabled} />
 			</div>
@@ -288,11 +288,11 @@ Higher = easier nav, smaller OCR area."
 						d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
 					/>
 				</svg>
-				<h2 class="text-2xl font-bold text-white">Reader Settings</h2>
+				<h2 class="text-2xl font-bold text-theme-primary">Reader Settings</h2>
 			</div>
 			<button
 				onclick={onClose}
-				class="p-2 rounded-lg text-theme-secondary hover:text-white hover:bg-theme-surface-hover transition-colors"
+				class="p-2 rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-hover transition-colors"
 				aria-label="Close"
 			>
 				<svg
@@ -322,7 +322,7 @@ Higher = easier nav, smaller OCR area."
 {:else}
 	<div class="w-full p-8 max-w-4xl">
 		<div class="mb-8">
-			<h1 class="text-3xl font-bold text-white mb-2">Reader Settings</h1>
+			<h1 class="text-3xl font-bold text-theme-primary mb-2">Reader Settings</h1>
 			<p class="text-base text-theme-secondary">Configure how you read your content.</p>
 		</div>
 

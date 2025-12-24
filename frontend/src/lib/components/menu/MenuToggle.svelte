@@ -12,14 +12,16 @@
 
 <button
 	onclick={() => (checked = !checked)}
-	class="w-full text-left rounded-2xl bg-black/30 backdrop-blur-2xl px-5 py-4 border border-white/5 shadow-lg flex items-center justify-between hover:bg-black/40 transition-all duration-200 group"
+	class="w-full text-left rounded-2xl bg-black/0 backdrop-blur-2xl px-5 py-4 border border-theme-primary/20 shadow-theme-secondary/20 shadow-lg flex items-center justify-between hover:bg-black/40 transition-all duration-200 group"
 >
 	<div class="flex flex-col">
-		<span class="font-semibold text-sm text-gray-400 group-hover:text-white transition-colors">
+		<span
+			class="font-semibold text-sm text-theme-secondary group-hover:text-theme-primary transition-colors"
+		>
 			{label}
 		</span>
-		{#if description}
-			<span class="text-xs text-gray-500 mt-0.5">{description}</span>
+		{#if description || true}
+			<span class="text-xs text-theme-secondary mt-0.5">{description}</span>
 		{/if}
 	</div>
 

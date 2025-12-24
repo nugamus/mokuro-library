@@ -221,11 +221,11 @@
 						<path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
 						<line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
 					</svg>
-					<h2 class="text-2xl font-bold text-white">Appearance</h2>
+					<h2 class="text-2xl font-bold text-theme-primary">Appearance</h2>
 				</div>
 				<button
 					onclick={onClose}
-					class="p-2 rounded-lg text-theme-secondary hover:text-white hover:bg-white/10 transition-colors"
+					class="p-2 rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-white/10 transition-colors"
 					aria-label="Close"
 				>
 					<svg
@@ -258,10 +258,10 @@
 					]}
 				>
 					{#snippet children(option, isSelected)}
-						<div class={isSelected ? 'text-accent' : 'text-white'}>
+						<div class={isSelected ? 'text-accent' : 'text-theme-primary'}>
 							{@render option.icon?.()}
 						</div>
-						<span class="font-medium {isSelected ? 'text-accent' : 'text-white'}">
+						<span class="font-medium {isSelected ? 'text-accent' : 'text-theme-primary'}">
 							{option.label}
 						</span>
 					{/snippet}
@@ -279,7 +279,8 @@
 					}))}
 				>
 					{#snippet children(option, isSelected)}
-						<span class="font-medium flex-shrink-0 {isSelected ? 'text-accent' : 'text-white'}"
+						<span
+							class="font-medium flex-shrink-0 {isSelected ? 'text-accent' : 'text-theme-primary'}"
 							>{option.label}</span
 						>
 						<div class="flex-1"></div>
@@ -324,7 +325,7 @@
 							<div class="flex justify-end">
 								<button
 									onclick={resetDefaults}
-									class="flex items-center gap-2 px-4 py-2 rounded-xl border border-theme-border-light bg-theme-main hover:bg-theme-surface-hover text-theme-secondary hover:text-white transition-colors"
+									class="flex items-center gap-2 px-4 py-2 rounded-xl border border-theme-border-light bg-theme-main hover:bg-theme-surface-hover text-theme-secondary hover:text-theme-primary transition-colors"
 								>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
@@ -358,11 +359,11 @@
 										stroke-width="2"
 										stroke-linecap="round"
 										stroke-linejoin="round"
-										class="text-white"
+										class="text-theme-primary"
 									>
 										<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
 									</svg>
-									<h4 class="text-sm font-bold text-white uppercase tracking-wider">
+									<h4 class="text-sm font-bold text-theme-primary uppercase tracking-wider">
 										Dark Mode Colors
 									</h4>
 								</div>
@@ -381,7 +382,9 @@
 												style="background-color: {colorValue};"
 											></div>
 											<div class="flex-1 min-w-0">
-												<div class="text-xs font-bold text-white uppercase tracking-wider mb-1">
+												<div
+													class="text-xs font-bold text-theme-primary uppercase tracking-wider mb-1"
+												>
 													{entry.label}
 												</div>
 												<div class="text-xs text-theme-secondary mb-1">
@@ -401,7 +404,7 @@
 												stroke-width="2"
 												stroke-linecap="round"
 												stroke-linejoin="round"
-												class="text-theme-secondary group-hover:text-white transition-colors"
+												class="text-theme-secondary group-hover:text-theme-primary transition-colors"
 											>
 												<path d="M7 7h10v10" />
 												<path d="M7 17L17 7" />
@@ -423,7 +426,7 @@
 										stroke-width="2"
 										stroke-linecap="round"
 										stroke-linejoin="round"
-										class="text-white"
+										class="text-theme-primary"
 									>
 										<circle cx="12" cy="12" r="5" />
 										<line x1="12" y1="1" x2="12" y2="3" />
@@ -435,7 +438,7 @@
 										<line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
 										<line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
 									</svg>
-									<h4 class="text-sm font-bold text-white uppercase tracking-wider">
+									<h4 class="text-sm font-bold text-theme-primary uppercase tracking-wider">
 										Light Mode Colors
 									</h4>
 								</div>
@@ -454,7 +457,9 @@
 												style="background-color: {colorValue};"
 											></div>
 											<div class="flex-1 min-w-0">
-												<div class="text-xs font-bold text-white uppercase tracking-wider mb-1">
+												<div
+													class="text-xs font-bold text-theme-primary uppercase tracking-wider mb-1"
+												>
 													{entry.label}
 												</div>
 												<div class="text-xs text-theme-secondary mb-1">
@@ -474,7 +479,7 @@
 												stroke-width="2"
 												stroke-linecap="round"
 												stroke-linejoin="round"
-												class="text-theme-secondary group-hover:text-white transition-colors"
+												class="text-theme-secondary group-hover:text-theme-primary transition-colors"
 											>
 												<path d="M7 7h10v10" />
 												<path d="M7 17L17 7" />

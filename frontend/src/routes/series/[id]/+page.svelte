@@ -286,7 +286,7 @@
 				</div>
 			{:else}
 				<h2
-					class="text-2xl sm:text-3xl font-bold text-white mb-6 drop-shadow-md flex items-center gap-3"
+					class="text-2xl sm:text-3xl font-bold text-theme-primary mb-6 drop-shadow-md flex items-center gap-3"
 				>
 					Volumes
 					<span class="text-lg font-normal text-theme-secondary opacity-80">
@@ -389,7 +389,7 @@
 										e.stopPropagation();
 										toggleComplete(vol);
 									}}
-									class={`p-2 rounded-full border transition-all duration-200 active:scale-90 ${
+									class={`p-2 rounded-full border border-theme-border transition-all duration-200 active:scale-90 ${
 										stats.isRead
 											? 'bg-status-success border-status-success text-white'
 											: 'border-theme-border text-theme-secondary hover:text-white hover:border-white'
