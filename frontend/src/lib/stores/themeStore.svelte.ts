@@ -133,16 +133,16 @@ class ThemeStore {
           'reading-color': '#bd93f9'
         },
         light: {
-          'main-background': '#f8f8f2', // Cream
-          'card-background': '#ffffff', // White
-          'card-highlight': '#f3f4f6', // Light Grey
-          'border-color': '#e5e7eb', // Grey 200
-          'primary-color': '#7c3aed', // Violet-600
-          'primary-hover': '#6d28d9', // Violet-700
-          'primary-surface': '#f3e8ff', // Violet-100
-          'main-text': '#111827', // Gray-900 (high contrast)
-          'muted-text': '#4b5563', // Gray-600
-          'reading-color': '#7c3aed'
+          'main-background': '#4a5568', // lighter purple-gray
+          'card-background': '#556270', // lighter purple-gray for cards
+          'card-highlight': '#6272a4', // even lighter purple-gray for hover
+          'border-color': '#6272a4', // visible borders
+          'primary-color': '#bd93f9', // purple
+          'primary-hover': '#c9a9ff', // lighter purple for hover
+          'primary-surface': '#616284', // tinted purple-gray/purple blend
+          'main-text': '#f8f8f2', // foreground (cream)
+          'muted-text': '#a0a0a0', // lighter muted text
+          'reading-color': '#bd93f9' // purple
         }
       }
     },
