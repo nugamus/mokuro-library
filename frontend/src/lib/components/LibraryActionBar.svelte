@@ -123,9 +123,9 @@
 
 {#if uiState.isSelectionMode}
 	<div
-		class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 p-2 rounded-2xl bg-theme-surface/90 backdrop-blur-xl border border-white/10 shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
+		class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center p-2 rounded-2xl bg-theme-surface/90 backdrop-blur-xl border border-theme-primary/20 shadow-2xl animate-in slide-in-from-bottom-10 fade-in duration-300"
 	>
-		<div class="px-4 font-bold text-white flex items-center gap-2 pr-4">
+		<div class="px-2 font-bold text-theme-primary flex items-center gap-2">
 			<span
 				class="bg-accent text-white text-xs rounded-full w-6 h-6 flex items-center justify-center"
 			>
@@ -135,11 +135,12 @@
 		</div>
 
 		{#if selectionCount >= 1}
-			<div class="flex items-center gap-1 pl-3 border-l border-white/10">
+			<div class="w-[2px] h-8 bg-theme-tertiary/70 mx-1"></div>
+			<div class="flex items-center gap-1">
 				<button
 					onclick={openDownloadMenu}
 					disabled={isProcessing}
-					class="p-2.5 rounded-xl hover:bg-white/10 text-theme-secondary hover:text-white transition-colors disabled:opacity-50"
+					class="p-2.5 rounded-xl hover:bg-theme-primary/10 text-theme-secondary hover:text-theme-primary transition-colors disabled:opacity-50"
 					title="Download"
 				>
 					{#if isProcessing}
@@ -186,7 +187,7 @@
 					<button
 						onclick={onRename}
 						disabled={isProcessing}
-						class="p-2.5 rounded-xl hover:bg-white/10 text-theme-secondary hover:text-white transition-colors disabled:opacity-50"
+						class="p-2.5 rounded-xl hover:bg-theme-primary/10 text-theme-secondary hover:text-theme-primary transition-colors disabled:opacity-50"
 						title="Rename"
 					>
 						<svg
@@ -231,7 +232,8 @@
 			</div>
 		{/if}
 
-		<div class="border-l border-white/10 pl-2 ml-1">
+		<div class="w-[2px] h-8 bg-theme-tertiary/70 mx-1"></div>
+		<div class="ml-1">
 			<button
 				onclick={() => uiState.exitSelectionMode()}
 				class="p-2 rounded-full hover:bg-white/20 text-theme-secondary hover:text-white transition-colors"

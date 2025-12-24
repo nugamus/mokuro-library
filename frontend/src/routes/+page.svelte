@@ -296,10 +296,10 @@
 	{:else if library.length === 0}
 		<div class="flex-grow flex flex-col items-center justify-center py-20 text-center">
 			<div
-				class="rounded-3xl bg-black/20 backdrop-blur-3xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] p-8 sm:p-12 max-w-md"
+				class="rounded-3xl backdrop-blur-3xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] p-8 sm:p-12 max-w-md"
 			>
 				<div
-					class="bg-black/30 backdrop-blur-2xl p-6 rounded-full mb-6 border border-white/5 inline-block"
+					class="bg-theme-surface-hover backdrop-blur-2xl p-6 rounded-full mb-6 border border-white/5 inline-block"
 				>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -316,7 +316,7 @@
 						<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
 					</svg>
 				</div>
-				<p class="text-xl font-medium text-white mb-2">Your library is empty</p>
+				<p class="text-xl font-medium text-theme-primary mb-2">Your library is empty</p>
 				<p class="text-theme-secondary max-w-sm mb-6">
 					Upload some Mokuro-processed manga volumes to get started building your collection.
 				</p>

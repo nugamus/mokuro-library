@@ -56,7 +56,7 @@
 				e.stopPropagation();
 				goto(`/series/${readerState.seriesId}`);
 			}}
-			class="group flex items-center gap-2 pr-4 text-theme-secondary hover:text-white transition-colors"
+			class="group flex items-center gap-2 pr-4 text-theme-secondary hover:text-theme-primary transition-colors"
 		>
 			<div class="p-2 rounded-xl group-hover:bg-white/10 transition-colors">
 				<svg
@@ -154,14 +154,14 @@
 
 	<div class="flex flex-1 justify-end gap-2 items-center">
 		<span
-			class="hidden sm:flex items-center flex-nowrap whitespace-nowrap px-3 py-2 mr-2 rounded-xl bg-black/20 border border-white/5 text-xs font-medium text-theme-secondary font-mono"
+			class="hidden sm:flex items-center flex-nowrap whitespace-nowrap px-3 py-2 mr-2 rounded-xl bg-black/20 border border-white/5 text-xs font-medium text-theme-primary font-mono"
 		>
-			<span class="text-white mr-1">
+			<span class="mr-1">
 				{readerState.currentPageIndex + 1}{readerState.visiblePages.length === 2
 					? `-${readerState.currentPageIndex + 2}`
 					: ''}
 			</span>
-			<span class="opacity-50">/ {readerState.totalPages}</span>
+			<span>/ {readerState.totalPages}</span>
 		</span>
 
 		{#if readerState.hasUnsavedChanges}

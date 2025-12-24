@@ -48,33 +48,33 @@ class ThemeStore {
       id: 'mokuro',
       name: 'Mokuro',
       previewColors: {
-        dark: ['#0f172a', '#1e293b', '#334155', '#6366f1', '#334155'], // main-bg, card-bg, card-highlight, primary, border
-        light: ['#334155', '#475569', '#64748b', '#6366f1', '#64748b'] // lighter slate tones maintaining the dark theme character
+        dark: ['#0f172a', '#1e293b', '#334155', '#6366f1', '#334155'],
+        light: ['#f8fafc', '#ffffff', '#e2e8f0', '#4f46e5', '#cbd5e1']
       },
       colors: {
         dark: {
-          'main-background': '#0f172a', // slate-900
-          'card-background': '#1e293b', // slate-800
-          'card-highlight': '#334155', // slate-700
-          'border-color': '#334155', // slate-700
-          'primary-color': '#6366f1', // indigo-500
-          'primary-hover': '#4f46e5', // indigo-600
-          'primary-surface': '#202752', // tinted slate-950/indigo-900 blend
-          'main-text': '#f1f5f9', // slate-100
-          'muted-text': '#94a3b8', // slate-400
-          'reading-color': '#6366f1' // indigo-500
+          'main-background': '#0f172a',
+          'card-background': '#1e293b',
+          'card-highlight': '#334155',
+          'border-color': '#334155',
+          'primary-color': '#6366f1',
+          'primary-hover': '#4f46e5',
+          'primary-surface': '#202752',
+          'main-text': '#f1f5f9',
+          'muted-text': '#94a3b8',
+          'reading-color': '#6366f1'
         },
         light: {
-          'main-background': '#334155', // slate-700
-          'card-background': '#475569', // slate-600
-          'card-highlight': '#64748b', // slate-500
-          'border-color': '#64748b', // slate-500
-          'primary-color': '#6366f1', // indigo-500
-          'primary-hover': '#818cf8', // indigo-400
-          'primary-surface': '#3d4974', // tinted slate-800/indigo-800 blend
-          'main-text': '#f1f5f9', // slate-100
-          'muted-text': '#cbd5e1', // slate-300
-          'reading-color': '#6366f1' // indigo-500
+          'main-background': '#f8fafc', // slate-50
+          'card-background': '#ffffff', // white
+          'card-highlight': '#f1f5f9', // slate-100
+          'border-color': '#e2e8f0', // slate-200
+          'primary-color': '#4f46e5', // indigo-600
+          'primary-hover': '#4338ca', // indigo-700
+          'primary-surface': '#e0e7ff', // indigo-100
+          'main-text': '#020617', // slate-950 (Deepest Slate, nearly black)
+          'muted-text': '#334155', // slate-700 (Much darker than before)
+          'reading-color': '#4f46e5'
         }
       }
     },
@@ -83,32 +83,32 @@ class ThemeStore {
       name: 'Catppuccin',
       previewColors: {
         dark: ['#1e1e2e', '#181825', '#313244', '#89b4fa', '#313244'],
-        light: ['#5b5f7d', '#6e738d', '#8b8fa8', '#1e66f5', '#8b8fa8']
+        light: ['#eff1f5', '#e6e9ef', '#ccd0da', '#1e66f5', '#bcc0cc']
       },
       colors: {
         dark: {
-          'main-background': '#1e1e2e', // base (Mocha)
-          'card-background': '#181825', // mantle (Mocha)
-          'card-highlight': '#313244', // surface0 (Mocha)
-          'border-color': '#313244', // surface0 (Mocha)
-          'primary-color': '#89b4fa', // blue (Mocha)
-          'primary-hover': '#74c7ec', // sapphire (Mocha)
-          'primary-surface': '#333c57', // tinted base/blue blend
-          'main-text': '#cdd6f4', // text (Mocha)
-          'muted-text': '#bac2de', // subtext1 (Mocha)
-          'reading-color': '#89b4fa' // blue (Mocha)
+          'main-background': '#1e1e2e',
+          'card-background': '#181825',
+          'card-highlight': '#313244',
+          'border-color': '#313244',
+          'primary-color': '#89b4fa',
+          'primary-hover': '#74c7ec',
+          'primary-surface': '#333c57',
+          'main-text': '#cdd6f4',
+          'muted-text': '#bac2de',
+          'reading-color': '#89b4fa'
         },
         light: {
-          'main-background': '#5b5f7d', // lighter purple-gray
-          'card-background': '#6e738d', // lighter purple-gray for cards
-          'card-highlight': '#8b8fa8', // lighter purple-gray for hover
-          'border-color': '#8b8fa8', // visible borders
-          'primary-color': '#1e66f5', // blue (Latte)
-          'primary-hover': '#3584e4', // sapphire (Latte)
-          'primary-surface': '#4f6095', // tinted purple-gray/blue blend
-          'main-text': '#eff1f5', // base (Latte)
-          'muted-text': '#dce0e8', // surface0 (Latte)
-          'reading-color': '#1e66f5' // blue (Latte)
+          'main-background': '#eff1f5', // Latte Base
+          'card-background': '#ffffff', // White
+          'card-highlight': '#ccd0da', // Latte Surface0
+          'border-color': '#bcc0cc', // Latte Surface1
+          'primary-color': '#1e66f5', // Latte Blue
+          'primary-hover': '#179299', // Latte Teal
+          'primary-surface': '#dce0e8', // Latte Crust
+          'main-text': '#181825', // Using Dark Mode's "Mantle" color for high contrast text
+          'muted-text': '#4c4f69', // Using Latte "Text" color for muted (darker than subtext)
+          'reading-color': '#1e66f5'
         }
       }
     },
@@ -117,32 +117,32 @@ class ThemeStore {
       name: 'Dracula',
       previewColors: {
         dark: ['#282a36', '#343746', '#44475a', '#bd93f9', '#44475a'],
-        light: ['#4a5568', '#556270', '#6272a4', '#bd93f9', '#6272a4']
+        light: ['#f8f8f2', '#ffffff', '#e2e2e2', '#9333ea', '#d1d5db']
       },
       colors: {
         dark: {
-          'main-background': '#282a36', // background
-          'card-background': '#343746', // current line
-          'card-highlight': '#44475a', // selection
-          'border-color': '#44475a', // selection
-          'primary-color': '#bd93f9', // purple
-          'primary-hover': '#ff79c6', // pink
-          'primary-surface': '#463f5d', // tinted background/purple blend
-          'main-text': '#f8f8f2', // foreground
-          'muted-text': '#6272a4', // comment
-          'reading-color': '#bd93f9' // purple
+          'main-background': '#282a36',
+          'card-background': '#343746',
+          'card-highlight': '#44475a',
+          'border-color': '#44475a',
+          'primary-color': '#bd93f9',
+          'primary-hover': '#ff79c6',
+          'primary-surface': '#463f5d',
+          'main-text': '#f8f8f2',
+          'muted-text': '#6272a4',
+          'reading-color': '#bd93f9'
         },
         light: {
-          'main-background': '#4a5568', // lighter purple-gray
-          'card-background': '#556270', // lighter purple-gray for cards
-          'card-highlight': '#6272a4', // even lighter purple-gray for hover
-          'border-color': '#6272a4', // visible borders
-          'primary-color': '#bd93f9', // purple
-          'primary-hover': '#c9a9ff', // lighter purple for hover
-          'primary-surface': '#616284', // tinted purple-gray/purple blend
-          'main-text': '#f8f8f2', // foreground (cream)
-          'muted-text': '#a0a0a0', // lighter muted text
-          'reading-color': '#bd93f9' // purple
+          'main-background': '#f8f8f2', // Cream
+          'card-background': '#ffffff', // White
+          'card-highlight': '#f3f4f6', // Light Grey
+          'border-color': '#e5e7eb', // Grey 200
+          'primary-color': '#7c3aed', // Violet-600
+          'primary-hover': '#9333ea', // Purple-600
+          'primary-surface': '#f3e8ff',
+          'main-text': '#0b0d12', // Near Pitch Black (Darker than original background)
+          'muted-text': '#4b5563', // Grey 600 (Darker cool grey)
+          'reading-color': '#7c3aed'
         }
       }
     },
@@ -151,32 +151,32 @@ class ThemeStore {
       name: 'Gruvbox',
       previewColors: {
         dark: ['#282828', '#3c3836', '#504945', '#fe8019', '#504945'],
-        light: ['#665c54', '#7c6f64', '#928374', '#d65d0e', '#928374']
+        light: ['#fbf1c7', '#ebdbb2', '#d5c4a1', '#d65d0e', '#d5c4a1']
       },
       colors: {
         dark: {
-          'main-background': '#282828', // bg0
-          'card-background': '#3c3836', // bg1
-          'card-highlight': '#504945', // bg2
-          'border-color': '#504945', // bg2
-          'primary-color': '#fe8019', // orange
-          'primary-hover': '#d65d0e', // bright_orange
-          'primary-surface': '#533926', // tinted bg0/orange blend
-          'main-text': '#ebdbb2', // fg
-          'muted-text': '#a89984', // gray
-          'reading-color': '#fe8019' // orange
+          'main-background': '#282828',
+          'card-background': '#3c3836',
+          'card-highlight': '#504945',
+          'border-color': '#504945',
+          'primary-color': '#fe8019',
+          'primary-hover': '#d65d0e',
+          'primary-surface': '#533926',
+          'main-text': '#ebdbb2',
+          'muted-text': '#a89984',
+          'reading-color': '#fe8019'
         },
         light: {
-          'main-background': '#665c54', // lighter warm brown
-          'card-background': '#7c6f64', // lighter warm gray for cards
-          'card-highlight': '#928374', // even lighter warm gray for hover
-          'border-color': '#928374', // visible borders
-          'primary-color': '#d65d0e', // bright_orange
-          'primary-hover': '#fe8019', // orange
-          'primary-surface': '#7d5c46', // tinted warm brown/orange blend
-          'main-text': '#fbf1c7', // bg0 (light beige)
-          'muted-text': '#d5c4a1', // bg2 (lighter beige)
-          'reading-color': '#d65d0e' // bright_orange
+          'main-background': '#fbf1c7', // Cream
+          'card-background': '#ebdbb2', // Beige
+          'card-highlight': '#d5c4a1', // Darker Beige
+          'border-color': '#bdae93', // Distinct border
+          'primary-color': '#c2410c', // Orange-700 (Darkened for light mode)
+          'primary-hover': '#ea580c', // Orange-600
+          'primary-surface': '#f2e5bc',
+          'main-text': '#1c1917', // Stone-900 (Near black warm grey)
+          'muted-text': '#57534e', // Stone-600 (Darker warm grey)
+          'reading-color': '#c2410c'
         }
       }
     }
