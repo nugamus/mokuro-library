@@ -25,7 +25,7 @@
 <div>
 	<div class="flex items-center justify-between mb-2">
 		<div class="flex items-center">
-			<div class="block text-sm font-semibold text-gray-400">{label}</div>
+			<div class="block text-sm font-semibold text-theme-secondary">{label}</div>
 			{#if tooltip}
 				<SettingTooltip content={tooltip} />
 			{/if}
@@ -52,9 +52,9 @@
 				background: linear-gradient(
 					to right,
 					var(--color-accent) 0%,
-					var(--color-accent) calc(var(--progress) * 100%),
-					rgba(255, 255, 255, 0.1) calc(var(--progress) * 100%),
-					rgba(255, 255, 255, 0.1) 100%
+					var(--color-accent-hover) calc(var(--progress) * 100%),
+					var(--color-theme-tertiary) calc(var(--progress) * 100%),
+					var(--color-theme-tertiary) 100%
 				);
 			}
 
