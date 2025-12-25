@@ -1,5 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '../generated/prisma/client'; // Import Prisma for types
+import { updateSeriesStatus } from '../utils/seriesStatus';
 
 
 // Define a schema for the request body on PUT
@@ -19,7 +20,8 @@ const seriesUpdateSchema = {
   type: 'object',
   properties: {
     title: { type: ['string', 'null'] }, // Allow string or explicit null
-    description: { type: ['string', 'null'] }
+    description: { type: ['string', 'null'] },
+    bookmarked: { type: 'boolean' }
   }
 };
 
@@ -52,6 +54,7 @@ interface IdParams {
 interface SeriesUpdateBody {
   title?: string | null;
   description?: string | null;
+  bookmarked?: boolean;
 }
 
 const metadataRoutes: FastifyPluginAsync = async (
@@ -149,6 +152,27 @@ const metadataRoutes: FastifyPluginAsync = async (
           },
         });
 
+        // Recalculate Series Status (Read/Unread/InProgress)
+        // We need to find the seriesId first
+        const volume = await fastify.prisma.volume.findUnique({
+          where: { id: volumeId },
+          select: { seriesId: true }
+        });
+        if (volume && data.completed !== undefined) {
+          await updateSeriesStatus(fastify.prisma, volume.seriesId);
+        } else if (volume && data.page !== undefined) {
+          // current page update means series is touched
+          const series = await fastify.prisma.series.findUnique({
+            where: { id: volume.seriesId },
+            select: { ownerId: true, status: true }
+          });
+          if (series?.status === 0)
+            await fastify.prisma.series.update({
+              where: { id: volume.seriesId },
+              data: { status: 1 }
+            });
+        }
+
         // Update the parent Series 'lastReadAt' timestamp
         // This ensures the series bubbles to the top of "Recently Read" lists
         await fastify.prisma.series.updateMany({
@@ -201,6 +225,14 @@ const metadataRoutes: FastifyPluginAsync = async (
         await fastify.prisma.userProgress.delete({
           where: { userId_volumeId: { userId, volumeId } },
         });
+
+        // Recalculate Series Status (Read/Unread/InProgress)
+        // We need to find the seriesId first
+        const volume = await fastify.prisma.volume.findUnique({
+          where: { id: volumeId },
+          select: { seriesId: true }
+        });
+        if (volume) await updateSeriesStatus(fastify.prisma, volume.seriesId);
         return reply.send({ message: 'Progress reset successfully.' });
       } catch (error) {
         // P2025 = Record not found (already empty)
@@ -220,14 +252,14 @@ const metadataRoutes: FastifyPluginAsync = async (
 
   /**
    * PATCH /api/metadata/series/:id
-   * Updates Series metadata (Title, Description).
+   * Updates Series metadata (Title, Description, Bookmarked).
    */
   fastify.patch<{ Params: IdParams; Body: SeriesUpdateBody }>(
     '/series/:id',
     { schema: { body: seriesUpdateSchema } },
     async (request, reply) => {
       const { id } = request.params;
-      const { title, description } = request.body;
+      const { title, description, bookmarked } = request.body;
 
       try {
         const series = await fastify.prisma.series.findFirst({
@@ -253,6 +285,10 @@ const metadataRoutes: FastifyPluginAsync = async (
 
         if (description !== undefined) {
           dataToUpdate.description = description;
+        }
+
+        if (bookmarked !== undefined) {
+          dataToUpdate.bookmarked = bookmarked;
         }
 
         await fastify.prisma.series.update({

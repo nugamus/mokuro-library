@@ -1,25 +1,26 @@
 <script lang="ts">
 	import { user } from '$lib/authStore';
 	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
-	import { page } from '$app/stores';
-	import { apiFetch, triggerDownload } from '$lib/api';
+	import { page } from '$app/state';
+	import { apiFetch } from '$lib/api';
 	import { confirmation } from '$lib/confirmationStore';
-	import { contextMenu } from '$lib/contextMenuStore';
-	import UploadModal from '$lib/components/UploadModal.svelte';
-	import LibrarySearchBar from '$lib/components/LibrarySearchBar.svelte';
-	import PaginationControls from '$lib/components/PaginationControls.svelte';
+	import { uiState } from '$lib/states/uiState.svelte';
+	import { metadataOps } from '$lib/states/metadataOperations.svelte';
+	import Footer from '$lib/components/Footer.svelte';
+	import LibraryActionBar from '$lib/components/LibraryActionBar.svelte';
+	import LibraryEntry from '$lib/components/LibraryEntry.svelte';
+	import EditSeriesModal from '$lib/components/EditSeriesModal.svelte';
+	import { type FilterStatus } from '$lib/states/uiState.svelte';
 
-	// --- Type definitions ---
+	// --- Type Definitions ---
 	interface UserProgress {
 		page: number;
 		completed: boolean;
 	}
 
 	interface Volume {
-		id: string;
-		title: string | null;
-		folderName: string;
 		pageCount: number;
 		progress: UserProgress[];
 	}
@@ -27,55 +28,172 @@
 	interface Series {
 		id: string;
 		title: string | null;
+		description: string | null;
 		folderName: string;
 		coverPath: string | null;
 		volumes: Volume[];
+		updatedAt: string;
+		lastReadAt?: string | null;
+		bookmarked?: boolean;
 	}
-
-	interface LibraryResponse {
-		data: Series[];
-		meta: {
-			total: number;
-			page: number;
-			limit: number;
-			totalPages: number;
-		};
-	}
-
-	type ViewMode = 'grid' | 'list';
 
 	// --- State ---
 	let library = $state<Series[]>([]);
-	let meta = $state({ total: 0, page: 1, limit: 20, totalPages: 1 });
+	let meta = $state({ total: 0, page: 1, limit: 24, totalPages: 1 });
 	let isLoadingLibrary = $state(true);
 	let libraryError = $state<string | null>(null);
-	let isUploadModalOpen = $state(false);
 
-	// UI State (Persisted)
-	let viewMode = $derived($page.url.searchParams.get('view') || 'grid');
+	let isEditModalOpen = $state(false);
+	let editModalTarget: Series | null = $state(null);
 
-	// --- API Query Logic ---
-	// Create a derived query string that EXCLUDES 'view'.
-	// This ensures the fetch effect below only runs when 'q', 'sort', 'page', etc. change.
-	let apiQueryString = $derived.by(() => {
-		const params = new URLSearchParams($page.url.searchParams);
-		params.delete('view'); // Ignore view changes for fetching
-		return params.toString();
+	// --- Helper: Calculate Series Progress ---
+	const getSeriesProgress = (series: Series) => {
+		let totalPages = 0;
+		let readPages = 0;
+		let completedCount = 0;
+
+		if (!series.volumes || series.volumes.length === 0) return { percent: 0, isRead: false };
+
+		for (const vol of series.volumes) {
+			const pCount = vol.pageCount || 0;
+			totalPages += pCount;
+
+			const progress = vol.progress?.[0];
+			if (progress) {
+				if (progress.completed) {
+					readPages += pCount;
+					completedCount += 1;
+				} else {
+					readPages += progress.page || 0;
+				}
+			}
+		}
+
+		if (totalPages === 0) return { percent: 0, isRead: false };
+		return {
+			percent: Math.min(100, Math.max(0, (readPages / totalPages) * 100)),
+			isRead: completedCount === series.volumes.length
+		};
+	};
+
+	// --- Initialization & URL Hydration ---
+
+	onMount(() => {
+		// Register Context
+		uiState.setContext('library', 'Library', [
+			{ key: 'title', label: 'Title' },
+			{ key: 'updated', label: 'Last Updated' },
+			{ key: 'lastRead', label: 'Recent' }
+		]);
 	});
 
-	// --- Auth Effect ---
-	$effect(() => {
+	onMount(() => {
+		// Hydrate State from URL
 		if (browser) {
-			if ($user === null) {
-				goto('/login');
+			const params = page.url.searchParams;
+
+			// Search
+			const q = params.get('q');
+			if (q !== null && q !== uiState.searchQuery) {
+				uiState.searchQuery = q;
+			}
+
+			// Sort & Order (Split params)
+			const sort = params.get('sort');
+			const order = params.get('order');
+
+			if (sort) {
+				// Map Backend -> UI
+				if (sort === 'updated') uiState.sortKey = 'updated';
+				else if (sort === 'recent') uiState.sortKey = 'lastRead';
+				else uiState.sortKey = 'title';
+			}
+
+			if (order === 'asc' || order === 'desc') {
+				uiState.sortOrder = order;
+			}
+
+			// Filters
+			const status = params.get('status');
+			if (status && uiState.filterStatus !== status) {
+				uiState.filterStatus = status as FilterStatus;
+			}
+
+			const bookmarked = params.get('bookmarked');
+			if (bookmarked === 'true') {
+				uiState.filterBookmarked = true;
 			}
 		}
 	});
 
-	// --- Library Fetch Effect ---
+	// --- Auth Check ---
+	$effect(() => {
+		if (browser && $user === null) {
+			goto('/login');
+		}
+		// CLEANUP: Flush pending writes when leaving the library view
+		return () => {
+			metadataOps.flush();
+		};
+	});
+
+	// --- Data Fetching & URL Sync ---
 	$effect(() => {
 		if ($user && browser) {
-			fetchLibrary(`?${apiQueryString}`);
+			// Dependency tracking: include libraryVersion to force re-fetches
+			const _version = uiState.libraryVersion;
+
+			const currentParams = new URLSearchParams(page.url.searchParams);
+			const newParams = new URLSearchParams(currentParams);
+
+			// A. Construct Query Params (Map UI -> Backend)
+
+			// 1. Search (q)
+			if (uiState.searchQuery) newParams.set('q', uiState.searchQuery);
+			else newParams.delete('q');
+
+			// 2. Sort & Order (Separate keys, matching backend library.ts)
+			let backendSort = 'title';
+			if (uiState.sortKey === 'updated') backendSort = 'updated';
+			if (uiState.sortKey === 'lastRead') backendSort = 'recent'; // 'recent' maps to lastReadAt in backend
+
+			newParams.set('sort', backendSort);
+			newParams.set('order', uiState.sortOrder);
+
+			// 3. Status
+			if (uiState.filterStatus !== 'all') {
+				newParams.set('status', uiState.filterStatus);
+			} else {
+				newParams.delete('status');
+			}
+
+			// 4. Bookmarked
+			if (uiState.filterBookmarked) {
+				newParams.set('bookmarked', 'true');
+			} else {
+				newParams.delete('bookmarked');
+			}
+
+			// B. Handle Pagination Reset
+			// Detect if query criteria changed (excluding page)
+			const criteriaChanged =
+				currentParams.get('q') !== newParams.get('q') ||
+				currentParams.get('sort') !== newParams.get('sort') ||
+				currentParams.get('order') !== newParams.get('order') ||
+				currentParams.get('status') !== newParams.get('status') ||
+				currentParams.get('bookmarked') !== newParams.get('bookmarked');
+			if (criteriaChanged) {
+				newParams.set('page', '1');
+			}
+
+			// C. Update URL
+			const queryString = newParams.toString();
+			if (queryString !== currentParams.toString()) {
+				goto(`?${queryString}`, { replaceState: true, keepFocus: true, noScroll: true });
+			}
+
+			// D. Trigger Fetch
+			fetchLibrary(`?${queryString}`);
 		}
 	});
 
@@ -83,6 +201,8 @@
 		try {
 			if (!silent) isLoadingLibrary = true;
 			libraryError = null;
+
+			// Backend expects: /api/library?page=1&limit=24&q=...&sort=title&order=asc
 			const response = await apiFetch(`/api/library${queryString}`);
 			library = response.data as Series[];
 			meta = response.meta;
@@ -93,407 +213,268 @@
 		}
 	};
 
-	const handleDeleteSeries = (seriesId: string, seriesTitle: string) => {
-		confirmation.open(
-			'Delete Series?',
-			`Are you sure you want to permanently delete "${seriesTitle}" and all ${
-				library.find((s) => s.id === seriesId)?.volumes.length ?? 'its'
-			} volumes?`,
-			async () => {
-				try {
-					await apiFetch(`/api/library/series/${seriesId}`, { method: 'DELETE' });
-					await fetchLibrary($page.url.search);
-				} catch (e) {
-					libraryError = `Failed to delete series: ${(e as Error).message}`;
-				}
-			}
-		);
+	const toggleBookmark = async (e: Event, series: Series) => {
+		e.preventDefault();
+		e.stopPropagation();
+
+		// 1. Optimistic Update
+		const oldState = series.bookmarked;
+		series.bookmarked = !series.bookmarked;
+
+		// 2. Sync with Debounce
+		metadataOps.syncBookmark(series.id, series.bookmarked, () => {
+			// Revert on failure
+			series.bookmarked = oldState;
+		});
 	};
 
-	const handleLogout = async () => {
-		try {
-			await apiFetch('/api/auth/logout', { method: 'POST', body: {} });
-		} catch (e) {
-			console.error('Logout failed:', (e as Error).message);
+	// --- Actions ---
+	//
+	const handleOpenEdit = () => {
+		const selectedId = Array.from(uiState.selectedIds)[0];
+		if (!selectedId) return;
+
+		const series = library.find((s) => s.id === selectedId);
+		if (series) {
+			editModalTarget = series;
+			isEditModalOpen = true;
 		}
-		user.set(null);
 	};
 
-	const openDownloadMenu = (event: MouseEvent) => {
-		event.preventDefault();
-		event.stopPropagation();
-		const button = event.currentTarget as HTMLButtonElement;
-		const rect = button.getBoundingClientRect();
-		contextMenu.open(rect.left, rect.bottom, [
-			{
-				label: 'Download as ZIP',
-				action: () => triggerDownload(`/api/export/zip`)
-			},
-			{
-				label: 'Download Metadata Only (ZIP)',
-				action: () => triggerDownload(`/api/export/zip?include_images=false`)
-			},
-			{
-				label: 'Download as PDF',
-				action: () => triggerDownload(`/api/export/pdf`)
-			}
-		]);
+	const handleCardClick = (e: MouseEvent, seriesId: string) => {
+		if (uiState.isSelectionMode) {
+			e.preventDefault();
+			e.stopPropagation();
+			uiState.toggleSelection(seriesId);
+		}
+	};
+
+	const handleRefresh = () => {
+		const params = new URLSearchParams(page.url.searchParams);
+		fetchLibrary(`?${params.toString()}`, true);
 	};
 </script>
 
-<!-- DYNAMIC TITLE -->
 <svelte:head>
-	<title>
-		{$user ? `${$user.username}'s Library` : 'Library'}
-	</title>
+	<title>{$user ? `${$user.username}'s Library` : 'Loading library...'}</title>
 </svelte:head>
 
-<!-- Main Container: Dark Navy Theme -->
-<div class="min-h-screen bg-[#0a0e17] text-white p-6 font-sans">
-	{#if $user}
-		<!-- Content Wrapper -->
-		<div class="max-w-7xl mx-auto">
-			<!-- HEADER SECTION -->
+<div
+	class="flex flex-col min-h-[calc(100vh-5rem)] mx-auto px-4 sm:px-6 pt-1 sm:pt-2 pb-6"
+	style="max-width: 1400px;"
+>
+	{#if isLoadingLibrary && library.length === 0}
+		<div class="flex-grow flex items-center justify-center">
 			<div
-				class="flex flex-col md:flex-row items-center justify-between gap-6 border-b border-gray-800 pb-6 mb-8"
+				class="rounded-3xl bg-black/20 backdrop-blur-3xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] p-8 flex items-center gap-4"
 			>
-				<!-- Title -->
-				<div class="flex items-center gap-3">
-					<div class="h-10 w-1 bg-blue-500 rounded-full"></div>
-					<h1 class="text-3xl font-bold tracking-tight text-white">
-						{$user.username}'s Library
-					</h1>
-				</div>
-
-				<!-- Actions Group -->
-				<div class="flex items-center justify-end gap-3 w-full md:w-auto">
-					<!-- Download All -->
-					<button
-						onclick={openDownloadMenu}
-						disabled={library.length === 0}
-						class="flex items-center gap-2 px-4 py-2 bg-[#161b2e] border border-gray-700 text-gray-300 rounded-md hover:bg-gray-800 hover:text-white disabled:opacity-50 transition-colors text-sm font-medium"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-								points="7 10 12 15 17 10"
-							/><line x1="12" x2="12" y1="15" y2="3" /></svg
-						>
-						<span class="hidden sm:inline">Download All</span>
-					</button>
-
-					<!-- Upload -->
-					<button
-						onclick={() => (isUploadModalOpen = true)}
-						class="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors text-sm font-medium shadow-lg shadow-blue-900/20"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="16"
-							height="16"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-								points="17 8 12 3 7 8"
-							/><line x1="12" x2="12" y1="3" y2="15" /></svg
-						>
-						Upload
-					</button>
-
-					<!-- Logout -->
-					<button
-						onclick={handleLogout}
-						class="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors"
-						title="Log Out"
-					>
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="20"
-							height="20"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="2"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline
-								points="16 17 21 12 16 7"
-							/><line x1="21" x2="9" y1="12" y2="12" /></svg
-						>
-					</button>
-				</div>
+				<svg
+					class="animate-spin h-8 w-8 text-accent"
+					xmlns="http://www.w3.org/2000/svg"
+					fill="none"
+					viewBox="0 0 24 24"
+				>
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+					></circle>
+					<path
+						class="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+					></path>
+				</svg>
+				<span class="text-theme-secondary">Loading library...</span>
 			</div>
-
-			<!-- CONTROLS AREA -->
-			<div class="mb-6 flex flex-col sm:flex-row gap-4 items-end sm:items-center">
-				<!-- Search Bar Container -->
-				<div class="w-full">
-					<LibrarySearchBar />
-				</div>
+		</div>
+	{:else if libraryError}
+		<div class="flex-grow flex items-center justify-center p-4">
+			<div
+				class="rounded-2xl bg-black/30 backdrop-blur-2xl p-6 border border-status-danger/20 text-status-danger shadow-[0_4px_16px_0_rgba(0,0,0,0.3)]"
+			>
+				Error loading library: {libraryError}
 			</div>
-
-			<!-- LIBRARY CONTENT -->
-			{#if isLoadingLibrary}
-				<div class="flex h-64 items-center justify-center text-gray-500">
+		</div>
+	{:else if library.length === 0}
+		<div class="flex-grow flex flex-col items-center justify-center py-20 text-center">
+			<div
+				class="rounded-3xl backdrop-blur-3xl border border-white/10 shadow-[0_8px_32px_0_rgba(0,0,0,0.5)] p-8 sm:p-12 max-w-md"
+			>
+				<div
+					class="bg-theme-surface-hover backdrop-blur-2xl p-6 rounded-full mb-6 border border-white/5 inline-block"
+				>
 					<svg
-						class="animate-spin -ml-1 mr-3 h-8 w-8 text-blue-500"
 						xmlns="http://www.w3.org/2000/svg"
-						fill="none"
+						width="48"
+						height="48"
 						viewBox="0 0 24 24"
-						><circle
-							class="opacity-25"
-							cx="12"
-							cy="12"
-							r="10"
-							stroke="currentColor"
-							stroke-width="4"
-						></circle><path
-							class="opacity-75"
-							fill="currentColor"
-							d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-						></path></svg
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="text-theme-tertiary"
 					>
-					Loading library...
+						<path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />
+					</svg>
 				</div>
-			{:else if libraryError}
-				<div class="p-4 rounded-md bg-red-500/10 border border-red-500/20 text-red-400">
-					Error loading library: {libraryError}
-				</div>
-			{:else if library.length === 0}
-				<div class="flex flex-col items-center justify-center py-20 text-center">
-					<div class="bg-[#161b2e] p-6 rounded-full mb-4">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							width="48"
-							height="48"
-							viewBox="0 0 24 24"
-							fill="none"
-							stroke="currentColor"
-							stroke-width="1"
-							stroke-linecap="round"
-							stroke-linejoin="round"
-							class="text-gray-600"
-							><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" /></svg
-						>
-					</div>
-					<p class="text-xl font-medium text-gray-300">Your library is empty</p>
-					<p class="mt-2 text-gray-500 max-w-sm">
-						Upload some Mokuro-processed manga volumes to get started building your collection.
-					</p>
-					<button
-						onclick={() => (isUploadModalOpen = true)}
-						class="mt-6 text-blue-400 hover:text-blue-300 font-medium hover:underline"
-					>
-						Upload Now &rarr;
-					</button>
-				</div>
-			{:else}
-				<!-- GRID VIEW -->
-				{#if viewMode === 'grid'}
-					<div
-						class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6"
-					>
-						{#each library as series (series.id)}
-							<div
-								class="group relative bg-[#161b2e] rounded-xl border border-gray-800 overflow-hidden hover:border-gray-600 transition-colors flex flex-col"
-							>
-								<!-- Full Link Overlay (Behind actions) -->
-								<a
-									href={`/series/${series.id}`}
-									class="absolute inset-0 z-0"
-									aria-label={`View ${series.folderName}`}
-								></a>
-
-								<!-- Cover Image -->
-								<div
-									class="aspect-[7/11] w-full bg-gray-900 relative overflow-hidden pointer-events-none"
-								>
-									{#if series.coverPath}
-										<img
-											src={`/api/files/series/${series.id}/cover`}
-											alt={series.folderName}
-											class="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-										/>
-									{:else}
-										<div
-											class="flex h-full w-full items-center justify-center p-4 text-center text-4xl font-bold text-gray-700 bg-gray-800"
-										>
-											{series.folderName.charAt(0).toUpperCase()}
-										</div>
-									{/if}
-
-									<!-- Hover Actions Overlay -->
-									<div
-										class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-start p-2 pointer-events-none"
-									>
-										<div class="flex justify-end">
-											<button
-												type="button"
-												onclick={(e) => {
-													e.preventDefault();
-													e.stopPropagation();
-													handleDeleteSeries(series.id, series.title ?? series.folderName);
-												}}
-												class="pointer-events-auto p-1.5 bg-black/50 rounded-full text-white hover:bg-red-600 transition-colors relative z-10"
-												title="Delete Series"
-											>
-												<svg
-													xmlns="http://www.w3.org/2000/svg"
-													width="14"
-													height="14"
-													viewBox="0 0 24 24"
-													fill="none"
-													stroke="currentColor"
-													stroke-width="2"
-													stroke-linecap="round"
-													stroke-linejoin="round"
-													><path d="M3 6h18" /><path
-														d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"
-													/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg
-												>
-											</button>
-										</div>
-									</div>
-								</div>
-
-								<!-- Info Section -->
-								<div class="p-3 flex flex-col gap-1 pointer-events-none">
-									<div
-										class="text-sm font-semibold text-white line-clamp-1 group-hover:text-blue-400 transition-colors"
-									>
-										{series.title ?? series.folderName}
-									</div>
-									<div class="text-xs text-gray-500 font-medium">
-										{series.volumes.length}
-										{series.volumes.length === 1 ? 'Volume' : 'Volumes'}
-									</div>
-								</div>
-							</div>
-						{/each}
-					</div>
-
-					<!-- LIST VIEW -->
-				{:else}
-					<div class="flex flex-col gap-3">
-						{#each library as series (series.id)}
-							<div
-								class="group relative bg-[#161b2e] rounded-lg border border-gray-800 p-2 flex items-center gap-4 hover:border-gray-600 transition-colors"
-							>
-								<!-- Full Link Overlay -->
-								<a
-									href={`/series/${series.id}`}
-									class="absolute inset-0 z-0"
-									aria-label={`View ${series.folderName}`}
-								></a>
-
-								<!-- Thumbnail -->
-								<div
-									class="w-10 h-14 bg-gray-900 rounded overflow-hidden flex-shrink-0 pointer-events-none"
-								>
-									{#if series.coverPath}
-										<img
-											src={`/api/files/series/${series.id}/cover`}
-											alt={series.folderName}
-											class="h-full w-full object-cover"
-										/>
-									{:else}
-										<div
-											class="h-full w-full flex items-center justify-center text-xs font-bold text-gray-600 bg-gray-800"
-										>
-											{series.folderName.charAt(0)}
-										</div>
-									{/if}
-								</div>
-
-								<!-- Info -->
-								<div class="flex-grow min-w-0 pointer-events-none">
-									<div
-										class="text-sm font-semibold text-white truncate group-hover:text-blue-400 transition-colors"
-									>
-										{series.title ?? series.folderName}
-									</div>
-									<div class="text-xs text-gray-500 flex gap-2 items-center mt-0.5">
-										<span class="flex items-center gap-1">
-											<svg
-												xmlns="http://www.w3.org/2000/svg"
-												width="12"
-												height="12"
-												viewBox="0 0 24 24"
-												fill="none"
-												stroke="currentColor"
-												stroke-width="2"
-												stroke-linecap="round"
-												stroke-linejoin="round"
-												class="text-gray-600"
-												><path
-													d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"
-												/></svg
-											>
-											{series.volumes.length} Vols
-										</span>
-									</div>
-								</div>
-
-								<!-- Actions -->
-								<div class="pl-4 border-l border-gray-800">
-									<button
-										type="button"
-										onclick={(e) => {
-											e.preventDefault();
-											e.stopPropagation();
-											handleDeleteSeries(series.id, series.title ?? series.folderName);
-										}}
-										class="pointer-events-auto relative z-10 p-2 text-gray-500 hover:text-red-500 transition-colors"
-										title="Delete Series"
-									>
-										<svg
-											xmlns="http://www.w3.org/2000/svg"
-											width="16"
-											height="16"
-											viewBox="0 0 24 24"
-											fill="none"
-											stroke="currentColor"
-											stroke-width="2"
-											stroke-linecap="round"
-											stroke-linejoin="round"
-											><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path
-												d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"
-											/></svg
-										>
-									</button>
-								</div>
-							</div>
-						{/each}
-					</div>
-				{/if}
-
-				<!-- PAGINATION -->
-				<div class="mt-8 flex justify-center">
-					<PaginationControls {meta} />
-				</div>
-			{/if}
+				<p class="text-xl font-medium text-theme-primary mb-2">Your library is empty</p>
+				<p class="text-theme-secondary max-w-sm mb-6">
+					Upload some Mokuro-processed manga volumes to get started building your collection.
+				</p>
+				<button
+					onclick={() => (uiState.isUploadOpen = true)}
+					class="px-6 py-3 rounded-xl bg-accent hover:bg-accent-hover text-white font-medium transition-colors shadow-lg shadow-indigo-900/20"
+				>
+					Upload Now &rarr;
+				</button>
+			</div>
 		</div>
 	{:else}
-		<div class="flex h-screen items-center justify-center text-gray-500">Loading...</div>
-	{/if}
+		<div class="flex-grow pb-24 relative">
+			<!-- Glassmorphic container wrapper with fade on background only -->
+			<div class="relative p-3 sm:p-4">
+				<!-- Background layer with fade mask - only fades the background, not content -->
+				<div
+					class="absolute inset-0 bg-black/20 backdrop-blur-3xl pointer-events-none z-0"
+					style="mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); mask-composite: intersect; -webkit-mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); -webkit-mask-composite: source-in;"
+				></div>
 
-	<UploadModal
-		isOpen={isUploadModalOpen}
-		onClose={() => (isUploadModalOpen = false)}
-		onUploadSuccess={() => {
-			fetchLibrary($page.url.search, true);
-		}}
-	/>
+				<!-- Content layer (series cards) - fully visible, not affected by fade -->
+				<div
+					class="relative z-10 {uiState.viewMode === 'grid'
+						? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6'
+						: 'flex flex-col gap-3'}"
+				>
+					{#each library as series (series.id)}
+						{@const { percent, isRead } = getSeriesProgress(series)}
+						{@const isSelected = uiState.selectedIds.has(series.id)}
+
+						<LibraryEntry
+							onLongPress={() => {
+								uiState.enterSelectionMode(series.id);
+							}}
+							entry={{
+								id: series.id,
+								title: series.title,
+								folderName: series.folderName,
+								coverUrl: series.coverPath ? `/api/files/series/${series.id}/cover` : null
+							}}
+							type="series"
+							viewMode={uiState.viewMode}
+							{isSelected}
+							isSelectionMode={uiState.isSelectionMode}
+							progress={{
+								percent: percent,
+								isRead: isRead,
+								showBar: percent > 0
+							}}
+							href={`/series/${series.id}`}
+							mainStat={`${series.volumes.length} ${series.volumes.length === 1 ? 'Vol' : 'Vols'}`}
+							subStat={series.lastReadAt
+								? `READ ${new Date(series.lastReadAt).toLocaleDateString()}`
+								: ''}
+							onSelect={(e) => handleCardClick(e, series.id)}
+						>
+							{#snippet circleAction()}
+								<button
+									onclick={(e) => toggleBookmark(e, series)}
+									class={`z-30 col-start-1 row-start-1 relative flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200 pointer-events-auto hover:bg-white/10 active:scale-75 ${
+										series.bookmarked ? 'text-status-warning' : 'text-theme-secondary'
+									}`}
+									title={series.bookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										height="18"
+										width="18"
+										viewBox="0 0 24 24"
+										fill={series.bookmarked ? 'currentColor' : 'none'}
+										stroke="currentColor"
+										stroke-width="2.5"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class={`relative transition-all ${
+											series.bookmarked ? 'animate-pop neon-glow' : 'neon-off'
+										}`}
+									>
+										<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+									</svg>
+								</button>
+							{/snippet}
+
+							{#snippet listActions()}
+								<button
+									onclick={(e) => toggleBookmark(e, series)}
+									class={`z-30 col-start-1 row-start-1 relative flex items-center justify-center w-9 h-9 rounded-full transition-all duration-200 pointer-events-auto hover:bg-white/10 active:scale-75 ${
+										series.bookmarked ? 'text-status-warning' : 'text-theme-secondary'
+									}`}
+									title={series.bookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										height="18"
+										width="18"
+										viewBox="0 0 24 24"
+										fill={series.bookmarked ? 'currentColor' : 'none'}
+										stroke="currentColor"
+										stroke-width="2.5"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class={`relative transition-all ${
+											series.bookmarked ? 'animate-pop neon-glow' : 'neon-off'
+										}`}
+									>
+										<path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+									</svg>
+								</button>
+							{/snippet}
+						</LibraryEntry>
+					{/each}
+				</div>
+			</div>
+		</div>
+
+		<Footer {meta} />
+		<LibraryActionBar type="series" onRefresh={handleRefresh} onRename={handleOpenEdit} />
+
+		<EditSeriesModal
+			series={editModalTarget}
+			isOpen={isEditModalOpen}
+			onClose={() => (isEditModalOpen = false)}
+			onRefresh={handleRefresh}
+		/>
+	{/if}
 </div>
+
+<style>
+	/* Intensity Control: Change the % next to transparent to adjust glow strength */
+	.neon-glow {
+		transition: filter 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+		filter: drop-shadow(0 0 1px color-mix(in srgb, var(--color-status-warning), transparent 30%))
+			drop-shadow(0 0 3px color-mix(in srgb, var(--color-status-warning), transparent 50%))
+			drop-shadow(0 0 6px color-mix(in srgb, var(--color-status-warning), transparent 70%));
+	}
+
+	.neon-off {
+		transition: filter 0.8s ease-in;
+		/* Transitioning to 100% transparent version of the SAME variable */
+		filter: drop-shadow(0 0 0px color-mix(in srgb, var(--color-status-warning), transparent 100%))
+			drop-shadow(0 0 0px color-mix(in srgb, var(--color-status-warning), transparent 100%))
+			drop-shadow(0 0 0px color-mix(in srgb, var(--color-status-warning), transparent 100%));
+	}
+
+	@keyframes bookmark-pop {
+		0% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.4);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	.animate-pop {
+		animation: bookmark-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+	}
+</style>

@@ -5,10 +5,26 @@ import { apiFetch } from './api';
 export interface ReaderSettingsData {
   layoutMode?: 'single' | 'double' | 'vertical';
   readingDirection?: 'ltr' | 'rtl';
-  doublePageOffset?: 'even' | 'odd';
+  firstPageIsCover?: boolean;
   retainZoom?: boolean;
   navZoneWidth?: number;
   showTriggerOutline?: boolean;
+  autoFullscreen?: boolean;
+  hideHUD?: boolean;
+  nightMode?: {
+    enabled: boolean;
+    scheduleEnabled: boolean;
+    intensity: number;
+    startHour: number;
+    endHour: number;
+  };
+  invertColor?: {
+    enabled: boolean;
+    scheduleEnabled: boolean;
+    intensity: number;
+    startHour: number;
+    endHour: number;
+  }
 }
 
 // Define the type for our user object

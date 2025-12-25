@@ -3,7 +3,7 @@ import { pipeline, Readable } from 'stream';
 import util from 'util';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import { updateSeriesStatus } from '../utils/seriesStatus';
 import { Prisma } from '../generated/prisma/client';
 
 // Promisify pipeline for async/await
@@ -11,20 +11,80 @@ const pump = util.promisify(pipeline);
 
 // --- Helpers ---
 
-// 1. Safe Filename (Security)
+// Safe Filename (Security)
 // Prevents directory traversal (../../) and illegal chars
 function safeFilename(str: string): string {
   // Replace illegal chars with underscore, trim whitespace
   return str.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
 }
 
-// 2. Cleanup Helper (Rollback)
+// Cleanup Helper (Rollback)
 async function deleteFolder(pathStr: string) {
   try {
     await fs.promises.rm(pathStr, { recursive: true, force: true });
   } catch (e) {
     console.error(`Failed to cleanup folder: ${pathStr}`, e);
   }
+}
+
+async function deleteSeriesById(fastify: any, seriesId: string, userId: string) {
+  // 1. Find series
+  const series = await fastify.prisma.series.findFirst({
+    where: { id: seriesId, ownerId: userId },
+    include: { volumes: { select: { mokuroPath: true } } }
+  });
+
+  if (!series) throw new Error('Series not found or access denied');
+
+  // 2. Determine path
+  let seriesDirRelative: string | null = null;
+  if (series.volumes.length > 0) {
+    seriesDirRelative = path.dirname(series.volumes[0].mokuroPath);
+  } else if (series.coverPath) {
+    seriesDirRelative = path.dirname(series.coverPath);
+  }
+
+  // 3. Delete from disk
+  if (seriesDirRelative) {
+    const seriesDirAbsolute = path.join(fastify.projectRoot, seriesDirRelative);
+    await fs.promises.rm(seriesDirAbsolute, { recursive: true, force: true });
+  }
+
+  // 4. Delete from DB
+  await fastify.prisma.series.delete({ where: { id: seriesId } });
+  return series.title || series.folderName;
+}
+
+async function deleteVolumeById(fastify: any, volumeId: string, userId: string) {
+  // 1. Find volume
+  const volume = await fastify.prisma.volume.findFirst({
+    where: { id: volumeId, series: { ownerId: userId } },
+    include: { series: { include: { _count: { select: { volumes: true } } } } }
+  });
+
+  if (!volume) throw new Error('Volume not found or access denied');
+
+  // 2. Delete files
+  const absVolPath = path.join(fastify.projectRoot, volume.filePath);
+  const absMokuroPath = path.join(fastify.projectRoot, volume.mokuroPath);
+  await fs.promises.rm(absVolPath, { recursive: true, force: true });
+  await fs.promises.rm(absMokuroPath, { force: true });
+
+  // 3. Delete from DB
+  await fastify.prisma.volume.delete({ where: { id: volumeId } });
+
+  // 4. Cleanup empty series logic (Optional but good)
+  const volCount = volume.series._count.volumes;
+  if (volCount === 1 && !volume.series.coverPath) {
+    const seriesDir = path.dirname(volume.mokuroPath);
+    const absSeriesDir = path.join(fastify.projectRoot, seriesDir);
+    await fs.promises.rm(absSeriesDir, { recursive: true, force: true }).catch(() => { });
+  }
+
+  // Recalculate series status
+  await updateSeriesStatus(fastify.prisma, volume.seriesId);
+
+  return volume.title || volume.folderName;
 }
 
 // 3. File consume
@@ -43,6 +103,7 @@ interface UploadMetadata {
   series_title?: string;
   series_description?: string;
   volume_title?: string;
+  series_bookmarked?: boolean;
   // Progress Interface
   volume_progress?: {
     page: number;
@@ -60,14 +121,6 @@ interface VolumeParams {
 interface SeriesParams {
   id: string; // This 'id' is the seriesId
 }
-interface UpdateEntityParams {
-  id: string;
-}
-
-// Interface for API body (used for PATCH rename)
-interface UpdateEntityBody {
-  title?: string | null; // Allow setting a string or explicitly nulling it
-}
 
 // get request query
 interface LibraryQuery {
@@ -76,6 +129,8 @@ interface LibraryQuery {
   q?: string;
   sort?: 'title' | 'created' | 'updated' | 'recent';
   order?: 'asc' | 'desc';
+  status?: 'all' | 'read' | 'unread' | 'reading';
+  bookmarked?: string;
 }
 
 interface MokuroPage { }
@@ -104,6 +159,8 @@ const libraryRoutes: FastifyPluginAsync = async (
     const q = request.query.q?.trim() ?? '';
     const sort = request.query.sort ?? 'title';
     const order = request.query.order ?? 'asc';
+    const status = request.query.status ?? 'all';
+    const bookmarked = request.query.bookmarked === 'true';
 
     // 2. Build Where Clause (Search)
     const where: Prisma.SeriesWhereInput = {
@@ -112,6 +169,16 @@ const libraryRoutes: FastifyPluginAsync = async (
 
     if (q) {
       where.sortTitle = { contains: q };
+    }
+
+    if (bookmarked) {
+      where.bookmarked = true;
+    }
+
+    if (status !== 'all') {
+      if (status === 'unread') where.status = 0;
+      else if (status === 'reading') where.status = 1;
+      else if (status === 'read') where.status = 2;
     }
     // 3. Build OrderBy Clause
     let orderBy: Prisma.SeriesOrderByWithRelationInput | Prisma.SeriesOrderByWithRelationInput[];
@@ -146,8 +213,15 @@ const libraryRoutes: FastifyPluginAsync = async (
           include: {
             volumes: {
               orderBy: { title: 'asc' },
-              // We can still fetch progress preview if needed, but it's heavy
-              // For the main library view, we usually just need covers/titles
+              select: {
+                pageCount: true,
+                progress: {
+                  select: {
+                    completed: true,
+                    page: true
+                  }
+                }
+              }
             },
           },
         }),
@@ -335,6 +409,7 @@ const libraryRoutes: FastifyPluginAsync = async (
             title: metadata.series_title || null,
             description: metadata.series_description || null,
             sortTitle: metadata.series_title || seriesFolder,
+            bookmarked: metadata.series_bookmarked ?? false,
             // If we found a file matching "SeriesName.jpg", use it as cover
             coverPath: potentialSeriesCoverPath
           }
@@ -350,7 +425,8 @@ const libraryRoutes: FastifyPluginAsync = async (
           updateData.sortTitle = metadata.series_title;
         }
 
-        if (metadata.series_description && !series.description) { // <--- ADDED
+        // Update description if provided and missing
+        if (metadata.series_description && !series.description) {
           updateData.description = metadata.series_description;
         }
 
@@ -404,6 +480,10 @@ const libraryRoutes: FastifyPluginAsync = async (
             completed: metadata.volume_progress.isCompleted
           }
         });
+
+        // Recalculate Status (e.g. adding a volume might un-complete a series)
+        // TODO: this is O(N^2)! although the number of volumes per series shouldn't go that high
+        await updateSeriesStatus(fastify.prisma, series.id);
       }
       return reply.status(200).send({
         message: 'Upload processed.',
@@ -787,57 +867,6 @@ const libraryRoutes: FastifyPluginAsync = async (
     }
   );
 
-  // --- PATCH /api/library/series/:id ---
-  // Update series metadata, for now it's just title
-  fastify.patch<{ Params: UpdateEntityParams; Body: UpdateEntityBody }>(
-    '/series/:id',
-    async (request, reply) => {
-      const { id } = request.params;
-      const { title } = request.body;
-
-      try {
-        const series = await fastify.prisma.series.updateMany({
-          where: { id, ownerId: request.user.id },
-          data: { title }
-        });
-
-        if (series.count === 0) return reply.status(404).send({ message: 'Series not found or access denied.' });
-        return reply.status(200).send({ message: 'Series display title updated.' });
-      } catch (e) {
-        fastify.log.error(e);
-        return reply.status(500).send({ message: 'Update failed.' });
-      }
-    }
-  );
-
-  // --- PATCH /api/library/volume/:id ---
-  // Update volume metadata, for now it's just title
-  fastify.patch<{ Params: UpdateEntityParams; Body: UpdateEntityBody }>(
-    '/volume/:id',
-    async (request, reply) => {
-      const { id } = request.params;
-      const { title } = request.body;
-
-      try {
-        const vol = await fastify.prisma.volume.findFirst({
-          where: { id, series: { ownerId: request.user.id } }
-        });
-
-        if (!vol) return reply.status(404).send({ message: 'Volume not found or access denied.' });
-
-        await fastify.prisma.volume.update({
-          where: { id },
-          data: { title }
-        });
-
-        return reply.status(200).send({ message: 'Volume display title updated.' });
-      } catch (e) {
-        fastify.log.error(e);
-        return reply.status(500).send({ message: 'Update failed.' });
-      }
-    }
-  );
-
   /**
      * DELETE /api/library/series/:id
      * Deletes an entire series, all its volumes, and all associated files.
@@ -845,63 +874,8 @@ const libraryRoutes: FastifyPluginAsync = async (
   fastify.delete<{ Params: SeriesParams }>(
     '/series/:id',
     async (request, reply) => {
-      const { id: seriesId } = request.params;
-      const userId = request.user.id;
-
       try {
-        // 1. Find series and verify ownership, include volumes for file paths
-        const series = await fastify.prisma.series.findFirst({
-          where: {
-            id: seriesId,
-            ownerId: userId
-          },
-          include: {
-            volumes: {
-              select: {
-                mokuroPath: true // We only need one path to find the series dir
-              }
-            }
-          }
-        });
-
-        if (!series) {
-          return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: 'Series not found or access denied.'
-          });
-        }
-
-        let seriesDirRelative: string | null = null;
-        // 2. Delete all files from disk
-        if (series.volumes.length > 0) {
-          // All volumes share the same parent (series) directory.
-          // mokuroPath is 'uploads/userId/seriesFolderName/volume.mokuro'
-          seriesDirRelative = path.dirname(series.volumes[0].mokuroPath);
-        } else if (series.coverPath) {
-          seriesDirRelative = path.dirname(series.coverPath);
-        }
-
-        if (seriesDirRelative) {
-          // MODIFIED: Use projectRoot
-          const seriesDirAbsolute = path.join(
-            fastify.projectRoot,
-            seriesDirRelative
-          );
-          await fs.promises.rm(seriesDirAbsolute, {
-            recursive: true,
-            force: true
-          });
-        }
-
-        // 3. Delete series from DB. Prisma 'onDelete: Cascade'
-        // will automatically delete all related volumes and progress.
-        await fastify.prisma.series.delete({
-          where: {
-            id: seriesId
-          }
-        });
-
+        await deleteSeriesById(fastify, request.params.id, request.user.id);
         return reply.status(200).send({ message: 'Series deleted successfully.' });
       } catch (error) {
         fastify.log.error(
@@ -924,84 +898,8 @@ const libraryRoutes: FastifyPluginAsync = async (
   fastify.delete<{ Params: VolumeParams }>(
     '/volume/:id',
     async (request, reply) => {
-      const { id: volumeId } = request.params;
-      const userId = request.user.id;
-
       try {
-        // 1. Find volume and verify ownership
-        // We also get the series and a count of its volumes
-        const volume = await fastify.prisma.volume.findFirst({
-          where: {
-            id: volumeId,
-            series: {
-              ownerId: userId
-            }
-          },
-          include: {
-            series: {
-              include: {
-                _count: {
-                  select: { volumes: true }
-                }
-              }
-            }
-          }
-        });
-
-        if (!volume) {
-          return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: 'Volume not found or access denied.'
-          });
-        }
-
-        // 2. Delete volume files from disk
-        // filePath is 'uploads/userId/seriesFolderName/volumeFolderName'
-        const absoluteVolumePath = path.join(
-          fastify.projectRoot,
-          volume.filePath
-        );
-        await fs.promises.rm(absoluteVolumePath, {
-          recursive: true,
-          force: true
-        });
-        // mokuroPath is 'uploads/userId/seriesFolderName/volume.mokuro'
-        const absoluteMokuroPath = path.join(
-          fastify.projectRoot,
-          volume.mokuroPath
-        );
-        await fs.promises.rm(absoluteMokuroPath, { force: true });
-
-        const seriesDirRelative = path.dirname(volume.mokuroPath);
-        const volumeCount = volume.series._count.volumes;
-        const seriesCoverPath = volume.series.coverPath;
-
-        // 3. Delete volume from DB. Cascade delete handles progress.
-        await fastify.prisma.volume.delete({
-          where: {
-            id: volumeId
-          }
-        });
-
-        // 4. If this was the last volume, clean up the parent series directory
-        if (volumeCount === 1 && !seriesCoverPath) {
-          try {
-            const seriesDirAbsolute = path.join(
-              fastify.projectRoot,
-              seriesDirRelative
-            );
-            await fs.promises.rm(seriesDirAbsolute, {
-              recursive: true,
-              force: true
-            });
-          } catch (e) {
-            fastify.log.warn(
-              `Could not clean up empty series dir: ${seriesDirRelative}`
-            );
-          }
-        }
-
+        await deleteVolumeById(fastify, request.params.id, request.user.id);
         return reply.status(200).send({ message: 'Volume deleted successfully.' });
       } catch (error) {
         fastify.log.error(
@@ -1014,6 +912,48 @@ const libraryRoutes: FastifyPluginAsync = async (
           message: 'An unexpected error occurred while deleting the volume.'
         });
       }
+    }
+  );
+
+  /**
+     * POST /api/library/batch/delete
+     * Bulk deletion for Series or Volumes.
+     */
+  fastify.post<{ Body: { ids: string[]; type: 'series' | 'volume' } }>(
+    '/batch/delete',
+    async (request, reply) => {
+      const { ids, type } = request.body;
+      const userId = request.user.id;
+
+      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+        return reply.status(400).send({ message: 'No IDs provided' });
+      }
+
+      const results = {
+        success: [] as string[],
+        errors: [] as { id: string; error: string }[]
+      };
+
+      // Execute sequentially to prevent file system locking issues
+      for (const id of ids) {
+        try {
+          if (type === 'series') {
+            await deleteSeriesById(fastify, id, userId);
+            results.success.push(id);
+          } else {
+            await deleteVolumeById(fastify, id, userId);
+            results.success.push(id);
+          }
+        } catch (e) {
+          fastify.log.error(e);
+          results.errors.push({ id, error: (e as Error).message });
+        }
+      }
+
+      return reply.send({
+        message: `Deleted ${results.success.length} items. Failed: ${results.errors.length}`,
+        results
+      });
     }
   );
 };

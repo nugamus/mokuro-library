@@ -46,6 +46,8 @@ services:
       build:
         context: .
         target: frontend-builder
+        args:
+          - COMMIT_HASH=${COMMIT_HASH:-dev}
       working_dir: /app/frontend
       # Runs 'vite dev --host'
       # The '--host' flag is required to access the dev server from your browser

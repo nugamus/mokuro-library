@@ -1,4 +1,4 @@
-// --- Type definitions for our .mokuro file ---
+// --- Type definitions Reader GET ---
 export interface MokuroBlock {
   box: [number, number, number, number];
   lines_coords: [[number, number], [number, number], [number, number], [number, number]][];
@@ -20,11 +20,53 @@ export interface MokuroData {
   pages: MokuroPage[];
 }
 
-export interface VolumeResponse {
+export interface VolumeReaderResponse {
   id: string;
   title: string;
   seriesId: string;
   pageCount: number;
   coverImageName: string | null;
   mokuroData: MokuroData;
+}
+
+// --- Upload Pipeline Types ---
+
+export interface UploadJob {
+  id: string;
+  name: string;
+  files: File[];
+  status: 'pending' | 'uploading' | 'processing' | 'done' | 'error';
+  progress: number;
+  resultMsg?: string;
+  seriesFolderName: string;
+  volumeFolderName: string;
+  metadata: {
+    seriesTitle?: string | null;
+    seriesDescription?: string | null;
+    seriesBookmarked?: boolean;
+    volumeTitle?: string | null;
+    volumeProgress?: { page: number; completed: boolean } | null;
+  };
+}
+
+export interface DirNode {
+  name: string;
+  fullPath: string;
+  files: File[];
+  children: Map<string, DirNode>;
+}
+
+export interface SeriesMetadata {
+  series: {
+    title: string | null;
+    description?: string | null;
+    bookmarked?: boolean;
+  };
+  volumes: Record<
+    string,
+    {
+      displayTitle: string | null;
+      progress?: { page: number; completed: boolean } | null;
+    }
+  >;
 }

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ReaderState } from '$lib/states/ReaderState.svelte';
+	import { readerState } from '$lib/states/ReaderState.svelte';
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
 	import CachedImage from '$lib/components/CachedImage.svelte';
@@ -7,7 +7,6 @@
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
-		reader,
 		panzoomInstance = $bindable(),
 		navZoneWidth,
 
@@ -17,7 +16,6 @@
 		onLineFocus,
 		onOcrChangeMode
 	} = $props<{
-		reader: ReaderState;
 		panzoomInstance: PanzoomObject | null;
 		navZoneWidth: number;
 		showTriggerOutline: boolean;
@@ -28,63 +26,82 @@
 
 	// Navigation handlers derived from reading direction
 	const handleClickLeft = () => {
-		reader.readingDirection === 'rtl' ? reader.nextPage() : reader.prevPage();
+		readerState.readingDirection === 'rtl' ? readerState.nextPage() : readerState.prevPage();
 	};
 
 	const handleClickRight = () => {
-		reader.readingDirection === 'rtl' ? reader.prevPage() : reader.nextPage();
+		readerState.readingDirection === 'rtl' ? readerState.prevPage() : readerState.nextPage();
 	};
+
+	function handleZoneClick(e: MouseEvent) {
+		// If text is selected, don't navigate
+		if (window.getSelection()?.toString()) return;
+
+		const target = e.currentTarget as HTMLElement;
+		const rect = target.getBoundingClientRect();
+		const x = e.clientX - rect.left;
+		const width = rect.width;
+		const percent = (x / width) * 100;
+
+		if (percent <= navZoneWidth) {
+			handleClickLeft();
+		} else if (percent >= 100 - navZoneWidth) {
+			handleClickRight();
+		}
+	}
 </script>
 
-<button
-	onclick={handleClickLeft}
-	type="button"
-	class="panzoom-exclude absolute left-0 z-10 h-full hover:cursor-pointer bg-transparent border-none p-0"
-	aria-label="Previous Page"
-	style={`width: ${navZoneWidth}%`}
-></button>
+<div class="relative h-full w-full flex flex-col" onclick={handleZoneClick} role="presentation">
+	<div
+		class="panzoom-exclude absolute left-0 z-10 h-full bg-accent transition-opacity duration-200 pointer-events-none"
+		style={`width: ${navZoneWidth}%; opacity: var(--nav-zone-opacity, 0);`}
+	></div>
 
-<div
-	class="relative flex h-full flex-1 items-center justify-center"
-	use:panzoom={{
-		options: {
-			canvas: true,
-			maxScale: 10,
-			minScale: 0.5,
-			cursor: 'default',
-			origin: '50% 50%',
-			disableYAxis: false,
-			contain: 'outside'
-		},
-		onInit: (pz) => (panzoomInstance = pz)
-	}}
->
-	{#if reader.visiblePages[0]}
-		{@const page = reader.visiblePages[0]}
-		<div
-			class="relative flex-shrink-0 shadow-2xl"
-			style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
-		>
-			<CachedImage src={`/api/files/volume/${reader.id}/image/${page.img_path}`} />
-			<OcrOverlay
-				{page}
-				{panzoomInstance}
-				ocrMode={reader.ocrMode}
-				isSmartResizeMode={reader.isSmartResizeMode}
-				{showTriggerOutline}
-				readingDirection={reader.readingDirection}
-				{onOcrChange}
-				{onLineFocus}
-				onChangeMode={onOcrChangeMode}
-			/>
-		</div>
-	{/if}
+	<div
+		class="relative flex h-full flex-1 items-center justify-center"
+		use:panzoom={{
+			options: {
+				canvas: true,
+				maxScale: 10,
+				minScale: 0.5,
+				cursor: 'default',
+				origin: '50% 50%',
+				disableYAxis: false
+			},
+			onInit: (pz) => (panzoomInstance = pz)
+		}}
+	>
+		{#if readerState.visiblePages[0]}
+			{@const page = readerState.visiblePages[0]}
+			<div
+				class="relative flex-shrink-0 shadow-2xl reader-page"
+				style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
+			>
+				<CachedImage src={`/api/files/volume/${readerState.id}/image/${page.img_path}`} />
+				<OcrOverlay
+					{page}
+					{panzoomInstance}
+					ocrMode={readerState.ocrMode}
+					isSmartResizeMode={readerState.isSmartResizeMode}
+					{showTriggerOutline}
+					readingDirection={readerState.readingDirection}
+					{onOcrChange}
+					{onLineFocus}
+					onChangeMode={onOcrChangeMode}
+				/>
+			</div>
+		{/if}
+	</div>
+
+	<div
+		class="panzoom-exclude absolute right-0 z-10 h-full bg-accent transition-opacity duration-200 pointer-events-none"
+		style={`width: ${navZoneWidth}%; opacity: var(--nav-zone-opacity, 0);`}
+	></div>
 </div>
 
-<button
-	onclick={handleClickRight}
-	type="button"
-	class="panzoom-exclude absolute right-0 z-10 h-full hover:cursor-pointer bg-transparent border-none p-0"
-	aria-label="Next Page"
-	style={`width: ${navZoneWidth}%`}
-></button>
+<style>
+	.reader-page {
+		filter: brightness(var(--reader-brightness, 100%))
+			brightness(var(--reader-invert-brightness, 100%)) invert(var(--reader-invert, 0%));
+	}
+</style>

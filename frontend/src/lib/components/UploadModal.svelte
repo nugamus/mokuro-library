@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { apiFetch, apiUpload } from '$lib/api';
-	import { fade } from 'svelte/transition';
+	import { fade, scale } from 'svelte/transition';
+	import { createJobsFromFiles, type UploadJob } from '$lib/utils/uploadHelpers';
+	import MenuGridRadio from '$lib/components/menu/MenuGridRadio.svelte';
 
 	let { isOpen, onClose, onUploadSuccess } = $props<{
 		isOpen: boolean;
@@ -8,239 +10,47 @@
 		onUploadSuccess: () => void;
 	}>();
 
-	// --- Types ---
-
-	type UploadJob = {
-		id: string;
-		name: string;
-		files: File[];
-		status: 'pending' | 'uploading' | 'processing' | 'done' | 'error';
-		progress: number;
-		resultMsg?: string;
-		seriesFolderName: string;
-		volumeFolderName: string;
-		metadata: {
-			seriesTitle?: string | null;
-			seriesDescription?: string | null;
-			volumeTitle?: string | null;
-			volumeProgress?: { page: number; completed: boolean } | null;
-		};
-	};
-
-	type DirNode = {
-		name: string;
-		fullPath: string;
-		files: File[];
-		children: Map<string, DirNode>;
-	};
-
-	type SeriesMetadata = {
-		series: {
-			title: string | null;
-			description?: string | null;
-		};
-		volumes: Record<
-			string,
-			{
-				displayTitle: string | null;
-				progress?: { page: number; completed: boolean } | null;
-			}
-		>;
-	};
-
 	// --- State ---
-
+	let activeTab = $state<'upload' | 'guide'>('upload');
 	let files = $state<FileList | null>(null);
 	let jobs = $state<UploadJob[]>([]);
 	let isProcessingQueue = $state(false);
 
 	let totalJobs = $derived(jobs.length);
 	let completedJobs = $derived(jobs.filter((j) => j.status === 'done').length);
+	let hasJobs = $derived(jobs.length > 0);
 
 	// --- Actions ---
-
 	const resetState = () => {
 		files = null;
 		jobs = [];
 		isProcessingQueue = false;
+		activeTab = 'upload';
 	};
 
 	const handleClose = () => {
 		onClose();
+		setTimeout(resetState, 200);
 	};
 
 	$effect(() => {
-		if (files) createJobsFromFiles(files);
+		if (files) {
+			createJobsFromFiles(files).then((newJobs) => {
+				jobs = newJobs;
+				processQueue();
+			});
+		}
 	});
 
-	// --- 1. TREE BUILDER & JOB CREATOR ---
-
-	const createJobsFromFiles = async (fileList: FileList) => {
-		const rootChildren = new Map<string, DirNode>();
-
-		// Step A: Build the Directory Tree
-		for (const file of fileList) {
-			// FILTER 1: Ignore junk files immediately (DS_Store, Thumbs.db, txt, etc.)
-			// We allow .json because we need to read it for metadata, even if we don't upload it.
-			if (!/\.(jpg|jpeg|png|webp|mokuro|json)$/i.test(file.name)) {
-				continue;
-			}
-
-			// FILTER 2: Ignore Hidden Files & System Folders
-			// We check every segment of the path (folders and filename)
-			const pathParts = file.webkitRelativePath.split('/');
-
-			const isJunk = pathParts.some(
-				(part) =>
-					part.startsWith('.') || // Hidden files/folders (.git, ._image.jpg)
-					[
-						'__MACOSX',
-						'node_modules',
-						'$RECYCLE.BIN',
-						'System Volume Information',
-						'Thumbs.db',
-						'_ocr'
-					].includes(part)
-			);
-
-			if (isJunk) continue;
-
-			// this is the key for clustering (i.e. determine if files belong to the same volume)
-			const folderParts = file.webkitRelativePath.split('/').slice(0, -1);
-
-			// if file is mokuro, put it in the same cluster as ${seriesFolderName}/${volumeFolderName}
-			if (file.name.toLowerCase().endsWith('.mokuro')) {
-				folderParts.push(file.name.replace(/\.mokuro$/i, ''));
-			}
-			if (folderParts.length > 3) continue; // file tree should not be deeper than 3 (root/series/volume)
-
-			let currentMap = rootChildren;
-			let currentPath = '';
-			let node: DirNode | undefined;
-
-			for (const part of folderParts) {
-				currentPath = currentPath ? `${currentPath}/${part}` : part;
-
-				if (!currentMap.has(part)) {
-					currentMap.set(part, {
-						name: part,
-						fullPath: currentPath,
-						files: [],
-						children: new Map()
-					});
-				}
-
-				node = currentMap.get(part)!;
-				currentMap = node.children;
-			}
-
-			if (node) node.files.push(file);
-		}
-
-		// Step B: Traverse Tree
-		const newJobs: UploadJob[] = [];
-
-		const traverse = async (
-			map: Map<string, DirNode>,
-			parentName: string | null,
-			parentMetadata?: SeriesMetadata
-		) => {
-			const sortedKeys = Array.from(map.keys()).sort((a, b) =>
-				a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
-			);
-
-			for (const key of sortedKeys) {
-				const node = map.get(key)!;
-				let currentMetadata = parentMetadata;
-
-				// metadata json file if json file name is the same as parent directory
-				const jsonFile = node.files.find((f) => f.name === `${node.name}.json`);
-				if (jsonFile) {
-					try {
-						const text = await jsonFile.text();
-						currentMetadata = JSON.parse(text) as SeriesMetadata;
-					} catch (e) {
-						console.warn(`Failed to parse metadata for ${node.fullPath}`, e);
-					}
-				}
-
-				// Merge Parent Covers
-				if (node.files.length > 0 && node.children.size > 0) {
-					const validCovers = node.files.filter((f) => {
-						const fName = f.name.substring(0, f.name.lastIndexOf('.'));
-						return fName === node.name && /\.(jpg|jpeg|png|webp)$/i.test(f.name);
-					});
-
-					if (validCovers.length > 0) {
-						const firstChildKey = Array.from(node.children.keys()).sort((a, b) =>
-							a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })
-						)[0];
-
-						if (firstChildKey) {
-							const child = node.children.get(firstChildKey)!;
-							child.files.push(...validCovers);
-							node.files = node.files.filter((f) => !validCovers.includes(f));
-						}
-					}
-				}
-
-				// CREATE JOB
-				if (node.files.length > 0) {
-					// FILTER 3: Exclude JSON files from the actual upload payload
-					// We have already extracted their data into 'currentMetadata'.
-					// Uploading them wastes bandwidth and triggers backend cleanup logic.
-					const payloadFiles = node.files.filter((f) => !f.name.toLowerCase().endsWith('.json'));
-
-					// Only create a job if there are actual files left (images or mokuro)
-					if (payloadFiles.length > 0) {
-						const seriesFolder = parentName ?? node.name;
-						const volumeFolder = node.name;
-
-						const displayName =
-							seriesFolder === volumeFolder ? seriesFolder : `${seriesFolder}/${volumeFolder}`;
-
-						// Extract Data
-						const seriesTitle = currentMetadata?.series?.title ?? null;
-						const seriesDescription = currentMetadata?.series?.description ?? null;
-						const volMeta = currentMetadata?.volumes?.[node.name];
-						const volumeTitle = volMeta?.displayTitle ?? null;
-						const volumeProgress = volMeta?.progress ?? null;
-
-						newJobs.push({
-							id: `vol-${node.fullPath}`,
-							name: displayName,
-							files: payloadFiles,
-							status: 'pending',
-							progress: 0,
-							seriesFolderName: seriesFolder,
-							volumeFolderName: volumeFolder,
-							metadata: { seriesTitle, seriesDescription, volumeTitle, volumeProgress }
-						});
-					}
-				}
-
-				await traverse(node.children, node.name, currentMetadata);
-			}
-		};
-
-		await traverse(rootChildren, null);
-
-		jobs = newJobs;
-		processQueue();
-	};
-
-	// --- 2. PIPELINE RUNNER ---
-
+	// --- Pipeline Runner ---
 	const processQueue = async () => {
 		if (isProcessingQueue) return;
 		isProcessingQueue = true;
+		let hasUpdates = false;
 
 		for (const job of jobs) {
 			if (job.status === 'done') continue;
-
 			try {
-				// --- STEP 1: PRE-FLIGHT CHECK ---
-				// Ask server if this volume exists before sending heavy files.
 				const check = await apiFetch('/api/library/check', {
 					method: 'POST',
 					body: {
@@ -253,34 +63,32 @@
 					job.status = 'done';
 					job.progress = 100;
 					job.resultMsg = 'Skipped (Duplicate)';
-					// Don't trigger onUploadSuccess() for skips to avoid unnecessary refreshes
 					continue;
 				}
 
-				// --- STEP 2: UPLOAD (Only if new) ---
 				job.status = 'uploading';
-
 				const formData = new FormData();
-
-				// Append fields and files
-
-				// Metadata FIRST
 				formData.append('series_folder_name', job.seriesFolderName);
 				formData.append('volume_folder_name', job.volumeFolderName);
 
-				if (job.metadata.seriesTitle || job.metadata.volumeTitle || job.metadata.volumeProgress) {
+				if (
+					job.metadata.seriesTitle ||
+					job.metadata.volumeTitle ||
+					job.metadata.volumeProgress ||
+					job.metadata.seriesBookmarked
+				) {
 					formData.append(
 						'metadata',
 						JSON.stringify({
 							series_title: job.metadata.seriesTitle,
 							series_description: job.metadata.seriesDescription,
+							series_bookmarked: job.metadata.seriesBookmarked,
 							volume_title: job.metadata.volumeTitle,
 							volume_progress: job.metadata.volumeProgress
 						})
 					);
 				}
 
-				// Files SECOND
 				for (const file of job.files) {
 					formData.append('files', file, file.webkitRelativePath);
 				}
@@ -292,7 +100,7 @@
 
 				job.status = 'done';
 				job.resultMsg = `OK`;
-				onUploadSuccess();
+				hasUpdates = true;
 			} catch (e) {
 				console.error(`Failed to upload ${job.name}`, e);
 				job.status = 'error';
@@ -302,106 +110,331 @@
 
 		isProcessingQueue = false;
 		files = null;
+
+		if (hasUpdates) {
+			onUploadSuccess();
+		}
 	};
 </script>
 
 {#if isOpen}
-	<button
-		transition:fade={{ duration: 150 }}
-		onclick={handleClose}
-		type="button"
-		class="fixed inset-0 z-40 bg-black/50"
-		aria-label="button"
-	></button>
+	<div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
+		<div
+			class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+			transition:fade={{ duration: 150 }}
+			onclick={handleClose}
+			role="button"
+			tabindex="0"
+			onkeydown={(e) => e.key === 'Escape' && handleClose()}
+			aria-label="Close modal"
+		></div>
 
-	<div
-		transition:fade={{ duration: 150 }}
-		class="fixed top-1/2 left-1/2 z-50 w-full max-w-2xl -translate-x-1/2 -translate-y-1/2 rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800"
-	>
-		<div class="flex items-center justify-between mb-4">
-			<h2 class="text-xl font-semibold dark:text-white">Upload Pipeline</h2>
-			<button onclick={handleClose} class="text-gray-400 hover:text-gray-600 cursor-pointer">
-				✕
-			</button>
-		</div>
-
-		{#if jobs.length === 0}
-			<label
-				class="flex w-full cursor-pointer flex-col items-center rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 p-10 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700"
+		<div
+			class="relative w-full max-w-2xl max-h-[90vh] transform overflow-hidden rounded-2xl border border-theme-border bg-theme-surface shadow-2xl transition-all sm:my-8 flex flex-col"
+			transition:scale={{ duration: 200, start: 0.95 }}
+		>
+			<div
+				class="flex items-center justify-between px-6 py-4 bg-theme-main border-b border-theme-border"
 			>
-				<span class="text-sm text-gray-500 dark:text-gray-400">Select Root Folder</span>
-				<input type="file" class="hidden" webkitdirectory bind:files />
-			</label>
-		{:else}
-			<div class="flex justify-between mb-2 text-sm font-medium dark:text-gray-300">
-				<span>Processing Queue</span>
-				<span>{completedJobs} / {totalJobs} Volumes</span>
+				<div class="flex items-center gap-3">
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="24"
+						height="24"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						class="text-accent"
+					>
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+						<polyline points="17 8 12 3 7 8" />
+						<line x1="12" x2="12" y1="3" y2="15" />
+					</svg>
+					<h2 class="text-2xl font-bold text-white">Import Volumes</h2>
+				</div>
+				<button
+					onclick={handleClose}
+					class="p-2 rounded-lg text-theme-secondary hover:text-white hover:bg-theme-surface-hover transition-colors"
+					aria-label="Close"
+				>
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<line x1="18" y1="6" x2="6" y2="18" />
+						<line x1="6" y1="6" x2="18" y2="18" />
+					</svg>
+				</button>
 			</div>
 
-			<div
-				class="max-h-[60vh] overflow-y-auto rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 p-2 space-y-2"
-			>
-				{#each jobs as job (job.id)}
-					<div
-						class="rounded bg-white dark:bg-gray-800 p-3 shadow-sm border border-gray-100 dark:border-gray-700"
-					>
-						<div class="flex items-center justify-between text-sm">
-							<span class="font-medium truncate w-1/2 dark:text-gray-200" title={job.name}>
-								{job.name}
-							</span>
-							<span class="text-xs font-bold uppercase tracking-wide">
-								{#if job.status === 'pending'}
-									<span class="text-gray-400">Waiting</span>
-								{:else if job.status === 'uploading'}
-									<span class="text-blue-500">Uploading {job.progress}%</span>
-								{:else if job.status === 'processing'}
-									<span class="text-yellow-500 animate-pulse">Processing...</span>
-								{:else if job.status === 'done'}
-									<span class="text-green-500">{job.resultMsg || 'Done'}</span>
-								{:else}
-									<span class="text-red-500">Error</span>
-								{/if}
-							</span>
-						</div>
+			<div class="flex-1 overflow-y-auto p-6 space-y-6">
+				<MenuGridRadio
+					bind:value={activeTab}
+					options={[
+						{ value: 'upload', label: 'Upload Files' },
+						{ value: 'guide', label: 'Guide & Help' }
+					]}
+					layout={[2]}
+					itemClass="flex items-center justify-center py-2"
+				>
+					{#snippet children(option, isSelected)}
+						<span
+							class="text-sm font-bold uppercase tracking-wider {isSelected
+								? 'text-accent'
+								: 'text-gray-400'}"
+						>
+							{option.label}
+						</span>
+					{/snippet}
+				</MenuGridRadio>
 
-						{#if job.status === 'uploading'}
-							<div
-								class="mt-2 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden"
-							>
-								<div
-									class="h-full bg-blue-500 transition-all duration-300"
-									style="width: {job.progress}%"
-								></div>
+				<div>
+					{#if activeTab === 'upload'}
+						{#if !hasJobs}
+							<div class="flex flex-col justify-center">
+								<label
+									class="flex flex-col items-center justify-center p-12 rounded-2xl border-2 border-dashed border-theme-border-light bg-theme-main hover:bg-theme-surface-hover hover:border-accent/50 transition-all cursor-pointer group"
+								>
+									<div
+										class="w-16 h-16 rounded-full bg-theme-surface flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-200"
+									>
+										<svg
+											xmlns="http://www.w3.org/2000/svg"
+											width="32"
+											height="32"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											class="text-theme-secondary group-hover:text-accent transition-colors"
+										>
+											<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+											<polyline points="17 8 12 3 7 8" />
+											<line x1="12" x2="12" y1="3" y2="15" />
+										</svg>
+									</div>
+									<p class="text-lg font-medium text-white mb-1">Drag & Drop Folder</p>
+									<p class="text-sm text-theme-secondary">or click to browse</p>
+									<input type="file" class="hidden" webkitdirectory bind:files />
+								</label>
+							</div>
+						{:else}
+							<div class="space-y-4">
+								<div class="flex justify-between items-end">
+									<h3 class="text-sm font-bold text-theme-secondary uppercase tracking-wider">
+										Queue Status
+									</h3>
+									<span class="text-xs font-mono text-accent bg-accent-surface px-2 py-1 rounded">
+										{completedJobs} / {totalJobs} Completed
+									</span>
+								</div>
+
+								<div class="space-y-2">
+									{#each jobs as job (job.id)}
+										<div
+											class="p-4 rounded-xl bg-theme-main border border-theme-border-light flex items-center gap-4"
+										>
+											<div class="flex-shrink-0">
+												{#if job.status === 'pending'}
+													<div class="w-3 h-3 rounded-full bg-gray-600"></div>
+												{:else if job.status === 'uploading' || job.status === 'processing'}
+													<div
+														class="w-4 h-4 rounded-full border-2 border-accent border-t-transparent animate-spin"
+													></div>
+												{:else if job.status === 'done'}
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														width="16"
+														height="16"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="3"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														class="text-green-500"
+													>
+														<polyline points="20 6 9 17 4 12" />
+													</svg>
+												{:else}
+													<svg
+														xmlns="http://www.w3.org/2000/svg"
+														width="16"
+														height="16"
+														viewBox="0 0 24 24"
+														fill="none"
+														stroke="currentColor"
+														stroke-width="3"
+														stroke-linecap="round"
+														stroke-linejoin="round"
+														class="text-red-500"
+													>
+														<line x1="18" y1="6" x2="6" y2="18" />
+														<line x1="6" y1="6" x2="18" y2="18" />
+													</svg>
+												{/if}
+											</div>
+
+											<div class="flex-1 min-w-0">
+												<div class="flex items-center justify-between mb-1 gap-3">
+													<span
+														class="text-sm font-medium text-white truncate min-w-0 flex-1"
+														title={job.name}>{job.name}</span
+													>
+													<span
+														class="text-xs font-bold text-gray-500 uppercase whitespace-nowrap flex-shrink-0"
+													>
+														{job.status === 'done'
+															? job.resultMsg === 'OK'
+																? 'Done'
+																: job.resultMsg
+															: job.status}
+													</span>
+												</div>
+												{#if job.status === 'uploading'}
+													<div class="h-1 w-full bg-white/10 rounded-full overflow-hidden">
+														<div
+															class="h-full bg-accent transition-all duration-300"
+															style="width: {job.progress}%"
+														></div>
+													</div>
+												{/if}
+											</div>
+										</div>
+									{/each}
+								</div>
+
+								<div class="flex justify-end pt-4">
+									{#if !isProcessingQueue}
+										<button
+											onclick={handleClose}
+											class="px-6 py-2.5 rounded-xl bg-theme-main hover:bg-theme-surface-hover text-white font-semibold transition-colors border border-theme-border-light"
+										>
+											Done
+										</button>
+									{:else}
+										<span class="text-sm text-theme-secondary animate-pulse">Processing...</span>
+									{/if}
+								</div>
 							</div>
 						{/if}
+					{:else}
+						<div class="space-y-6 text-theme-primary">
+							<section class="space-y-3">
+								<h3 class="text-lg font-bold text-white flex items-center gap-2">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="20"
+										height="20"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="text-accent"
+										><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
+											points="17 8 12 3 7 8"
+										/><line x1="12" x2="12" y1="3" y2="15" /></svg
+									>
+									Directory Upload
+								</h3>
+								<p class="text-sm leading-relaxed text-theme-secondary">
+									Mokuro Library allows you to upload entire folders at once. The system will parse
+									your folder structure to automatically identify Series and Volumes.
+								</p>
+								<div
+									class="bg-theme-main rounded-xl p-4 border border-theme-border-light font-mono text-xs text-theme-secondary"
+								>
+									<div class="text-accent mb-2 font-bold">// Recommended Structure</div>
+									<div>
+										My Manga Uploads/ <span class="text-theme-tertiary"
+											>&lt;-- Point upload here</span
+										>
+									</div>
 
-						{#if job.status === 'error'}
-							<div class="mt-1 text-xs text-red-500">{job.resultMsg}</div>
-						{/if}
-					</div>
-				{/each}
-			</div>
+									<div class="pl-4">
+										├── Yotsuba&!/ <span class="text-theme-tertiary">&lt;-- Series Title</span>
+									</div>
+									<div class="pl-8">
+										├── Volume 1/ <span class="text-theme-tertiary">&lt;-- Volume Title</span>
+									</div>
+									<div class="pl-12 text-theme-tertiary">├── 001.jpg</div>
+									<div class="pl-12 text-theme-tertiary">└── ...</div>
 
-			<div class="mt-4 flex justify-end gap-3">
-				{#if !isProcessingQueue}
-					<button
-						onclick={resetState}
-						class="px-4 py-2 text-gray-600 hover:text-gray-800 dark:text-gray-300 dark:hover:text-white cursor-pointer"
-					>
-						Upload More
-					</button>
-					<button
-						onclick={handleClose}
-						class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer"
-					>
-						Done
-					</button>
-				{:else}
-					<span class="text-xs text-gray-400 self-center"
-						>Please wait for pipeline to finish...</span
-					>
-				{/if}
+									<div class="pl-8">├── Volume 2/</div>
+									<div class="pl-12 text-theme-tertiary">├── 001.jpg</div>
+									<div class="pl-12 text-theme-tertiary">└── ...</div>
+
+									<div class="pl-8 text-status-success">
+										├── Volume 1.mokuro <span class="text-theme-tertiary">&lt;-- Data File</span>
+									</div>
+									<div class="pl-8 text-status-success">├── Volume 2.mokuro</div>
+									<div class="pl-8 text-status-info">
+										└── Yotsuba&!.png <span class="text-theme-tertiary">&lt;-- Series Cover</span>
+									</div>
+
+									<div class="h-2"></div>
+
+									<div class="pl-4">└── Another Series/</div>
+									<div class="pl-8">├── Chapter 1/</div>
+									<div class="pl-12 text-theme-tertiary">├── 01.png</div>
+									<div class="pl-12 text-theme-tertiary">└── ...</div>
+									<div class="pl-8 text-status-success">├── Chapter 1.mokuro</div>
+									<div class="pl-4 text-status-info">└── Another Series.png</div>
+								</div>
+							</section>
+
+							<section class="space-y-3">
+								<h3 class="text-lg font-bold text-white flex items-center gap-2">
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="20"
+										height="20"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="text-accent"
+										><path
+											d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"
+										/><polyline points="14 2 14 8 20 8" /></svg
+									>
+									Mokuro Files
+								</h3>
+								<p class="text-sm leading-relaxed text-theme-secondary">
+									To enable OCR features, you need to generate <code
+										class="px-1.5 py-0.5 rounded bg-theme-main border border-theme-border-light text-accent font-mono text-xs"
+										>.mokuro</code
+									> files using the Mokuro tool. Place these files alongside your image folders (not
+									inside them).
+								</p>
+								<a
+									href="https://github.com/kha-white/mokuro"
+									target="_blank"
+									class="inline-flex items-center gap-2 text-sm text-accent hover:text-accent-hover transition-colors"
+								>
+									View Mokuro on GitHub &rarr;
+								</a>
+							</section>
+						</div>
+					{/if}
+				</div>
 			</div>
-		{/if}
+		</div>
 	</div>
 {/if}

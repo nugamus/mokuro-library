@@ -1,5 +1,7 @@
 # --- Stage 1: Build Frontend ---
 FROM node:22-alpine AS frontend-builder
+ARG COMMIT_HASH
+ENV VITE_COMMIT_HASH=$COMMIT_HASH
 WORKDIR /app/frontend
 # Copy only package files first for better caching
 COPY frontend/package*.json ./
