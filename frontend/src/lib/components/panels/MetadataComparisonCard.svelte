@@ -21,19 +21,13 @@
 	async function rescrapeWithQuery() {
 		if (!preview) return;
 
-		preview.status = 'applying';
+		preview.status = 'scraping';
 		try {
 			const { scraped, current } = await scrapingState.scrapeWithFallback(
 				preview.seriesId,
 				preview.searchQuery,
 				provider
 			);
-
-			if (!current) {
-				console.error('Re-scrape failed: no results from provider');
-				preview.status = 'error';
-				return;
-			}
 
 			// Update the preview with new scraped data (preserving the ID to avoid UI jumps if keyed)
 			// We generate a new ID if we want to force re-render, but usually mutating state is fine in Svelte 5.

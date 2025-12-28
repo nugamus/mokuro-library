@@ -140,6 +140,7 @@ class ScrapingState {
           provider
         );
 
+
         // 2. Update the item in-place (Reactivity updates the UI)
         item.scraped = scraped;
         item.status = 'pending'
@@ -256,7 +257,7 @@ class ScrapingState {
       });
 
       if (response.error || !response.scraped) {
-        return { scraped: {}, current: null };
+        throw new Error(`Failed to scrape: ${response.error}`)
       }
 
       // Clean description using current filters
@@ -270,8 +271,7 @@ class ScrapingState {
         current: response.current
       };
     } catch (error) {
-      console.error(`Failed to scrape:`, error);
-      return { scraped: {}, current: null };
+      throw new Error(`Failed to scrape: ${error}`)
     }
   }
 

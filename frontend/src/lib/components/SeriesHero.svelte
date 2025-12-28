@@ -87,20 +87,15 @@
 				'anilist'
 			);
 
-			if (current) {
-				scrapePreview = {
-					id: createId(),
-					seriesId: series.id,
-					seriesTitle: series.title || series.folderName,
-					searchQuery: series.title || series.folderName,
-					current,
-					scraped,
-					status: 'pending'
-				};
-			} else {
-				// No results found - preview remains null, modal shows "No Results" state
-				scrapePreview = null;
-			}
+			scrapePreview = {
+				id: createId(),
+				seriesId: series.id,
+				seriesTitle: series.title || series.folderName,
+				searchQuery: series.title || series.folderName,
+				current,
+				scraped,
+				status: 'pending'
+			};
 		} catch (e) {
 			console.error('Scrape failed:', e);
 			scrapePreview = null;
