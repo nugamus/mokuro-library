@@ -242,6 +242,40 @@ Branch drag enables admin to undo accidental merges or partially accept user cha
 
 See `ocr-version-control-v3.md` Section 5.3 for details.
 
+### 4.9 Private Library Submission
+
+Users can submit their private series to the admin's shared library. This acts as a "staging area" workflow.
+
+**Private Library Structure:**
+- Admin branch exists but stays frozen at genesis (never moves)
+- User works on their own branch (standard user behavior with full undo/redo)
+- The patch tree is identical to shared library structure
+
+**Submission Flow:**
+
+1. **User submits series:** 
+   - Series appears in admin's "pending submissions" queue
+   - Series remains in user's private library until accepted/rejected
+
+2. **Admin reviews submission:**
+   - **Accept:** 
+     1. Conflict check: Verify no existing series/volume with same `folderName`
+     2. Filesystem: Move files from user's folder to admin's shared folder
+     3. Database: Update `Series.ownerId` to `admin`
+     4. OCR tree: Optionally auto-fast-forward admin branch to user's HEAD (sets `nextPatchId` links)
+   - **Reject:**
+     1. Series stays in user's private library
+     2. Optionally notify user with reason
+
+3. **After acceptance:**
+   - Series is now part of shared library
+   - Other users can view and fork from it
+   - Original submitter's branch becomes a regular user branch (if they had edits beyond the accepted HEAD)
+
+**Conflict Check (same as upload):**
+- `Series.folderName` + `ownerId = admin` must be unique
+- `Volume.folderName` within series must be unique
+
 ---
 
 ## 5. Implementation Requirements
@@ -279,8 +313,9 @@ See `ocr-version-control-v3.md` Sections 3-4 for full specification.
 To avoid reconstructing patch history on every load:
 
 - Each user has a snapshot file: `/data/users/{userId}/snapshots/{volumeId}.mokuro`
+- Snapshot stores: full state + `patchId` it was generated at
 - Snapshot is updated on: Save, Rebase, Reset, Merge
-- On load: Read snapshot, apply any patches newer than snapshot timestamp
+- On load: Read snapshot, apply patches from `snapshot.patchId` to current HEAD
 
 See `ocr-version-control-v3.md` Section 5.6 for details.
 
@@ -334,7 +369,55 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 }
 ```
 
-For OCR-specific endpoints (patch, rebase, reset, revert), see `ocr-version-control-v3.md` Section 6.
+### 6.4 Submission (Private → Shared)
+
+**POST** `/api/series/:seriesId/submit`
+
+* **Body:** `{ }` (or optional message to admin)
+* **Behavior:** Adds series to admin's pending submissions queue
+* **Response:** `{ success: true, submissionId: string }`
+* **Errors:**
+  - `400`: Series is already shared (ownerId = admin)
+  - `404`: Series not found or not owned by user
+
+**GET** `/api/admin/submissions` (Admin only)
+
+* **Response:**
+```json
+{
+  "submissions": [
+    {
+      "id": "...",
+      "seriesId": "...",
+      "seriesTitle": "Naruto",
+      "submittedBy": "user123",
+      "submittedAt": "2025-01-15T10:00:00Z",
+      "volumeCount": 5
+    }
+  ]
+}
+```
+
+**POST** `/api/admin/submissions/:submissionId/accept` (Admin only)
+
+* **Body:** `{ autoFastForward?: boolean }` (default: true)
+* **Behavior:**
+  1. Check for folder name conflicts with existing shared series/volumes
+  2. Move files from user folder to admin shared folder
+  3. Update `Series.ownerId` to `admin`
+  4. If `autoFastForward`: Set admin branch HEAD to user's HEAD, link `nextPatchId` chain
+  5. Remove from submissions queue
+* **Response:** `{ success: true }`
+* **Errors:**
+  - `409`: Conflict — series or volume folder name already exists in shared library
+
+**POST** `/api/admin/submissions/:submissionId/reject` (Admin only)
+
+* **Body:** `{ reason?: string }`
+* **Behavior:** Remove from queue, optionally notify user
+* **Response:** `{ success: true }`
+
+For OCR-specific endpoints (patch, rebase, reset, revert, undo, redo), see `ocr-version-control-v3.md` Section 6.
 
 ---
 
@@ -349,5 +432,6 @@ For OCR-specific endpoints (patch, rebase, reset, revert), see `ocr-version-cont
 | Conflict resolution | Rebase with skip/resurrect/transform |
 | Performance | Per-user snapshot caching |
 | Admin mistakes | Undo (limited) or Revert (inverse patch) |
+| Private → Shared | Submission queue with accept/reject |
 
 For technical implementation details, refer to `ocr-version-control-v3.md`.
