@@ -10,7 +10,9 @@ A designated "Admin" account hosts a central library visible to all users. Users
 * **Hybrid Visibility:** A user's library view is the union of `{My Private Uploads} ∪ {Admin's Public Uploads}`.
 * **Decoupled State:** "Read Status" and "Bookmarks" are strictly private. One user marking a volume as "Read" does not affect others.
 * **Non-Destructive Editing:** Users view the Admin's OCR text by default. If they make an edit, they seamlessly "fork" into a private branch. The original Admin text remains untouched.
-* **Self-Cleaning History:** The branching model is designed such that "Resetting" a branch automatically cascade-deletes purely private history, preventing database bloat without complex garbage collection scripts.
+* **Self-Cleaning History:** The branching model uses cascade deletes—"Resetting" a branch automatically removes the entire private history without complex garbage collection.
+
+**Related Document:** For detailed OCR versioning, conflict resolution, and rebase algorithms, see `ocr-version-control-v3.md`.
 
 ---
 
@@ -32,13 +34,31 @@ A designated "Admin" account hosts a central library visible to all users. Users
 
 * **Default View:** Users see the Admin's "Official" OCR text.
 * **Editing:** When a normal user edits text (fixes a typo, resizes a box):
-1. The system creates a private "Copy" of the OCR history for them.
-2. Their edit is applied to *their* copy.
-3. They now see "My Version" of the text.
-4. The Admin's version remains unchanged for everyone else.
-
-
+  1. The system creates a private "Copy" of the OCR history for them.
+  2. Their edit is applied to *their* copy.
+  3. They now see "My Version" of the text.
+  4. The Admin's version remains unchanged for everyone else.
 * **Resetting:** Users can click **"Reset to Official"** to discard their private edits and revert to the live Admin version.
+
+### 2.4 Branch Status Indicators
+
+Users need clear feedback about their branch state:
+
+| Status | Indicator | Meaning |
+|--------|-----------|---------|
+| Clean | ✓ Synced | User sees official version, no private edits |
+| Has Ahead | ✏️ Modified | User has unpublished edits |
+| Has Behind | ⚠️ Updates Available | Admin made changes since user's last sync |
+| Both | ⚠️ Modified + Updates | User has edits AND admin moved forward |
+
+**UI Actions by State:**
+
+| State | Available Actions |
+|-------|-------------------|
+| Clean | (none needed) |
+| Has Ahead only | "Reset to Official" |
+| Has Behind only | "Update to Latest" (auto-applies, no conflicts possible) |
+| Both | "Update to Latest" (triggers rebase, may have conflicts) |
 
 ---
 
@@ -66,83 +86,65 @@ model UserSeriesSettings {
   @@id([userId, seriesId])
   @@index([userId, status])      // Efficient "My Reading List" queries
 }
-
 ```
 
 ### 3.2 OCR Branching (`OcrBranch`)
 
-Tracks the "Version" of text a user is looking at.
+Tracks the "Version" of text a user is looking at. See `ocr-version-control-v3.md` for full schema with optimistic locking and rebase support.
 
-* **Logic:** A Branch is defined by its `head` (current state) and its `root` (divergence point).
-* **Optimization:** `rootPatchId` points to the **First Private Patch** (the first child of the shared history). If `rootPatchId` is NULL, the branch is "Clean" (synced with upstream).
+**Simplified view:**
 
 ```prisma
 model OcrBranch {
-  id          String   @id @default(uuid())
+  id          String   @id  // ULID
 
   volumeId    String
   userId      String   // The owner of this branch (User or Admin)
 
   // --- The Pointers ---
-  // Where is this branch right now? (Latest Edit)
-  headPatchId String?
-  
-  // The First Patch that belongs ONLY to this branch.
-  // If NULL, the branch is "Clean" (Synced with upstream).
-  // If SET, the branch is "Dirty" (Diverged).
-  rootPatchId String?  
+  headPatchId String?  // Current state (latest edit)
+  rootPatchId String?  // First private patch (NULL = clean/synced)
 
-  // Metadata
-  name        String   @default("main")
+  // --- Concurrency ---
+  version     Int      @default(0)  // Optimistic locking
+
+  // --- Metadata ---
   updatedAt   DateTime @updatedAt
-  
-  // Musubi Integration (Future Proofing)
-  upstreamSource String @default("local") // "local", "musubi:verified"
 
-  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  headPatch   Patch?   @relation("BranchHead", fields: [headPatchId], references: [id])
-  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
-
-  @@unique([volumeId, userId]) // Limit: 1 active branch per user for MVP
+  @@unique([volumeId, userId]) // 1 branch per user per volume
 }
-
 ```
 
-### 3.3 Self-Cleaning Patches (`Patch`)
+**Key concepts:**
+- `rootPatchId = NULL` → Branch is "Clean" (synced with admin)
+- `rootPatchId != NULL` → Branch is "Dirty" (has private edits)
 
-Uses a linked list of atomic operations.
-**Crucial:** `onDelete: Cascade` on the `parent` relation ensures that deleting a `root` patch wipes the entire private timeline.
+### 3.3 Patches (`Patch`)
+
+Uses a linked list of atomic operations with cascade delete. Admin branch is doubly-linked (has forward pointers), user branches are singly-linked.
 
 ```prisma
 model Patch {
-  id          String   @id @default(uuid())
+  id          String   @id  // ULID
 
-  // The Tree (Linked List)
   parentId    String?
-  // CRITICAL: Cascade delete allows efficient "Reset" logic
   parent      Patch?   @relation("HistoryTree", fields: [parentId], references: [id], onDelete: Cascade)
   children    Patch[]  @relation("HistoryTree")
 
-  // Context
+  // Forward pointer for admin branch only (enables user redo through admin history)
+  nextPatchId String?  @unique
+
   volumeId    String
   userId      String   // Attribution
   createdAt   DateTime @default(now())
-
-  // The Payload (Strict JSON Patch / Unified Ops)
-  operation   String   // JSON string
-
-  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
-  
-  // Reverse lookups
-  asHeadOf    OcrBranch[] @relation("BranchHead")
-  asRootOf    OcrBranch[] @relation("BranchRoot")
+  operation   String   // JSON string (PatchOperation)
 
   @@index([volumeId])
+  @@index([parentId])
 }
-
 ```
+
+**Cascade behavior:** Deleting a patch automatically deletes all its children. This enables simple "Reset" operations.
 
 ---
 
@@ -155,71 +157,197 @@ How to fetch the library list for the logged-in user:
 1. **Query:** `Series` where `ownerId = Me` **OR** `ownerId = Admin`.
 2. **Join:** Include `UserSeriesSettings` where `userId = Me`.
 3. **Merge Strategy:**
-* If settings exist, use that `status`/`bookmark`.
-* If not, default to `Unread` / `false`.
+   * If settings exist, use that `status`/`bookmark`.
+   * If not, default to `Unread` / `false`.
+4. **Badge:** Mark Admin-owned series with "Official" badge.
 
+### 4.2 First View (Branch Creation)
 
+When a user first opens a volume:
 
-### 4.2 Editing (The Fork Logic)
+1. **Check:** Does `OcrBranch` exist for this user + volume?
+2. **If No:** Create branch with:
+   - `headPatchId` = Admin's current HEAD
+   - `rootPatchId` = NULL (clean)
+   - `version` = 0
+3. **Load:** Fetch OCR data from user's snapshot cache (or reconstruct from patches).
 
-Ensures users start fresh but diverge instantly.
+### 4.3 Editing (The Fork Logic)
 
 **Scenario:** User A views a Volume owned by Admin.
 
-1. **Check:** User A has an `OcrBranch` (created on first view) where `rootPatchId` is `NULL`.
+1. **Check:** User A has an `OcrBranch` where `rootPatchId` is `NULL` (clean).
 2. **Action:** User A fixes a typo.
 3. **Backend:**
-* Create New Patch `P_new` (Parent = `CurrentHead`).
-* **Lock Root:** Since `rootPatchId` was NULL, set `rootPatchId = P_new.id`.
-* **Advance:** Set `headPatchId = P_new.id`.
+   * Validate patch operation (Zod schema)
+   * Create New Patch `P_new` (Parent = `CurrentHead`)
+   * Optimistic lock check: verify `version` matches
+   * **Lock Root:** Since `rootPatchId` was NULL, set `rootPatchId = P_new.id`
+   * **Advance:** Set `headPatchId = P_new.id`
+   * Increment `version`
+4. **Result:** Branch is now "Dirty" (`hasAhead = true`).
 
+### 4.4 Undo/Redo (User Only)
 
-4. **Result:** Branch is now "Dirty".
+Users can undo/redo by moving HEAD. See `ocr-version-control-v3.md` Section 5.2 for details.
 
-### 4.3 Reset to Official (Self-Cleaning)
+- **Undo:** Move HEAD to parent, undone patch remains (dangling)
+- **Redo:** Move HEAD to child (follows `rootPatchId` at branch point, `nextPatchId` on admin chain)
+- **New edit after undo:** Deletes dangling patches, redo no longer possible
 
-User A wants to revert their changes.
+### 4.5 Reset to Official
+
+User wants to discard all private edits.
 
 1. **Action:** Click "Reset to Official".
 2. **Identify Target:** Admin Branch Head (`H_admin`).
 3. **Identify Waste:** User Branch Root (`R_user`).
 4. **Update Pointers:** Set User Branch `head = H_admin`, `root = NULL`.
-5. **Cleanup:** **Delete Patch `R_user**`.
-* *Effect:* Because `R_user` is deleted, **all** its children (the entire private history) are cascade-deleted by the database engine. Zero orphans left behind.
+5. **Cleanup:** Delete Patch `R_user` → cascade deletes entire private history.
+6. **Snapshot:** Update user's `.mokuro` cache file with Admin's state.
 
+### 4.6 Update to Latest (Sync/Rebase)
 
+User wants to incorporate Admin's latest changes.
 
-### 4.4 Admin Fast-Forward (Merge)
+**If user has no private edits (`hasAhead = false`):**
+- Simply update `headPatchId` to Admin's HEAD
+- Update snapshot cache
+
+**If user has private edits (`hasAhead = true`):**
+- Trigger full rebase workflow (see `ocr-version-control-v3.md` Section 5.4)
+- May produce conflicts that need resolution
+
+### 4.7 Admin Fast-Forward (Merge)
 
 Admin wants to incorporate a User's fix.
 
-1. **Scenario:** User fixed a typo (`AdminHead -> UserFix`).
-2. **Action:** Admin views User's branch and clicks "Merge/Fast-Forward".
-3. **Check:** Does `UserFix.parentId === AdminHead`?
-* **Yes:** Safe to FF.
+1. **Scenario:** User fixed a typo. User's HEAD is ahead of Admin's HEAD.
+2. **Action:** Admin views User's branch and clicks "Merge".
+3. **Check:** Is User's root patch a direct child of Admin's HEAD?
+   * **Yes:** Safe to fast-forward.
+   * **No:** User needs to rebase first.
+4. **Update:** Set Admin Branch `head = User's HEAD`.
+5. **Result:** The "Private" patches are now "Official".
 
+### 4.8 Admin Undo & Revert
 
-4. **Update:** Set Admin Branch `head = UserFix.id`.
-5. **Result:** The "Private" patch is now the "Official" patch.
+**Undo:** Admin can crawl HEAD backwards like users. If undoing past a user's branch point:
+- **Single user branch:** Admin can undo with "branch drag" — abandoned patches transfer to the user's branch
+- **Multiple user branches:** Admin is blocked (use revert instead)
+
+Branch drag enables admin to undo accidental merges or partially accept user changes.
+
+**Revert:** When admin can't undo or wants to preserve history, they create an inverse patch instead.
+
+See `ocr-version-control-v3.md` Section 5.3 for details.
 
 ---
 
 ## 5. Implementation Requirements
 
-### 5.1 Patch System Enhancements
+### 5.1 Patch System
 
-To support this architecture and future federation, the existing patch system must be updated.
+The patch system must support:
 
-1. **Missing Operation:** `reorder_blocks` must be implemented in `PatchApplicator` and `PatchInverter`.
-* *Current Status:* Missing (detected in code review).
-* *Requirement:* Implement `reorderSingle` helper to permute the `blocks` array.
+1. **Operations:** `replace`, `add`, `remove`, `reorder_lines`, `reorder_blocks`
+2. **Validation:** Zod schema validation at insertion (fail hard on invalid)
+3. **Inversion:** Every operation must be invertible for undo/revert
+4. **Path Rules:** 
+   - Structure changes (add/remove) use Unified Types
+   - Content changes (replace) can be granular
+   - Direct `lines_coords` modification is forbidden
 
-
-2. **Path Strictness:** Maintain the "Unified Block" approach (updating `box` and `lines` atomically) but ensure internal logic treats them as distinct operations where possible to ease future Musubi integration.
-3. **Guard Rails:** `PatchApplicator` must explicitly forbid direct modification of `lines_coords` to enforce the Unified Block model integrity.
+See `ocr-version-control-v3.md` Sections 3-4 for full specification.
 
 ### 5.2 Conflict Handling
 
-* **Database:** `Series.folderName` + `Series.ownerId` uniqueness handles metadata collisions.
-* **Files:** User uploads go to `./data/uploads/{userId}/{seriesName}`, preventing disk collisions.
-* **Display:** Frontend must group or badge duplicate series titles (e.g., "Naruto [Official]" vs "Naruto [My Upload]").
+**Database Level:**
+- `Series.folderName` + `Series.ownerId` uniqueness handles metadata collisions
+
+**File System Level:**
+- User uploads go to `./data/uploads/{userId}/{seriesName}`, preventing disk collisions
+
+**Display Level:**
+- Frontend must badge duplicate series titles (e.g., "Naruto [Official]" vs "Naruto [My Upload]")
+
+**OCR Level:**
+- See `ocr-version-control-v3.md` Section 5.5 for conflict resolution during rebase
+
+### 5.3 Caching Strategy
+
+To avoid reconstructing patch history on every load:
+
+- Each user has a snapshot file: `/data/users/{userId}/snapshots/{volumeId}.mokuro`
+- Snapshot is updated on: Save, Rebase, Reset, Merge
+- On load: Read snapshot, apply any patches newer than snapshot timestamp
+
+See `ocr-version-control-v3.md` Section 5.6 for details.
+
+---
+
+## 6. API Endpoints (Library-Specific)
+
+### 6.1 Library Listing
+
+**GET** `/api/library`
+
+* **Query:** `{ status?: number, bookmarked?: boolean }`
+* **Response:**
+```json
+{
+  "series": [
+    {
+      "id": "...",
+      "title": "Naruto",
+      "ownerId": "admin",
+      "isOfficial": true,
+      "userSettings": {
+        "status": 1,
+        "bookmarked": true,
+        "lastReadAt": "2025-01-15T10:00:00Z"
+      },
+      "volumes": [...]
+    }
+  ]
+}
+```
+
+### 6.2 Update Reading Progress
+
+**POST** `/api/series/:seriesId/progress`
+
+* **Body:** `{ status?: number, bookmarked?: boolean, lastReadAt?: string }`
+* **Response:** `{ success: true }`
+
+### 6.3 Branch Status
+
+**GET** `/api/volumes/:volumeId/status`
+
+* **Response:**
+```json
+{
+  "hasAhead": true,
+  "hasBehind": false,
+  "version": 5,
+  "headPatchId": "01ARZ3NDEKTSV4RRFFQ69G5FAV"
+}
+```
+
+For OCR-specific endpoints (patch, rebase, reset, revert), see `ocr-version-control-v3.md` Section 6.
+
+---
+
+## 7. Summary
+
+| Concern | Solution |
+|---------|----------|
+| Library visibility | Union of private + admin uploads |
+| Reading progress | Per-user `UserSeriesSettings` table |
+| OCR editing | Copy-on-Write branching |
+| Branch cleanup | Cascade delete on patch parent |
+| Conflict resolution | Rebase with skip/resurrect/transform |
+| Performance | Per-user snapshot caching |
+| Admin mistakes | Undo (limited) or Revert (inverse patch) |
+
+For technical implementation details, refer to `ocr-version-control-v3.md`.
