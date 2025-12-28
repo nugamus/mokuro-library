@@ -2,303 +2,371 @@
 
 ## 1. Overview
 
-This document specifies the architecture for a persistent, server-side Undo/Redo system for the Mokuro Reader. The system is architected for a single-user environment, prioritizing **Data Safety**, **Storage Efficiency**, and **Atomic Granularity**.
+This document specifies the architecture for the **Shared Multi-User OCR System** in Mokuro Library. It transitions from a single-user linear log to a **Git-like Branching Model**, allowing users to maintain private edits on top of a shared "Official" library without data duplication.
 
 ### Core Philosophy
 
-  * **Backend Authority:** The Backend database is the source of truth for the "Live" state. The Frontend acts as a view/cache layer.
-  * **Draft vs. Published:**
-      * **Live Draft:** Edits are persisted immediately to the database (History Log) to ensure zero data loss on crash. The physical file is *not* touched.
-      * **Published:** The `.mokuro` file on disk is updated only when the user explicitly clicks "Save". Readers always see the stable, published version.
-  * **Space Efficiency (Compression):** History is stored in **Compressed Chunks** (GZIP) rather than individual rows, reducing storage overhead by .50x.
-  * **Atomic Granularity:** Users operate on atomic steps (Undo 1 edit), even though storage is chunked.
-  * **Compute-on-Demand:** Inverse patches are calculated at runtime during Undo operations.
+* **Hybrid Authority:** A designated **Admin Branch** acts as the "Official" source of truth. Users view this by default but seamlessly "fork" into a private **User Branch** upon editing.
+* **Live Draft:** Edits are persisted immediately to the database (as atomic Patches) to ensure zero data loss. The physical `.mokuro` file on disk is only updated when the Admin explicitly clicks "Save".
+* **Atomic Granularity:** History is stored as individual `Patch` rows in a linked list. This simplifies conflict resolution and allows for precise "Time Travel" (Undo/Redo).
+* **Self-Cleaning:** The branching model allows for "Reset" operations that atomically wipe private history via database cascades, preventing storage bloat.
+
+---
 
 ## 2. Architecture
 
-The system utilizes a **Snapshot + Archive** model with a "Virtual Head".
+The system utilizes a **Branch + Patch Linked List** model.
 
-  * **The Snapshot ($V_{disk}$):** The `.mokuro` file on disk. Represents the last explicitly saved state.
-  * **The Archive:** The `HistoryChunk` table. A compressed log of all operations.
-  * **The Virtual Head ($V_{head}$):** The active state presented to the Editor. It is dynamically constructed by loading $V_{disk}$ and replaying all subsequent patches from the Archive.
+### 2.1 The Branch (`OcrBranch`)
 
-### 2.1 Database Schema (Prisma)
+Decouples the state from the `Volume`. Instead of the Volume having one `headPatchId`, distinct Branches exist for different users.
 
-We introduce a "History Chunk" model and a pointer in the Volume table.
+* **Head Pointer:** Points to the latest `Patch` in the timeline.
+* **Root Pointer (The Fork Point):** Points to the **First Private Patch** in the chain.
+* **Clean State (`root == NULL`):** The branch is synced with the upstream (Admin) history. The user has no private changes.
+* **Dirty State (`root != NULL`):** The branch has diverged. The `root` marks the start of the private timeline.
 
-```prisma
-model Volume {
-  id          String   @id @default(uuid())
-  // ... existing fields ...
 
-  // The "Live" Pointer.
-  // Updates on every POST /patch.
-  // If null, Head == Disk Version (Clean state).
-  headPatchId String?
 
-  history     HistoryChunk[]
+### 2.2 The Patch (`Patch`)
+
+Represents an atomic, reversible operation. Patches form a doubly-linked list via `parentId`.
+
+* **Unified Operations:** To ensure data integrity, operations on complex entities (like Blocks) are **Unified**. A single patch updates both the text and the bounding box coordinates simultaneously, preventing "ghost text" misalignment.
+* **Storage:** Stored as uncompressed JSON payloads (`PatchOperation`) in the database.
+
+---
+
+## 3. Data Types & Interfaces
+
+The system relies on strict TypeScript definitions to ensure frontend/backend compatibility.
+
+### 3.1 Primitive Types (`mokuro.ts`)
+
+```typescript
+// A "Quad" representing the 4 corners of a text line [x,y]
+export type Quad = [
+  [number, number],
+  [number, number],
+  [number, number],
+  [number, number]
+];
+
+// A "Rect" representing the bounding box (min_x, min_y, max_x, max_y)
+export type Rect = [number, number, number, number];
+
+```
+
+### 3.2 Unified Value Types (`history.ts`)
+
+To prevent desynchronization between text and geometry, we use **Unified** types. We do *not* allow patching `lines` and `lines_coords` separately.
+
+```typescript
+// UnifiedLine: Atomic unit of text + position
+export interface UnifiedLine {
+  text: string;
+  coords: Quad;
 }
 
-model HistoryChunk {
-  // Unique ID of this Chunk
+// UnifiedBlock: Represents a full block structure
+export interface UnifiedBlock {
+  box: Rect;
+  vertical: boolean;
+  font_size?: number;
+  lines: UnifiedLine[]; // Replaces separate string[] and Quad[] arrays from native format
+}
+
+// FineValue: For simple property replacements on leaf nodes
+export type FineValue = 
+  | string  // Text content
+  | boolean // Vertical flag
+  | number  // Font size
+  | Rect    // Box coordinates
+  | Quad;   // Line coordinates
+
+export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
+
+```
+
+### 3.3 The Patch Operation (`history.ts`)
+
+Each database row stores one `PatchOperation` serialized as JSON.
+
+```typescript
+export type OpType = 'replace' | 'add' | 'remove' | 'reorder_lines' | 'reorder_blocks';
+
+export interface PatchOperation {
+  id: string;           // UUID
+  op: OpType;
+  path: string;         // JSON Pointer (RFC 6901 style)
+  
+  // The new value to apply (Required for 'add'/'replace')
+  value?: PatchValue;   
+  
+  // The previous value (Required for 'remove'/'replace' to enable Undo)
+  old_value?: PatchValue; 
+  
+  // Specific to reorder operations
+  new_order?: number[]; 
+}
+
+```
+
+---
+
+## 4. Path Specification & Operations
+
+The system uses a strict subset of JSON Pointers to target specific entities within the `MokuroData` structure.
+
+**Root Context:** `MokuroData` object.
+
+### 4.1 Block Operations
+
+Targeting blocks within a page.
+
+| Operation | Path Schema | Value Type | Description |
+| --- | --- | --- | --- |
+| **Add Block** | `/pages/{p}/blocks/-` | `UnifiedBlock` | Append a new block to page `{p}`. |
+| **Insert Block** | `/pages/{p}/blocks/{b}` | `UnifiedBlock` | Insert block at index `{b}`. |
+| **Remove Block** | `/pages/{p}/blocks/{b}` | `N/A` | Remove block at index `{b}`. `old_value` required. |
+| **Reorder Blocks** | `/pages/{p}/blocks` | `N/A` | Reorder blocks on page `{p}` using `new_order` indices. |
+| **Resize Box** | `/pages/{p}/blocks/{b}/box` | `Rect` | Update bounding box coordinates. |
+| **Set Vertical** | `/pages/{p}/blocks/{b}/vertical` | `boolean` | Toggle vertical/horizontal text flow. |
+| **Set Font Size** | `/pages/{p}/blocks/{b}/font_size` | `number` | Update font size metadata. |
+
+### 4.2 Line Operations
+
+Targeting lines within a block. Note that `lines` and `lines_coords` are modified atomically via `UnifiedLine` or specific sub-paths.
+
+| Operation | Path Schema | Value Type | Description |
+| --- | --- | --- | --- |
+| **Add Line** | `/pages/{p}/blocks/{b}/lines/-` | `UnifiedLine` | Append line to block `{b}`. Updates both text and coords arrays. |
+| **Insert Line** | `/pages/{p}/blocks/{b}/lines/{l}` | `UnifiedLine` | Insert line at index `{l}`. |
+| **Remove Line** | `/pages/{p}/blocks/{b}/lines/{l}` | `N/A` | Remove line at index `{l}`. `old_value` required. |
+| **Reorder Lines** | `/pages/{p}/blocks/{b}/lines` | `N/A` | Reorder lines in block `{b}` using `new_order`. |
+| **Edit Text** | `/pages/{p}/blocks/{b}/lines/{l}/text` | `string` | Update text content only. |
+| **Edit Coords** | `/pages/{p}/blocks/{b}/lines/{l}/coords` | `Quad` | Update line coordinates only. |
+
+**Forbidden Paths:**
+Direct modification of `/pages/{p}/blocks/{b}/lines_coords/...` is **strictly forbidden**. All coordinate changes must go through the `/lines/...` paths to ensure data consistency.
+
+---
+
+## 5. Database Schema (Prisma)
+
+```prisma
+model OcrBranch {
   id          String   @id @default(uuid())
 
   volumeId    String
+  userId      String   // Owner of this branch
+
+  // --- Pointers ---
+  // The current state of this branch
+  headPatchId String?
+  headPatch   Patch?   @relation("BranchHead", fields: [headPatchId], references: [id])
+
+  // The start of the private timeline.
+  // IF NULL: Branch is synonymous with its parent (Clean).
+  // IF SET: Branch has private edits starting at this patch (Dirty).
+  rootPatchId String?
+  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
+
+  // Future-proofing for Federation
+  upstreamSource String @default("local") 
+
+  updatedAt   DateTime @updatedAt
+  
   volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Linked List of CHUNKS (Coarse Grain)
-  previousChunkId String?
+  @@unique([volumeId, userId])
+}
 
-  // Metadata for efficient seeking
-  // The UUID of the FIRST patch in this compressed blob
-  startPatchId String
-  // The UUID of the LAST patch in this compressed blob
-  endPatchId   String
+model Patch {
+  id          String   @id @default(uuid())
 
-  // The Payload: GZIP Compressed JSON Array of PatchOperation[]
-  // Type: Bytes (Blob)
-  payload     Bytes
+  // --- The Tree ---
+  parentId    String?
+  // CRITICAL: Cascade delete allows efficient "Reset" logic
+  parent      Patch?   @relation("HistoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Patch[]  @relation("HistoryTree")
 
+  // --- Metadata ---
+  volumeId    String
+  userId      String   // Attribution: Who made THIS specific edit
   createdAt   DateTime @default(now())
 
-  // Indexes:
-  // 1. [volumeId, endPatchId]: Fast lookup for "Which chunk contains my Target?"
-  @@index([volumeId, endPatchId])
+  // --- Payload ---
+  // JSON String adhering to PatchOperation interface
+  operation   String   
+
+  // Relations
+  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  asHeadOf    OcrBranch[] @relation("BranchHead")
+  asRootOf    OcrBranch[] @relation("BranchRoot")
+
+  @@index([volumeId])
+  @@index([parentId])
 }
+
 ```
 
-## 3. Data Structures
+---
 
-To ensure data integrity, we differentiate between **Fine** (Property) and **Coarse** (Structural) updates.
+## 6. Key Workflows
 
-### 3.1 Value Types
+### 6.1 Reading (The Clean State)
 
-```typescript
-// --- 1. Fine Values (Leaf Properties) ---
-// Used exclusively for REPLACE operations.
-export type FineValue =
-  | string                                // Text content, Titles
-  | [[number,number], [number,number], [number,number], [number,number]] // Line Coords (Quad)
-  | [number, number, number, number]      // Block Box (Rect)
-  | boolean | number;                     // Primitives
+When a user opens a volume, the system ensures an `OcrBranch` exists.
 
-// --- 2. Coarse Values (Structural Objects) ---
-// Used exclusively for ADD and REMOVE operations.
-// "Unified" objects merge split data structures (lines + coords) to guarantee atomic integrity.
+* **If New:** Create Branch with `headPatchId = AdminBranch.headPatchId` and `rootPatchId = NULL`.
+* **Effect:** The user sees the Official text. No storage cost for patches.
 
-export interface UnifiedLine {
-  text: string;
-  coords: [[number,number], [number,number], [number,number], [number,number]];
-}
+### 6.2 Editing (The Fork Trigger)
 
-export interface UnifiedBlock {
-  box: [number, number, number, number];
-  vertical: boolean;
-  font_size?: number;
-  lines: UnifiedLine[];
-}
+User makes an edit (e.g., fixes a typo).
 
-export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
-```
+1. **Check Root:** Is `ActiveBranch.rootPatchId` NULL?
+2. **Create Patch:** Insert new `Patch` pointing to current `headPatchId`.
+3. **Lock Root:** If Root was NULL, update `ActiveBranch.rootPatchId = NewPatch.id`.
+4. **Advance Head:** Update `ActiveBranch.headPatchId = NewPatch.id`.
+5. **Effect:** The branch is now "Dirty". It effectively tracks a private timeline `AdminHead -> NewPatch`.
 
-### 3.2 The Patch Operation
+### 6.3 Resetting (Self-Cleaning)
 
-This object structure exists *inside* the compressed payload array.
+User wants to revert to the Official version.
 
-```typescript
-export interface PatchOperation {
-  // UUID (Mandatory). Identifies this specific atomic step.
-  id: string;
+1. **Identify Target:** Get `AdminBranch.headPatchId`.
+2. **Identify Waste:** Get `ActiveBranch.rootPatchId`.
+3. **Update Pointers:** Set `ActiveBranch.head = AdminHead`, `root = NULL`.
+4. **Cleanup:** Delete the patch referenced by the *old* `rootPatchId`.
+* **Result:** The database cascades this delete, wiping the entire private linked list from Root to Head. Zero orphans.
 
-  op: 'replace' | 'add' | 'remove' | 'reorder_lines';
-  path: string; // JSON Pointer
 
-  value?: PatchValue;
-  old_value?: PatchValue; // REQUIRED for Inversion
-  new_order?: number[];   // Exclusive for reorder_lines
-}
-```
 
-## 4. Path Specification (RFC 6901)
+### 6.4 Fast-Forward (Admin Merge)
 
-The `path` string is a JSON Pointer starting from the root of the `.mokuro` object.
+Admin wants to accept a User's fix.
 
-### 4.1 Virtual vs. Physical Paths
+1. **Identify Fix:** User's `headPatchId`.
+2. **Check Lineage:** Verify User's patch descends from Admin's current Head.
+3. **Update:** Set `AdminBranch.headPatchId = UserPatch.id`.
+4. **Result:** The "Private" edit is now the "Official" edit.
 
-Because the "Unified" data model differs from the raw storage on disk (where lines and coords are split), the Backend interprets specific paths "Virtually."
+---
 
-| Path Segment | Storage Reality | Behavior |
-| :--- | :--- | :--- |
-| `.../blocks/0` | `pages[i].blocks[0]` | **Physical.** Targets the raw Block object. |
-| `.../lines/0` | **Split Arrays** | **Virtual.** Targets the *concept* of a line. Operations here affect **both** `lines[0]` and `lines_coords[0]` simultaneously. |
-| `.../lines/0/text` | `block.lines[0]` | **Physical.** Targets only the string in the `lines` array. |
+## 7. Implementation Requirements
 
-### 4.2 Valid Path Reference
+### 7.1 `PatchApplicator`
 
-**A. Block-Level**
+A static utility that applies a `PatchOperation` to a mutable `MokuroData` object.
 
-  * `/pages/0/blocks/-`: **Op: `add`**. Append new block.
-  * `/pages/0/blocks/1`: **Op: `remove`**. Delete Block 1.
-  * `/pages/0/blocks/1/box`: **Op: `replace`**. Update bounding box.
+* **Logic:** Parses JSON Pointers defined in Section 4.
+* **Guard Rails:**
+* Must parse `/lines` paths and update `lines` and `lines_coords` arrays in parallel.
+* Must throw error on unknown paths or direct `lines_coords` access.
 
-**B. Line-Level (Unified)**
 
-  * `/pages/0/blocks/1/lines/-`: **Op: `add`**. Append new line (Text + Coords).
-  * `/pages/0/blocks/1/lines/0`: **Op: `remove`**. Delete Line 0 (Removes from both arrays).
-  * `/pages/0/blocks/1/lines`: **Op: `reorder_lines`**. Permute lines.
 
-**C. Property-Level (Optimization)**
+### 7.2 `PatchInverter`
 
-  * `/pages/0/blocks/1/lines/0/text`: **Op: `replace`**. Fix typo (Text only).
-  * `/pages/0/blocks/1/lines/0/coords`: **Op: `replace`**. Tweak geometry (Quad only).
+Calculates the **Inverse Patch** for Undo operations.
 
-## 5. API Specification
+* **Requirement:** Every `PatchOperation` stored in the DB must include `old_value`.
+* **Logic:**
+* `add` -> `remove` (uses `old_value` if needed for history consistency, though usually `value` becomes `old_value`).
+* `remove` -> `add` (uses `old_value` to restore data).
+* `replace` -> `replace` (swaps `value` <-> `old_value`).
+* `reorder` -> `reorder` (calculates inverse permutation).
 
-### 5.1 GET `/api/library/volume/:id/:version_id?` (The Full Load)
+## 8. Specification: Rebase Workflow
 
-**Purpose:** Initial load or hard refresh. Returns the **Complete JSON State**.
+Rebasing is the process of moving a Diverged User Branch (`D`) onto a new Upstream Head (`U`). This allows a user to retain their private edits while incorporating the latest official fixes, even if the underlying document structure has changed.
 
-  * **Parameters:**
-      * `version_id` (Optional): Specific target. Defaults to `Volume.headPatchId`.
-  * **Backend Logic:**
-    1.  **Resolve Target:** Determine Target ID ($T$). If null/omitted, use $V_{disk}$.
-    2.  **Load Base:** Read `.mokuro` file ($V_{disk}$).
-    3.  **Fast-Forward:**
-          * If $T == V_{disk}$: Return file.
-          * Else: Fetch compressed chunks from DB where `start > V_disk` AND `end <= T`.
-          * Decompress and apply patches sequentially to the in-memory object.
-    4.  **Resolve Pointers:**
-          * `prev`: The parent ID of patch $T$.
-          * `next`: The ID of the patch immediately following $T$ in the chunk/DB.
-    5.  **Return:**
-        ```json
-        {
-          "version_id": "uuid-T",
-          "prev_version_id": "uuid-prev",
-          "next_version_id": "uuid-next",
-          "data": { ... } // Full State
-        }
-        ```
+### 8.1 The Challenge: Index Shifting
 
-### 5.2 POST `/api/library/volume/:id/patch` (Batch Saver)
+JSON Patches rely on array indices (e.g., `/blocks/0`). Structural changes upstream (insertions/deletions) invalidate downstream patch indices.
 
-**Purpose:** Persists edits to the database buffer. **No disk write.**
+* **Scenario:** Admin adds a new block at `index 0`.
+* **User Patch:** Edits `blocks[0]` (intended to be the *old* first block).
+* **Result without Transformation:** User Patch now edits the *new* Admin block. **Data Corruption.**
+* **Requirement:** The Rebase engine must **Transform** user paths (e.g., shift `blocks[0]` -> `blocks[1]`) based on the net effect of upstream operations.
 
-  * **Request Body:** `{ operations: [...], parent_id: "..." }`
-  * **Backend Logic:**
-    1.  **Branch Check:** If `parent_id` is not the latest in Buffer/DB, truncate future chunks (Branching logic).
-    2.  **Buffer:** Assign UUIDs to operations. Append to `activeChunk` (In-Memory Buffer).
-    3.  **Pointer Update:** `UPDATE Volume SET headPatchId = new_patch_id`.
-    4.  **Flush Condition:** If `activeChunk.length >= 50` (or time limit), GZIP and INSERT.
-    5.  **Return:** `{ success: true, new_version_id: "..." }`
+### 8.2 Footprint & Scope
 
-### 5.3 POST `/api/library/volume/:id/undo` (Fast Path)
+To determine safety and conflicts, we calculate the **Footprint** of every patch.
 
-**Purpose:** Navigate backward 1 step.
+* **Exact Footprint:** Modifying a leaf property.
+* `FP(/blocks/0/text) = { /blocks/0/text }`
 
-  * **Request:** `{ current_version_id: "..." }`
-  * **Backend Logic:**
-    1.  **Identify Target:** The user is currently at `current_version_id` (Patch $P_{curr}$). The goal is to move to $P_{prev}$ (the parent of $P_{curr}$).
-    2.  **Locate $P_{curr}$:** Find the patch in the active Buffer or DB Chunk.
-    3.  **Compute Inverse:** Calculate `Invert(P_curr)`.
-    4.  **Look Ahead/Behind (The Navigation Pointers):**
-          * **New ID:** $P_{prev}$.ID (This becomes the current state).
-          * **Prev ID:** The parent of $P_{prev}$ (Check if $P_{prev}$ has a parent or if we hit the disk snapshot).
-          * **Next ID:** $P_{curr}$.ID (Since we just undid it, we can redo it).
-    5.  **Return:**
-        ```json
-        {
-          "success": true,
-          "new_version_id": "uuid-prev",      // The state we just landed on
-          "prev_version_id": "uuid-prev-prev",// Null if history exhausted (Gray out Undo)
-          "next_version_id": "uuid-curr",     // Null if impossible (Enable Redo)
-          "inverse_patch": { ... }
-        }
-        ```
 
-### 5.4 POST `/api/library/volume/:id/redo` (Fast Path)
+* **Hierarchical Footprint:** Deleting a container affects all children.
+* `FP(/blocks/0) = { /blocks/0, /blocks/0/** }`
 
-**Purpose:** Navigate forward 1 step.
 
-  * **Request:** `{ current_version_id: "..." }`
-  * **Backend Logic:**
-    1.  **Identify Target:** Find the patch $P_{next}$ that immediately follows `current_version_id`.
-    2.  **Look Ahead/Behind:**
-          * **New ID:** $P_{next}$.ID.
-          * **Prev ID:** `current_version_id`.
-          * **Next ID:** The patch following $P_{next}$ (Null if $P_{next}$ is Head).
-    3.  **Return:**
-        ```json
-        {
-          "success": true,
-          "new_version_id": "uuid-next",
-          "prev_version_id": "uuid-current",  // Enable Undo
-          "next_version_id": "uuid-future",   // Null if Head (Gray out Redo)
-          "patch": { ... }
-        }
-        ```
+* **Structural Footprint:** Reordering or Adding affects the array indices.
+* `FP(/blocks) = { /blocks/** }` (Potentially invalidates all indices in the array).
 
-### 5.5 Summary of UI State Logic
 
-| Action | Response Field | UI Behavior |
-| :--- | :--- | :--- |
-| **Undo** | `prev_version_id` is `null` | **Disable** "Undo" button (Hit bottom of draft history). |
-| **Undo** | `prev_version_id` is UUID | **Enable** "Undo" button. |
-| **Redo** | `next_version_id` is `null` | **Disable** "Redo" button (Hit Head). |
-| **Redo** | `next_version_id` is UUID | **Enable** "Redo" button. |
 
-This addition makes the frontend logic significantly simpler (purely reactive to the API response) and prevents "off-by-one" errors where the user clicks Undo one too many times.
+### 8.3 The Rebase Algorithm (Full Simulation)
 
-### 5.6 POST `/api/library/volume/:id/save` (Publish)
+The system performs a full simulation of the upstream changes to construct a "Reality Map" before transforming and applying user patches.
 
-**Purpose:** Commit Draft to Disk.
+**Inputs:**
 
-  * **Request Body:** `{ head_version_id: string }`
-  * **Backend Logic:**
-    1.  Load `.mokuro` file ($V_{disk}$).
-    2.  Query DB: Fetch all patches from $V_{disk}$ to `head_version_id`.
-    3.  **Replay:** Apply patches to the JSON object.
-    4.  **Write Disk:** Atomically write the new `.mokuro` file.
-    5.  **Update Pointer:** `UPDATE Volume SET headPatchId = NULL` (Head aligned with Disk).
-    6.  **Return:** `{ success: true }`.
+* `UserChain`: List of patches from `Root` to `UserHead`.
+* `UpstreamChain`: List of patches from `Root.parent` to `AdminHead`.
 
-## 6. Frontend Requirements (`OcrState`)
+**Phase 1: Analysis (Build Upstream Map)**
+Iterate through the `UpstreamChain` to track how indices have shifted. We maintain a `TranslationMap` for every array (Pages, Blocks, Lines).
 
-### 6.1 Routing Logic
+* **Insertion (Shift Up):**
+* *Event:* Upstream adds item at index `i`.
+* *Effect:* All logical indices `k >= i` are shifted to `k + 1`.
+* *Logic:* `Map[k] = Map[k] + 1` for all `k >= i`.
 
-To avoid the "Back Button Trap," the frontend uses `replaceState`.
 
-  * **On Undo/Redo/Patch:**
-      * Apply visual change locally.
-      * Update URL: `history.replaceState(..., '/reader/vol1/new-uuid')`.
-  * **On Refresh:**
-      * Route `/reader/vol1/uuid` triggers `GET /api/volume/vol1/uuid`.
+* **Deletion (Shift Down & Invalidate):**
+* *Event:* Upstream removes item at index `i`.
+* *Effect (Target):* Index `i` becomes a **Dead Zone**. Any user patch targeting exactly `i` is marked for discard/conflict.
+* *Effect (Siblings):* All logical indices `k > i` are shifted down to `k - 1`.
 
-### 6.2 Commit Triggers
 
-Patches are generated on meaningful transaction boundaries.
+* **Reorder (Permutation Remap):**
+* *Event:* Upstream reorders an array using `new_order`.
+* *Effect:* Indices are scrambled based on the permutation.
+* *Logic:* `Map[OldIndex] = NewIndex`. Any user patch targeting `OldIndex` is remapped to `NewIndex`.
 
-| Action | Trigger | Patch Type |
-| :--- | :--- | :--- |
-| **Editing Text** | `blur` or `Ctrl+Enter` | `replace` (Fine Value: string) |
-| **Resizing Box** | `mouseup` (Drag End) | `replace` (Fine Value: box) |
-| **Adding Line** | Immediate | `add` (UnifiedLine) |
-| **Reordering** | Modal Save | `reorder_lines` |
 
-**NOTE:** Splitting lines and merging lines will be decomposed to their sub actions for simplicity (Edit Line -> Insert/Delete)
 
-## 7. Implementation Utilities
+**Phase 2: Transformation (Adjust User Patches)**
+Iterate through the `UserChain` and clone each patch `P` into a candidate patch `P'`.
 
-### 7.1 `ChunkManager`
+* **Path Transformation:** Apply the `TranslationMap` to `P.path`.
+* *Example:* If Upstream inserted 1 block at index 0, and `P` targets `blocks[5]`, `P'.path` becomes `blocks[6]`.
 
-Manages the Write Buffer and the complexity of splitting compressed chunks.
 
-  * **`flush()`**: Persists buffer to DB.
-  * **`truncate(patchId)`**: Handles branching by rewriting the tail chunk.
+* **Dead Zone Check:** If `P` targets a Dead Zone (an entity deleted upstream), the patch is **Discarded** (it modifies something that no longer exists).
 
-### 7.2 `PatchApplicator`
+**Phase 3: Verification (Conflict Detection)**
+Check for semantic conflicts that cannot be resolved automatically.
 
-Bridges the "Unified" patch format and the "Native" storage format.
+* **Content Conflict:** Upstream modified `/blocks/0/text`. User modified `/blocks/0/text`.
+* *Action:* **Reject Rebase**. User must choose whose version to keep or manually edit.
 
-  * Handles the split insertion of `UnifiedLine` into `lines[]` and `lines_coords[]`.
-  * Handles `reorder_lines` by permuting both arrays.
+
+* **Structural Integrity:** Ensure the transformed path `P'.path` is valid in the new document structure (e.g., not out of bounds).
+
+**Phase 4: Execution (Atomic Commit)**
+If all user patches are successfully transformed or cleanly discarded:
+
+1. **Reset:** Set User Branch `head = AdminHead`, `root = NULL`. (Branch is momentarily clean).
+2. **Replay:** For each transformed patch `P'`:
+* Insert `P'` into DB with `parentId = CurrentHead`.
+* Update `CurrentHead = P'.id`.
+* Set `root = P'.id` (on the first replayed patch).
+
+
+3. **Result:** The User Branch now sits on top of the new Admin Head, with all indices correctly shifted to match the new reality.

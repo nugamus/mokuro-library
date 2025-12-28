@@ -1,373 +1,225 @@
-# Mokuro Library: Shared Multi-User System
-## Feature Documentation
+# Feature Specification: Shared Library & Local Collaboration
 
----
+## 1. Overview
 
-## Overview
-
-Mokuro Library is transitioning from isolated per-user libraries to a collaborative shared library where users contribute and improve manga together while maintaining individual reading progress.
+**Goal:** Transform Mokuro Library from a single-user silo into a **Hybrid Shared System**.
+A designated "Admin" account hosts a central library visible to all users. Users can consume this content while maintaining their own private reading progress, bookmarks, and even their own private OCR edits, without affecting the "Official" version.
 
 **Core Principles:**
-- All content shared and visible to all users
-- Community ownership (library owns content, not individuals)
-- Transparent attribution and version history
-- Quality maintained through review processes
-- Private reading data per user
+
+* **Hybrid Visibility:** A user's library view is the union of `{My Private Uploads} ∪ {Admin's Public Uploads}`.
+* **Decoupled State:** "Read Status" and "Bookmarks" are strictly private. One user marking a volume as "Read" does not affect others.
+* **Non-Destructive Editing:** Users view the Admin's OCR text by default. If they make an edit, they seamlessly "fork" into a private branch. The original Admin text remains untouched.
+* **Self-Cleaning History:** The branching model is designed such that "Resetting" a branch automatically cascade-deletes purely private history, preventing database bloat without complex garbage collection scripts.
 
 ---
 
-## User Roles & Permissions
+## 2. User Experience (UX)
 
-Permissions are **library-wide** and only admins can change user roles.
+### 2.1 The "Admin" Library
 
-### Viewer
-- Read all approved manga
-- Track personal reading progress/bookmarks
-- View version history
-- Submit and upvote manga requests
-- **Submit Mokuro text edits (visible locally, needs Editor/Admin approval)**
+* **Concept:** Content uploaded by the system administrator (e.g., `id: "admin"`).
+* **Visibility:** Automatically appears in every user's library.
+* **Distinction:** Admin content gets a visual badge (e.g., "Official" or "Shared") to distinguish it from the user's private uploads.
+* **Collisions:** If a user also has a private upload with the same name (e.g., "Naruto"), **both** appear in the library view (one private, one shared).
 
-### Uploader
-- Everything Viewer can do
-- Upload new manga
-- Mark uploads as higher quality replacements
-- Request anonymous attribution
+### 2.2 Reading & Progress
 
-### Editor
-- Everything Uploader can do
-- Edit Mokuro OCR text (immediately public)
-- Review and approve/reject uploads
-- **Approve/reject user-submitted text edits**
-- Approve quality comparisons
-- Rollback Mokuro text changes
+* **Private Tracking:** All progress (Page 10/200), status (Reading/Completed), and bookmarks are stored per-user in the `UserSeriesSettings` table.
+* **Behavior:** Even if 5 users read the same Admin volume, their progress is completely isolated.
 
-### Admin
-- Everything Editor can do
-- Delete manga
-- Manage users and permissions
-- View all user statistics
-- Generate invite codes
-- Handle migration conflicts
+### 2.3 OCR Editing (The "Copy-on-Write" Model)
+
+* **Default View:** Users see the Admin's "Official" OCR text.
+* **Editing:** When a normal user edits text (fixes a typo, resizes a box):
+1. The system creates a private "Copy" of the OCR history for them.
+2. Their edit is applied to *their* copy.
+3. They now see "My Version" of the text.
+4. The Admin's version remains unchanged for everyone else.
+
+
+* **Resetting:** Users can click **"Reset to Official"** to discard their private edits and revert to the live Admin version.
 
 ---
 
-## User Management
+## 3. Database Architecture
 
-### Account Creation (3 methods, can all be active)
+### 3.1 Metadata Decoupling (`UserSeriesSettings`)
 
-**1. Public Registration**
-- Anyone can register
-- No invitation needed
-- New users start as Viewer
-- Can be enabled/disabled by admins
+Removes user-specific fields from the shared `Series` table.
 
-**2. Invite Codes**
-- Admin-generated codes
-- Limited use (X registrations) or unlimited
-- Optional expiry date
-- Tracks who used which code
+```prisma
+model UserSeriesSettings {
+  userId    String
+  seriesId  String
 
-**3. Admin-Created Accounts**
-- Admin creates account with username/email
-- Password reset link generated (expires in 7 days)
-- User sets own password
-- Admin can assign initial role
+  // Private State
+  bookmarked Boolean  @default(false)
+  status     Int      @default(0) // 0=Unread, 1=Reading, 2=Completed
+  
+  // Sorting: "Recently Read" is now per-user
+  lastReadAt DateTime @default(dbgenerated("'1970-01-01...'"))
 
-### Account Deletion
-- Users cannot delete their own accounts
-- Only admins can delete accounts
-- Attribution remains (or changes to "Anonymous" per admin choice)
-- Reading progress deleted
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
 
-### Anonymous Attribution
-- Auto-approved for uploads
-- Public sees "Anonymous", admins see real username
-- Mokuro text edits always show real username (prevents vandalism)
+  @@id([userId, seriesId])
+  @@index([userId, status])      // Efficient "My Reading List" queries
+}
 
----
+```
 
-## Shared Library Model
+### 3.2 OCR Branching (`OcrBranch`)
 
-### Content Visibility
-- All approved manga immediately visible to all users
-- No personal/private libraries
-- No user-specific visibility controls
+Tracks the "Version" of text a user is looking at.
 
-### Ownership & Attribution
-- Library owns manga, not individuals
-- Tracks: original uploader, text editors, quality upgraders
-- Attribution permanent unless admin removes it
-- Uploaders cannot restrict access or delete content
+* **Logic:** A Branch is defined by its `head` (current state) and its `root` (divergence point).
+* **Optimization:** `rootPatchId` points to the **First Private Patch** (the first child of the shared history). If `rootPatchId` is NULL, the branch is "Clean" (synced with upstream).
 
-### What Stays Private
-- Reading progress and bookmarks
-- Reading history and statistics
-- **Note:** Admins can view all user data in user/library panels
+```prisma
+model OcrBranch {
+  id          String   @id @default(uuid())
 
----
+  volumeId    String
+  userId      String   // The owner of this branch (User or Admin)
 
-## Upload Workflow
+  // --- The Pointers ---
+  // Where is this branch right now? (Latest Edit)
+  headPatchId String?
+  
+  // The First Patch that belongs ONLY to this branch.
+  // If NULL, the branch is "Clean" (Synced with upstream).
+  // If SET, the branch is "Dirty" (Diverged).
+  rootPatchId String?  
 
-### Standard Process
+  // Metadata
+  name        String   @default("main")
+  updatedAt   DateTime @updatedAt
+  
+  // Musubi Integration (Future Proofing)
+  upstreamSource String @default("local") // "local", "musubi:verified"
 
-**1. Upload**
-- Select files
-- System scrapes metadata
-- Enters pending review (uploader can see it, others cannot)
+  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  headPatch   Patch?   @relation("BranchHead", fields: [headPatchId], references: [id])
+  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
 
-**2. Duplicate Detection**
-If similar manga exists, uploader chooses:
-- **Same content** → Auto-rejected
-- **Different version** → Normal review queue
-- **Higher quality** → Quality comparison queue
+  @@unique([volumeId, userId]) // Limit: 1 active branch per user for MVP
+}
 
-**3. Review**
-- Editors/Admins review quality, duplicates, Mokuro text
-- **Approve** → Publicly visible to all
-- **Reject** → Deleted with reason sent to uploader
-- No appeals, no time limit
+```
 
-### Quality Comparison
+### 3.3 Self-Cleaning Patches (`Patch`)
 
-When "higher quality version" is uploaded:
-- Original uploader notified
-- Editor/Admin reviews side-by-side
-- **Approve**: Replaces old version, adds attribution, maintains reading progress
-- **Reject**: Keeps current, deletes new
+Uses a linked list of atomic operations.
+**Crucial:** `onDelete: Cascade` on the `parent` relation ensures that deleting a `root` patch wipes the entire private timeline.
 
----
+```prisma
+model Patch {
+  id          String   @id @default(uuid())
 
-## Mokuro Text Editing & Version Control
+  // The Tree (Linked List)
+  parentId    String?
+  // CRITICAL: Cascade delete allows efficient "Reset" logic
+  parent      Patch?   @relation("HistoryTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Patch[]  @relation("HistoryTree")
 
-### Editing
+  // Context
+  volumeId    String
+  userId      String   // Attribution
+  createdAt   DateTime @default(now())
 
-**Two-Tier System:**
+  // The Payload (Strict JSON Patch / Unified Ops)
+  operation   String   // JSON string
 
-**Viewers/Uploaders:**
-- Can submit text edits
-- Edits visible only to them (local preview)
-- Must be approved by Editor/Admin to become public
-- While pending: see their edits, others see original text
-- After approval: becomes part of version history
+  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  
+  // Reverse lookups
+  asHeadOf    OcrBranch[] @relation("BranchHead")
+  asRootOf    OcrBranch[] @relation("BranchRoot")
 
-**Editors/Admins:**
-- Edits are immediately public
-- No approval needed
-- Instantly committed to version history
+  @@index([volumeId])
+}
 
-**Process:**
-1. Edit any text box (creates pending change)
-2. Click "Save Changes" when done
-3. Each text box edit = one commit
-4. **Viewer/Uploader**: Commits sent to approval queue
-5. **Editor/Admin**: All commits pushed immediately
-6. No commit messages (auto-timestamped)
-
-**Unsaved Changes:**
-- Until "Save" clicked, edits are unsaved
-- Warning if leaving without saving
-
-**Approval Queue (for Editor/Admin):**
-- View pending edits from Viewers/Uploaders
-- See before/after comparison
-- Approve (becomes public) or Reject (stays local to submitter)
-- Bulk approve/reject available
-
-### Live Updates
-
-**Viewing Edits:**
-- Viewers/Uploaders see their own pending (unapproved) edits
-- Everyone sees approved edits from Editors/Admins immediately
-- No one sees others' pending edits
-
-When someone else edits while you're editing:
-- Text boxes you haven't touched → update automatically (if approved)
-- Text boxes you're editing → stay unchanged (preserves your work)
-- Toast: "🔄 Another user just updated this manga"
-
-**Conflict Resolution:** Last write wins (both preserved in history)
-
-### Version History
-
-**Full History:**
-- Every text box edit tracked forever
-- Shows: commit #, timestamp, user, before/after text
-- Public and visible to all users
-
-**Blame View:**
-- See who last edited each text box
-- View per-text-box history
-
-**Storage:** Text diffs only (efficient)
-
-### Rollback
-
-**Who Can:**
-- Editors and Admins only
-
-**Scope:**
-- Single text box, entire page, or entire manga
-
-**Process:**
-- Rollback creates new commit (doesn't delete history)
-- Example: "Rollback to #245 by EditorA"
+```
 
 ---
 
-## Reading Experience
+## 4. Key Workflows
 
-### Private Data (per user)
-- Current page, completion status
-- Bookmarks with notes
-- Reading history and statistics
-- Only visible to user and admins
+### 4.1 "My Library" Query
 
-### Active Reader Protection
+How to fetch the library list for the logged-in user:
 
-When admin/editor deletes manga with active readers:
-- Warning shows who's reading (name + page)
-- Must confirm to proceed
-- Active readers see: "This manga was deleted" overlay
-- Reading progress preserved
+1. **Query:** `Series` where `ownerId = Me` **OR** `ownerId = Admin`.
+2. **Join:** Include `UserSeriesSettings` where `userId = Me`.
+3. **Merge Strategy:**
+* If settings exist, use that `status`/`bookmark`.
+* If not, default to `Unread` / `false`.
 
-### Live Text Updates
 
-When someone edits Mokuro text you're reading:
-- Different page → Updates when you navigate there
-- Current page → Text updates automatically
-- Toast: "Text on this page was just updated by UserC"
-- No page refresh, seamless update
 
----
+### 4.2 Editing (The Fork Logic)
 
-## Manga Request System
+Ensures users start fresh but diverge instantly.
 
-### How It Works
+**Scenario:** User A views a Volume owned by Admin.
 
-**Creating Request:**
-1. Enter title/series info
-2. System scrapes metadata (MAL, AniList)
-3. Auto-fills title, author, description, cover
-4. Submit request
+1. **Check:** User A has an `OcrBranch` (created on first view) where `rootPatchId` is `NULL`.
+2. **Action:** User A fixes a typo.
+3. **Backend:**
+* Create New Patch `P_new` (Parent = `CurrentHead`).
+* **Lock Root:** Since `rootPatchId` was NULL, set `rootPatchId = P_new.id`.
+* **Advance:** Set `headPatchId = P_new.id`.
 
-**Public Display:**
-- All users see all requests
-- Shows: title, author, requester, upvotes, status
-- Sorted by upvotes
-- Users do NOT see files or internal notes
 
-**Upvote System:**
-- One upvote per user per request
-- Helps prioritize community wants
+4. **Result:** Branch is now "Dirty".
 
-**Status States:**
-1. **Requested** - Submitted, unclaimed
-2. **Being Sourced** - Someone working on it
-3. **Uploaded** - Linked to manga in library
+### 4.3 Reset to Official (Self-Cleaning)
 
-**Marking as Uploaded:**
-- Automatic (system detects match)
-- Manual (uploader links to request)
-- Requester notified
+User A wants to revert their changes.
 
-**Duplicate Prevention:**
-- System checks existing requests
-- Suggests upvoting instead of creating duplicate
+1. **Action:** Click "Reset to Official".
+2. **Identify Target:** Admin Branch Head (`H_admin`).
+3. **Identify Waste:** User Branch Root (`R_user`).
+4. **Update Pointers:** Set User Branch `head = H_admin`, `root = NULL`.
+5. **Cleanup:** **Delete Patch `R_user**`.
+* *Effect:* Because `R_user` is deleted, **all** its children (the entire private history) are cascade-deleted by the database engine. Zero orphans left behind.
+
+
+
+### 4.4 Admin Fast-Forward (Merge)
+
+Admin wants to incorporate a User's fix.
+
+1. **Scenario:** User fixed a typo (`AdminHead -> UserFix`).
+2. **Action:** Admin views User's branch and clicks "Merge/Fast-Forward".
+3. **Check:** Does `UserFix.parentId === AdminHead`?
+* **Yes:** Safe to FF.
+
+
+4. **Update:** Set Admin Branch `head = UserFix.id`.
+5. **Result:** The "Private" patch is now the "Official" patch.
 
 ---
 
-## Migration Strategy
+## 5. Implementation Requirements
 
-### From Isolated to Shared
+### 5.1 Patch System Enhancements
 
-**Process:**
-1. Scan all user libraries
-2. Detect duplicates by metadata
-3. Keep highest quality version for each unique manga
-4. Present merge conflicts to admin
+To support this architecture and future federation, the existing patch system must be updated.
 
-**Merge Conflicts:**
-Admin sees conflicts requiring resolution:
-- **Different content**: Choose Version A, B, keep both, or merge
-- Shows quality metrics for comparison
+1. **Missing Operation:** `reorder_blocks` must be implemented in `PatchApplicator` and `PatchInverter`.
+* *Current Status:* Missing (detected in code review).
+* *Requirement:* Implement `reorderSingle` helper to permute the `blocks` array.
 
-**Preservation:**
-- All user reading progress preserved
-- Page mapping (best-effort if page numbers differ)
-- All attributions maintained
 
-**Attribution:**
-- Shows all original uploaders
-- Notes merged versions
+2. **Path Strictness:** Maintain the "Unified Block" approach (updating `box` and `lines` atomically) but ensure internal logic treats them as distinct operations where possible to ease future Musubi integration.
+3. **Guard Rails:** `PatchApplicator` must explicitly forbid direct modification of `lines_coords` to enforce the Unified Block model integrity.
 
-**User Notification:**
-Users notified of:
-- How many manga migrated
-- Duplicates merged
-- Reading progress preserved
-- New collaboration features
+### 5.2 Conflict Handling
 
----
-
-## Key Workflows
-
-### User Flow: Uploading Manga
-1. Select files → System scrapes metadata
-2. Duplicate check → Choose same/different/better
-3. Pending review → Wait for editor approval
-4. Approved → Visible to all users
-
-### Editor Flow: Reviewing Upload
-1. View pending queue
-2. Check quality, duplicates, processing
-3. Approve or reject with reason
-4. Uploader notified
-
-### User Flow: Editing Mokuro Text (Viewer/Uploader)
-1. Open editor → Edit text boxes
-2. Save changes → Each box = one commit
-3. Commits sent to approval queue
-4. User sees edits locally (others see original)
-5. Wait for Editor/Admin approval
-6. Approved → Version history updated and public
-
-### User Flow: Editing Mokuro Text (Editor/Admin)
-1. Open editor → Edit text boxes
-2. Save changes → Each box = one commit
-3. All commits immediately public
-4. Version history updated instantly
-
-### Editor Flow: Approving Text Edits
-1. View pending edit queue
-2. See before/after comparisons
-3. Approve (becomes public) or Reject
-4. Submitter notified
-
-### Admin Flow: Managing Users
-1. Create accounts (or generate invite codes)
-2. Assign roles
-3. View user statistics
-4. Handle deletions
-
----
-
-## Summary
-
-**What's Shared:**
-- All manga content and files
-- Mokuro text and version history
-- Attribution and quality reviews
-
-**What's Private:**
-- Reading progress and bookmarks
-- Reading history and stats
-- (Admins can view user data)
-
-**Key Features:**
-- Two-tier editing system (immediate for Editors/Admins, approval for Viewers/Uploaders)
-- Collaborative editing with version control
-- Quality review process
-- Active reader protection
-- Community requests system
-- Flexible account creation
-- Complete migration from isolated libraries
+* **Database:** `Series.folderName` + `Series.ownerId` uniqueness handles metadata collisions.
+* **Files:** User uploads go to `./data/uploads/{userId}/{seriesName}`, preventing disk collisions.
+* **Display:** Frontend must group or badge duplicate series titles (e.g., "Naruto [Official]" vs "Naruto [My Upload]").
