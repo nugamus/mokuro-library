@@ -1,67 +1,115 @@
-# Feature Specification: OCR History & Version Control
+# Feature Specification: Shared OCR & Version Control (v2.1)
 
-## 1. Overview
+## 1. Overview & Core Philosophy
 
-This document specifies the architecture for the **Shared Multi-User OCR System** in Mokuro Library. It transitions from a single-user linear log to a **Git-like Branching Model**, allowing users to maintain private edits on top of a shared "Official" library without data duplication.
+This document specifies the architecture for the **Shared Multi-User OCR System** in Mokuro Library. It transitions the system from a single-user linear log to a **Database-Master Hybrid Model** with per-user caching.
 
-### Core Philosophy
+### Core Principles
 
-* **Hybrid Authority:** A designated **Admin Branch** acts as the "Official" source of truth. Users view this by default but seamlessly "fork" into a private **User Branch** upon editing.
-* **Live Draft:** Edits are persisted immediately to the database (as atomic Patches) to ensure zero data loss. The physical `.mokuro` file on disk is only updated when the Admin explicitly clicks "Save".
-* **Atomic Granularity:** History is stored as individual `Patch` rows in a linked list. This simplifies conflict resolution and allows for precise "Time Travel" (Undo/Redo).
-* **Self-Cleaning:** The branching model allows for "Reset" operations that atomically wipe private history via database cascades, preventing storage bloat.
+* **Database as Master:** The PostgreSQL database is the single authoritative source of truth for all history and state.
+* **Per-User Snapshot Caching:** To ensure high performance, every user maintains a private `.mokuro` file (snapshot) on disk. This file is a serialization of their current branch state, updated only during specific "Commit" events (Save/Rebase/Reset).
+* **Hybrid Authority:** Users view the Admin's "Official" branch by default. Upon editing, they seamlessly fork into a private **User Branch** (Copy-on-Write).
+* **Granular "Hot 100" History:** To balance database performance with granular Undo/Redo capabilities, the system maintains the most recent 100 edits as individual patches. Edits older than 100 are automatically squashed into a single base state during synchronization.
+* **Non-Blocking Rebase:** Synchronization utilizes a **Floating Branch** strategy—manifesting changes in a temporary detached branch before atomically swapping pointers—to prevent database locking.
 
 ---
 
-## 2. Architecture
+## 2. Database Architecture (Prisma Schema)
 
-The system utilizes a **Branch + Patch Linked List** model.
+The schema implements **Optimistic Locking** to handle concurrency and **Soft Deletes** to prevent accidental data loss.
 
-### 2.1 The Branch (`OcrBranch`)
+### 2.1 Branching (`OcrBranch`)
 
-Decouples the state from the `Volume`. Instead of the Volume having one `headPatchId`, distinct Branches exist for different users.
+Tracks the current state of a volume for a specific user.
 
-* **Head Pointer:** Points to the latest `Patch` in the timeline.
-* **Root Pointer (The Fork Point):** Points to the **First Private Patch** in the chain.
-* **Clean State (`root == NULL`):** The branch is synced with the upstream (Admin) history. The user has no private changes.
-* **Dirty State (`root != NULL`):** The branch has diverged. The `root` marks the start of the private timeline.
+```prisma
+model OcrBranch {
+  id          String   @id @default(uuid())
 
+  volumeId    String
+  userId      String   // Owner of this branch
 
+  // --- Pointers ---
+  // The current state of this branch (Latest Edit)
+  headPatchId String?
+  headPatch   Patch?   @relation("BranchHead", fields: [headPatchId], references: [id])
 
-### 2.2 The Patch (`Patch`)
+  // The start of the private timeline.
+  // IF NULL: Branch is synonymous with its parent (Clean).
+  // IF SET: Branch has private edits starting at this patch (Dirty).
+  rootPatchId String?
+  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
 
-Represents an atomic, reversible operation. Patches form a doubly-linked list via `parentId`.
+  // --- Concurrency & Safety ---
+  version     Int      @default(0)     // Optimistic Locking Counter
+  isFloating  Boolean  @default(false) // If true, this is a temp branch being built during rebase
 
-* **Unified Operations:** To ensure data integrity, operations on complex entities (like Blocks) are **Unified**. A single patch updates both the text and the bounding box coordinates simultaneously, preventing "ghost text" misalignment.
-* **Storage:** Stored as uncompressed JSON payloads (`PatchOperation`) in the database.
+  // --- Metadata ---
+  updatedAt   DateTime @updatedAt
+
+  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([volumeId, userId]) // Enforces 1 active branch per user
+}
+
+```
+
+### 2.2 History (`Patch`)
+
+A doubly-linked list of atomic operations. **Note:** `onDelete: Cascade` is strictly forbidden on the `parent` relation to prevent history destruction.
+
+```prisma
+model Patch {
+  id          String   @id @default(uuid())
+
+  // --- The Tree ---
+  parentId    String?
+  // NO CASCADE: Deleting a parent should not auto-delete children.
+  // This is handled via explicit "Garbage Collection" logic.
+  parent      Patch?   @relation("HistoryTree", fields: [parentId], references: [id])
+  children    Patch[]  @relation("HistoryTree")
+
+  // --- Metadata ---
+  volumeId    String
+  userId      String   // Attribution
+  createdAt   DateTime @default(now())
+
+  // --- Payload ---
+  // JSON String adhering to PatchOperation interface
+  operation   String
+
+  // --- Soft Delete ---
+  deletedAt   DateTime?
+  deletedBy   String?   // e.g., "rebase_gc", "user_reset"
+
+  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
+  asHeadOf    OcrBranch[] @relation("BranchHead")
+  asRootOf    OcrBranch[] @relation("BranchRoot")
+
+  @@index([volumeId])
+  @@index([parentId])
+}
+
+```
 
 ---
 
 ## 3. Data Types & Interfaces
 
-The system relies on strict TypeScript definitions to ensure frontend/backend compatibility.
+Strict TypeScript definitions ensure frontend/backend compatibility. Input validation (Zod) is mandatory before database insertion.
 
-### 3.1 Primitive Types (`mokuro.ts`)
+### 3.1 Unified Value Types (`history.ts`)
+
+To prevent desynchronization between text and geometry, structure changes (add/insert) must use **Unified Types**.
 
 ```typescript
 // A "Quad" representing the 4 corners of a text line [x,y]
-export type Quad = [
-  [number, number],
-  [number, number],
-  [number, number],
-  [number, number]
-];
+export type Quad = [[number, number], [number, number], [number, number], [number, number]];
 
 // A "Rect" representing the bounding box (min_x, min_y, max_x, max_y)
 export type Rect = [number, number, number, number];
 
-```
-
-### 3.2 Unified Value Types (`history.ts`)
-
-To prevent desynchronization between text and geometry, we use **Unified** types. We do *not* allow patching `lines` and `lines_coords` separately.
-
-```typescript
 // UnifiedLine: Atomic unit of text + position
 export interface UnifiedLine {
   text: string;
@@ -73,24 +121,17 @@ export interface UnifiedBlock {
   box: Rect;
   vertical: boolean;
   font_size?: number;
-  lines: UnifiedLine[]; // Replaces separate string[] and Quad[] arrays from native format
+  lines: UnifiedLine[]; // Replaces separate string[] and Quad[] arrays
 }
 
-// FineValue: For simple property replacements on leaf nodes
-export type FineValue = 
-  | string  // Text content
-  | boolean // Vertical flag
-  | number  // Font size
-  | Rect    // Box coordinates
-  | Quad;   // Line coordinates
+// FineValue: Allowed ONLY for 'replace' operations on leaf nodes
+export type FineValue = string | boolean | number | Rect | Quad;
 
 export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
 
 ```
 
-### 3.3 The Patch Operation (`history.ts`)
-
-Each database row stores one `PatchOperation` serialized as JSON.
+### 3.2 The Patch Operation
 
 ```typescript
 export type OpType = 'replace' | 'add' | 'remove' | 'reorder_lines' | 'reorder_blocks';
@@ -116,256 +157,221 @@ export interface PatchOperation {
 
 ## 4. Path Specification & Operations
 
-The system uses a strict subset of JSON Pointers to target specific entities within the `MokuroData` structure.
+The system enforces strict pathing rules. Modifications to structure (`add`/`remove`) must use Unified Types. Modifications to content (`replace`) can be granular.
 
 **Root Context:** `MokuroData` object.
 
 ### 4.1 Block Operations
 
-Targeting blocks within a page.
-
 | Operation | Path Schema | Value Type | Description |
 | --- | --- | --- | --- |
-| **Add Block** | `/pages/{p}/blocks/-` | `UnifiedBlock` | Append a new block to page `{p}`. |
+| **Add Block** | `/pages/{p}/blocks/-` | `UnifiedBlock` | Append new block. **Must** include box and lines. |
 | **Insert Block** | `/pages/{p}/blocks/{b}` | `UnifiedBlock` | Insert block at index `{b}`. |
-| **Remove Block** | `/pages/{p}/blocks/{b}` | `N/A` | Remove block at index `{b}`. `old_value` required. |
-| **Reorder Blocks** | `/pages/{p}/blocks` | `N/A` | Reorder blocks on page `{p}` using `new_order` indices. |
+| **Remove Block** | `/pages/{p}/blocks/{b}` | `N/A` | Remove block. `old_value` required. |
+| **Reorder Blocks** | `/pages/{p}/blocks` | `N/A` | Reorder blocks on page `{p}` using `new_order`. |
 | **Resize Box** | `/pages/{p}/blocks/{b}/box` | `Rect` | Update bounding box coordinates. |
 | **Set Vertical** | `/pages/{p}/blocks/{b}/vertical` | `boolean` | Toggle vertical/horizontal text flow. |
 | **Set Font Size** | `/pages/{p}/blocks/{b}/font_size` | `number` | Update font size metadata. |
 
 ### 4.2 Line Operations
 
-Targeting lines within a block. Note that `lines` and `lines_coords` are modified atomically via `UnifiedLine` or specific sub-paths.
-
 | Operation | Path Schema | Value Type | Description |
 | --- | --- | --- | --- |
-| **Add Line** | `/pages/{p}/blocks/{b}/lines/-` | `UnifiedLine` | Append line to block `{b}`. Updates both text and coords arrays. |
+| **Add Line** | `/pages/{p}/blocks/{b}/lines/-` | `UnifiedLine` | Append line. **Must** include text and coords. |
 | **Insert Line** | `/pages/{p}/blocks/{b}/lines/{l}` | `UnifiedLine` | Insert line at index `{l}`. |
-| **Remove Line** | `/pages/{p}/blocks/{b}/lines/{l}` | `N/A` | Remove line at index `{l}`. `old_value` required. |
+| **Remove Line** | `/pages/{p}/blocks/{b}/lines/{l}` | `N/A` | Remove line. `old_value` required. |
 | **Reorder Lines** | `/pages/{p}/blocks/{b}/lines` | `N/A` | Reorder lines in block `{b}` using `new_order`. |
-| **Edit Text** | `/pages/{p}/blocks/{b}/lines/{l}/text` | `string` | Update text content only. |
-| **Edit Coords** | `/pages/{p}/blocks/{b}/lines/{l}/coords` | `Quad` | Update line coordinates only. |
+| **Edit Text** | `/pages/{p}/blocks/{b}/lines/{l}/text` | `string` | **Granular:** Update text content only. |
+| **Edit Coords** | `/pages/{p}/blocks/{b}/lines/{l}/coords` | `Quad` | **Granular:** Update line coordinates only. |
 
-**Forbidden Paths:**
-Direct modification of `/pages/{p}/blocks/{b}/lines_coords/...` is **strictly forbidden**. All coordinate changes must go through the `/lines/...` paths to ensure data consistency.
+**Validation Rule:** Direct modification of `lines_coords` array via path `/pages/{p}/blocks/{b}/lines_coords` is **FORBIDDEN**. Granular edits must use the virtual `/lines/{l}/coords` path, which the `PatchApplicator` maps to the correct underlying array index.
 
 ---
 
-## 5. Database Schema (Prisma)
+## 5. Workflows & Algorithms
 
-```prisma
-model OcrBranch {
-  id          String   @id @default(uuid())
+### 5.1 Editing (The Commit Strategy)
 
-  volumeId    String
-  userId      String   // Owner of this branch
+To prevent database bloat while maintaining interaction history.
 
-  // --- Pointers ---
-  // The current state of this branch
-  headPatchId String?
-  headPatch   Patch?   @relation("BranchHead", fields: [headPatchId], references: [id])
+1. **Trigger:** `onBlur` (Focus Lost) or explicit "Save" button. This prevents "per-keystroke" spam.
+2. **Validation:** Input is validated against Zod schema to ensure payload integrity.
+3. **Fork Logic:**
+* If `UserBranch.rootPatchId` is `NULL` (Clean State), the system creates a new root patch pointing to the current `AdminHead`.
+* The `OcrBranch` is updated: `rootPatchId` = New Patch, `headPatchId` = New Patch.
+* **Effect:** The user is now on a divergent private timeline.
 
-  // The start of the private timeline.
-  // IF NULL: Branch is synonymous with its parent (Clean).
-  // IF SET: Branch has private edits starting at this patch (Dirty).
-  rootPatchId String?
-  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
 
-  // Future-proofing for Federation
-  upstreamSource String @default("local") 
+4. **Optimistic Update:** UI updates immediately; backend confirms asynchronously.
 
-  updatedAt   DateTime @updatedAt
-  
-  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+### 5.2 The "Hot 100" Rebase Engine
 
-  @@unique([volumeId, userId])
-}
+**Goal:** Move User Branch `D` onto new Upstream Head `U` without locking the database, keeping recent history granular.
 
-model Patch {
-  id          String   @id @default(uuid())
+**Policy: The Sliding Window**
 
-  // --- The Tree ---
-  parentId    String?
-  // CRITICAL: Cascade delete allows efficient "Reset" logic
-  parent      Patch?   @relation("HistoryTree", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Patch[]  @relation("HistoryTree")
+* **Hot Zone (Last 100):** Patches are kept as individual rows. This preserves granular Undo/Redo for the user's active session history.
+* **Cold Zone (>100):** Older patches are compiled (squashed) into a single "Base State" patch to optimize storage and reconstruction speed.
 
-  // --- Metadata ---
-  volumeId    String
-  userId      String   // Attribution: Who made THIS specific edit
-  createdAt   DateTime @default(now())
+**Algorithm:**
 
-  // --- Payload ---
-  // JSON String adhering to PatchOperation interface
-  operation   String   
+**Phase 1: Computation (In-Memory)**
 
-  // Relations
-  volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
-  asHeadOf    OcrBranch[] @relation("BranchHead")
-  asRootOf    OcrBranch[] @relation("BranchRoot")
+1. **Fetch Chains:** Load User Chain (`Root`→`Head`) and Upstream Chain (`Root.parent`→`AdminHead`).
+2. **Compile Transformation:**
+* Identify User Patches  (The "Hot" set).
+* Identify User Patches  (The "Cold" set).
+* Calculate a **Single Squash Patch** representing the state of the Cold set applied to the new Admin Head.
 
-  @@index([volumeId])
-  @@index([parentId])
+
+3. **Conflict Detection:** Iterate through the "Hot" patches against the Upstream changes.
+* **Rule 1 (Deletion):** If User edits a block that was deleted by Admin, **Skip** the patch.
+* **Rule 2 (Reorder):** If User reorders an array, and Admin changed that array's **length** (add/remove items), **Skip** the patch. (Content changes do not invalidate reorder).
+
+
+4. **Inverse Walk (Adjustment):**
+* If Patch  is skipped (e.g., intended to insert at Index 5, but blocked by conflict), record an "Inverse Walk" offset.
+* For all subsequent patches , if they target indices *after* the skipped index, their target path is decremented/adjusted to align with the reality that the user's insertion never happened.
+
+
+
+**Phase 2: Manifestation (Floating Branch)**
+
+1. **Create Branch:** Insert new `OcrBranch` with `isFloating = true`.
+2. **Write Squash:** Insert the Single Squash Patch (Parent = `AdminHead`).
+3. **Write Hot Patches:** Insert the transformed Hot Patches sequentially on top of the Squash Patch.
+* *Note:* These insertions occur in standard transactions, not one giant atomic block, preventing table locks.
+
+
+
+**Phase 3: Atomic Swap**
+
+1. **Execute Swap:**
+```sql
+UPDATE OcrBranch 
+SET headPatchId = :floatingHeadId,
+    rootPatchId = :floatingRootId,
+    version = version + 1
+WHERE id = :userBranchId AND version = :currentVersion
+
+```
+
+
+2. **Outcome:**
+* **Success:** The User Branch now points to the new valid history. The old history chain is orphaned (marked for GC). The Floating Branch record is deleted. **Triggers Snapshot Update (See 5.3).**
+* **Failure (Optimistic Lock):** User made an edit during the calculation. Abort rebase. The Floating Branch is orphaned (marked for GC). Client receives "Retry" signal.
+
+
+
+### 5.3 Per-User Snapshot Strategy
+
+While the database is the master, reading full history trees for every page load is inefficient. We use per-user file snapshots for read performance.
+
+* **Storage Location:** `/data/users/{userId}/snapshots/{volumeId}.mokuro`
+* **Role:** Performance Cache.
+* **Read Strategy (Load Volume):**
+1. **Check Cache:** Does the user's snapshot file exist?
+2. **Load File:** If yes, load JSON content from disk.
+3. **Check Delta:** Query DB: "Are there any patches for this branch created *after* the snapshot's timestamp?"
+4. **Apply Delta:** If yes, apply those few patches in-memory.
+5. **Serve:** Return final JSON to client.
+
+
+* **Write Strategy (Update Snapshot):**
+The snapshot file is regenerated/overwritten **ONLY** during these events:
+1. **Explicit Save:** User clicks "Save Snapshot" or "Export".
+2. **Rebase Success:** After a rebase swap, the new state is written to disk.
+3. **Reset:** After resetting to Admin branch, the Admin's state is written to the user's snapshot file.
+4. **Merge:** If the Admin accepts a user's merge request.
+
+
+
+### 5.4 Garbage Collection (The Cleanup Crew)
+
+A Cron Job (e.g., daily) maintains hygiene using the Soft Delete signals.
+
+1. **Identify Floating Debris:** Delete `OcrBranch` rows where `isFloating=true` AND `updatedAt < 1 hour ago`. (Cleaning up failed/stalled rebases).
+2. **Identify Dead History:**
+* Find `Patch` rows where `deletedAt` is NOT NULL.
+* **Verification:** Ensure no active `OcrBranch` (User or Admin) traces back to this patch.
+* **Action:** Hard Delete.
+
+
+
+---
+
+## 6. API Specification
+
+### 6.1 Patching & Editing
+
+**POST** `/api/volumes/:volumeId/patch`
+
+* **Body:** `{ operation: PatchOperation, branchVersion: number }`
+* **Behavior:** Validates op, creates `Patch`, updates `OcrBranch` head, increments version.
+* **Response:** `{ success: true, newHeadId: string, newVersion: number }`
+
+### 6.2 Synchronization
+
+**POST** `/api/volumes/:volumeId/rebase`
+
+* **Body:** `{ targetHeadId: string }` (Usually Admin Head)
+* **Behavior:** Triggers the **Hot 100** Floating Branch workflow. On success, updates the User's snapshot file.
+* **Response:**
+* `200 OK`: `{ success: true, skippedPatches: Array<string> }`
+* `409 Conflict`: `{ error: "Branch modified during rebase. Please retry." }`
+
+
+
+**POST** `/api/volumes/:volumeId/reset`
+
+* **Body:** `{ }`
+* **Behavior:**
+1. Soft-deletes the current User Branch `rootPatchId` (and implicitly the tree).
+2. Sets `rootPatchId = NULL`, `headPatchId = AdminHead`.
+3. **Snapshot:** Overwrites user's `.mokuro` file with Admin's current state.
+
+
+* **Response:** `{ success: true }`
+
+**POST** `/api/volumes/:volumeId/snapshot`
+
+* **Body:** `{ }`
+* **Behavior:** Reconstructs full state from DB and writes to user's snapshot file.
+* **Response:** `{ success: true, timestamp: string }`
+
+### 6.3 Status
+
+**GET** `/api/volumes/:volumeId/status`
+
+* **Response:**
+```json
+{
+  "isDirty": true,        // User has private edits
+  "isStale": false,       // Admin has moved ahead of User's base
+  "version": 42,          // Current optimistic lock version
+  "headPatchId": "..."
 }
 
 ```
 
----
 
-## 6. Key Workflows
-
-### 6.1 Reading (The Clean State)
-
-When a user opens a volume, the system ensures an `OcrBranch` exists.
-
-* **If New:** Create Branch with `headPatchId = AdminBranch.headPatchId` and `rootPatchId = NULL`.
-* **Effect:** The user sees the Official text. No storage cost for patches.
-
-### 6.2 Editing (The Fork Trigger)
-
-User makes an edit (e.g., fixes a typo).
-
-1. **Check Root:** Is `ActiveBranch.rootPatchId` NULL?
-2. **Create Patch:** Insert new `Patch` pointing to current `headPatchId`.
-3. **Lock Root:** If Root was NULL, update `ActiveBranch.rootPatchId = NewPatch.id`.
-4. **Advance Head:** Update `ActiveBranch.headPatchId = NewPatch.id`.
-5. **Effect:** The branch is now "Dirty". It effectively tracks a private timeline `AdminHead -> NewPatch`.
-
-### 6.3 Resetting (Self-Cleaning)
-
-User wants to revert to the Official version.
-
-1. **Identify Target:** Get `AdminBranch.headPatchId`.
-2. **Identify Waste:** Get `ActiveBranch.rootPatchId`.
-3. **Update Pointers:** Set `ActiveBranch.head = AdminHead`, `root = NULL`.
-4. **Cleanup:** Delete the patch referenced by the *old* `rootPatchId`.
-* **Result:** The database cascades this delete, wiping the entire private linked list from Root to Head. Zero orphans.
-
-
-
-### 6.4 Fast-Forward (Admin Merge)
-
-Admin wants to accept a User's fix.
-
-1. **Identify Fix:** User's `headPatchId`.
-2. **Check Lineage:** Verify User's patch descends from Admin's current Head.
-3. **Update:** Set `AdminBranch.headPatchId = UserPatch.id`.
-4. **Result:** The "Private" edit is now the "Official" edit.
 
 ---
 
-## 7. Implementation Requirements
+## 7. Migration Strategy (Legacy to DB)
 
-### 7.1 `PatchApplicator`
+How to transition existing libraries to this system.
 
-A static utility that applies a `PatchOperation` to a mutable `MokuroData` object.
-
-* **Logic:** Parses JSON Pointers defined in Section 4.
-* **Guard Rails:**
-* Must parse `/lines` paths and update `lines` and `lines_coords` arrays in parallel.
-* Must throw error on unknown paths or direct `lines_coords` access.
-
-### 7.2 `PatchApplicator` Updates
-
-The `PatchApplicator` utility must be updated to support the full spec:
-
-* **Implement `reorder_blocks`:** Add logic to handle reordering of the `blocks` array.
-* **Strict Pathing:** Continue to forbid direct access to `lines_coords`.
-* **Unified Handling:** Ensure `add`/`remove` operations on Lines manage the `lines` and `lines_coords` arrays in sync.
-
-### 7.3 `PatchInverter`
-
-Calculates the **Inverse Patch** for Undo operations.
-
-* **Requirement:** Every `PatchOperation` stored in the DB must include `old_value`.
-* **Logic:**
-* `add` -> `remove` (uses `old_value` if needed for history consistency, though usually `value` becomes `old_value`).
-* `remove` -> `add` (uses `old_value` to restore data).
-* `replace` -> `replace` (swaps `value` <-> `old_value`).
-* `reorder` -> `reorder` (calculates inverse permutation).
-
-
-### 7.4 Safety Mechanisms
-
-* **Transaction Wrapper:** The Rebase endpoint (`POST /api/library/rebase`) must use `prisma.$transaction`.
-* **Dead Zone Logic:** The simulation engine needs a robust way to track "Deleted Indices" to fail fast if a user tries to edit them.
-
-
-## 8. Specification: Rebase Workflow
-
-Rebasing is the process of moving a Diverged User Branch (`D`) onto a new Upstream Head (`U`). This allows a user to retain their private edits while incorporating the latest official fixes.
-
-### 8.1 The Challenge: Index Shifting
-
-Structural changes upstream (insertions/deletions) invalidate downstream patch indices.
-
-* **Scenario:** Admin adds a new block at `index 0`.
-* **User Patch:** Edits `blocks[0]` (intended to be the *old* first block).
-* **Requirement:** The Rebase engine must **Transform** user paths (e.g., shift `blocks[0]` -> `blocks[1]`) so they target the correct content in the new structure.
-
-### 8.2 The Rebase Algorithm (Full Simulation)
-
-The system performs a full simulation of upstream changes to construct a "Reality Map" before applying user patches.
-
-**Inputs:**
-
-* `UserChain`: List of patches from `Root` to `UserHead`.
-* `UpstreamChain`: List of patches from `Root.parent` to `AdminHead`.
-
-**Phase 1: Analysis (Build Upstream Map)**
-Iterate through `UpstreamChain` to track shifts in every array (Pages, Blocks, Lines).
-
-* **Insertion (Shift Up):**
-* *Event:* Upstream adds item at index `i`.
-* *Effect:* All logical indices `k >= i` are shifted to `k + 1`.
-* *Collision Rule:* **Upstream Wins.** If User also inserted at `i`, the Upstream item comes first. The User's insertion is shifted to `i + 1`.
-
-
-* **Deletion (Shift Down & Invalidate):**
-* *Event:* Upstream removes item at index `i`.
-* *Effect:* Index `i` becomes a **Dead Zone**.
-* *Siblings:* All logical indices `k > i` are shifted down to `k - 1`.
-
-
-* **Reorder (Permutation):**
-* *Event:* Upstream reorders an array.
-* *Effect:* Indices are scrambled based on the new permutation.
+1. **Initial Ingestion:**
+* On startup/scan, check for `volume.mokuro` in the shared folder.
+* If Database is empty for this volume:
+1. Parse the legacy `.mokuro` file.
+2. Create **Genesis Patch** (Patch 0) with `op: "replace", path: "/", value: full_json`.
+3. Set Admin Branch Head to Genesis Patch.
 
 
 
-**Phase 2: Verification (Conflict Detection)**
-Iterate through `UserChain` to check for operations that cannot be safely transformed.
 
-* **Dead Zone Conflict:** User patch targets an index `i` that was deleted upstream.
-* *Action:* **Reject Rebase**. (Cannot edit what doesn't exist).
-
-
-* **Structural Conflict (The Reorder Trap):** User patch attempts to `reorder` an array that the Upstream has structurally modified (added/removed items).
-* *Reasoning:* The User's permutation vector (`new_order`) relies on the *old* array length and indices. Upstream changes make this vector mathematically invalid.
-* *Action:* **Reject Rebase**.
-
-
-* **Content Conflict:** User and Upstream modified the exact same leaf property (e.g., both changed text of Line 1).
-* *Action:* **Reject Rebase**.
-
-
-
-**Phase 3: Transformation**
-If no conflicts are found, clone and transform the User patches.
-
-* **Path Mapping:** Apply the calculated shifts/permutations to `P.path`.
-* *Example:* `/blocks/0/lines/1` becomes `/blocks/1/lines/1`.
-
-
-
-**Phase 4: Execution (Atomic Commit)**
-**CRITICAL:** This entire phase must run within a **Database Transaction**.
-
-1. **Delete Old History:** Delete the `Root` patch of the User Branch. (Cascade deletion wipes the old private timeline).
-2. **Reset Pointer:** Set User Branch `head = AdminHead`, `root = NULL`.
-3. **Replay New History:** For each transformed patch `P'`:
-    * Insert `P'` (with `parentId` = previous patch).
-    * Update Branch `head` and `root` pointers.
-
+2. **Legacy Protection:**
+* If a user modifies the file on disk externally (bypassing the app), the system detects timestamp mismatch.
+* **Policy:** Database wins. External changes are rejected unless imported via a specific "Import from Disk" Admin tool (which creates a new Patch on the Admin Branch).
