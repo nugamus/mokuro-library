@@ -338,12 +338,7 @@ User: A1 → A2 → A3 → A4 → U1 → U2 (root = A2)
 - Admin accidentally merged (fast-forwarded) a user's changes and wants to undo
 - Admin wants to partially accept changes (undo some, keep others with user)
 
-**Admin Revert:** When admin cannot undo (blocked by multiple branches) or wants to preserve history, they can use **revert** instead. Revert creates an inverse patch as a new child of HEAD.
-
-**POST** `/api/volumes/:volumeId/revert`
-- **Body:** `{ patchId: string, reason?: string }`
-- **Behavior:** Computes inverse of target patch, creates new patch with inverse operation
-- **Result:** Bad change is undone, but original patch remains in history
+**Admin Revert:** When admin cannot undo (blocked by multiple branches) or wants to preserve history, they can use **revert** instead. Revert creates an inverse patch as a new child of HEAD. See Section 6.2 for API details.
 
 ### 5.4 The Rebase Engine
 
