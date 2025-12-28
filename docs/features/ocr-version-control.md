@@ -309,24 +309,28 @@ Result: Branch unchanged, back to original state
 **Case 1: No branch points in undo range**
 - Admin can freely undo
 - Abandoned patches are deleted (cascade)
+- **Clear `nextPatchId`:** The new HEAD patch has `nextPatchId` set to NULL
 
 **Case 2: Exactly one user branch in undo range**
 - Admin can undo with "branch drag"
 - The abandoned patches are transferred to the user's branch
 - User's `rootPatchId` is reassigned to the earliest abandoned patch
+- **Clear `nextPatchId`:** Transferred patches have `nextPatchId` set to NULL (user branches are singly-linked)
 - User's branch now "owns" those patches
 - No conflicts, no rebase needed, no data loss
 
 ```
 Before:
 Admin: A1 → A2 → A3 → A4 (HEAD)
+       (A1.next=A2, A2.next=A3, A3.next=A4)
 User: A2 → U1 → U2 (root = U1)
 
 Admin undoes to A1, dragging User's branch:
 
 After:
-Admin: A1 (HEAD)
+Admin: A1 (HEAD, A1.nextPatchId = NULL)
 User: A1 → A2 → A3 → A4 → U1 → U2 (root = A2)
+      (A2.next=NULL, A3.next=NULL, A4.next=NULL — now singly-linked)
 ```
 
 **Case 3: Multiple user branches in undo range**
@@ -579,9 +583,25 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 * **Behavior:** 
   1. Check if source branch HEAD is a direct descendant of Admin HEAD (fast-forward possible)
   2. If yes, update Admin HEAD to source branch HEAD
+  3. **Link admin chain:** Set `nextPatchId` on merged patches to form doubly-linked admin branch
 * **Response:** 
   - `200 OK`: `{ success: true, newHeadId: string }`
   - `400`: `{ error: "Cannot fast-forward. Rebase required." }`
+
+**nextPatchId maintenance on merge:**
+```
+Before:
+Admin: A1 → A2 (HEAD, A1.nextPatchId = A2)
+User:  A2 → U1 → U2 (HEAD)
+
+After merge:
+Admin: A1 → A2 → U1 → U2 (HEAD)
+
+Updates:
+- A2.nextPatchId = U1.id
+- U1.nextPatchId = U2.id
+- U2.nextPatchId = NULL (new HEAD)
+```
 
 ### 6.6 Undo/Redo
 
