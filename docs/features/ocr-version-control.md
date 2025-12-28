@@ -267,9 +267,15 @@ A static utility that applies a `PatchOperation` to a mutable `MokuroData` objec
 * Must parse `/lines` paths and update `lines` and `lines_coords` arrays in parallel.
 * Must throw error on unknown paths or direct `lines_coords` access.
 
+### 7.2 `PatchApplicator` Updates
 
+The `PatchApplicator` utility must be updated to support the full spec:
 
-### 7.2 `PatchInverter`
+* **Implement `reorder_blocks`:** Add logic to handle reordering of the `blocks` array.
+* **Strict Pathing:** Continue to forbid direct access to `lines_coords`.
+* **Unified Handling:** Ensure `add`/`remove` operations on Lines manage the `lines` and `lines_coords` arrays in sync.
+
+### 7.3 `PatchInverter`
 
 Calculates the **Inverse Patch** for Undo operations.
 
@@ -280,39 +286,28 @@ Calculates the **Inverse Patch** for Undo operations.
 * `replace` -> `replace` (swaps `value` <-> `old_value`).
 * `reorder` -> `reorder` (calculates inverse permutation).
 
+
+### 7.4 Safety Mechanisms
+
+* **Transaction Wrapper:** The Rebase endpoint (`POST /api/library/rebase`) must use `prisma.$transaction`.
+* **Dead Zone Logic:** The simulation engine needs a robust way to track "Deleted Indices" to fail fast if a user tries to edit them.
+
+
 ## 8. Specification: Rebase Workflow
 
-Rebasing is the process of moving a Diverged User Branch (`D`) onto a new Upstream Head (`U`). This allows a user to retain their private edits while incorporating the latest official fixes, even if the underlying document structure has changed.
+Rebasing is the process of moving a Diverged User Branch (`D`) onto a new Upstream Head (`U`). This allows a user to retain their private edits while incorporating the latest official fixes.
 
 ### 8.1 The Challenge: Index Shifting
 
-JSON Patches rely on array indices (e.g., `/blocks/0`). Structural changes upstream (insertions/deletions) invalidate downstream patch indices.
+Structural changes upstream (insertions/deletions) invalidate downstream patch indices.
 
 * **Scenario:** Admin adds a new block at `index 0`.
 * **User Patch:** Edits `blocks[0]` (intended to be the *old* first block).
-* **Result without Transformation:** User Patch now edits the *new* Admin block. **Data Corruption.**
-* **Requirement:** The Rebase engine must **Transform** user paths (e.g., shift `blocks[0]` -> `blocks[1]`) based on the net effect of upstream operations.
+* **Requirement:** The Rebase engine must **Transform** user paths (e.g., shift `blocks[0]` -> `blocks[1]`) so they target the correct content in the new structure.
 
-### 8.2 Footprint & Scope
+### 8.2 The Rebase Algorithm (Full Simulation)
 
-To determine safety and conflicts, we calculate the **Footprint** of every patch.
-
-* **Exact Footprint:** Modifying a leaf property.
-* `FP(/blocks/0/text) = { /blocks/0/text }`
-
-
-* **Hierarchical Footprint:** Deleting a container affects all children.
-* `FP(/blocks/0) = { /blocks/0, /blocks/0/** }`
-
-
-* **Structural Footprint:** Reordering or Adding affects the array indices.
-* `FP(/blocks) = { /blocks/** }` (Potentially invalidates all indices in the array).
-
-
-
-### 8.3 The Rebase Algorithm (Full Simulation)
-
-The system performs a full simulation of the upstream changes to construct a "Reality Map" before transforming and applying user patches.
+The system performs a full simulation of upstream changes to construct a "Reality Map" before applying user patches.
 
 **Inputs:**
 
@@ -320,53 +315,57 @@ The system performs a full simulation of the upstream changes to construct a "Re
 * `UpstreamChain`: List of patches from `Root.parent` to `AdminHead`.
 
 **Phase 1: Analysis (Build Upstream Map)**
-Iterate through the `UpstreamChain` to track how indices have shifted. We maintain a `TranslationMap` for every array (Pages, Blocks, Lines).
+Iterate through `UpstreamChain` to track shifts in every array (Pages, Blocks, Lines).
 
 * **Insertion (Shift Up):**
 * *Event:* Upstream adds item at index `i`.
 * *Effect:* All logical indices `k >= i` are shifted to `k + 1`.
-* *Logic:* `Map[k] = Map[k] + 1` for all `k >= i`.
+* *Collision Rule:* **Upstream Wins.** If User also inserted at `i`, the Upstream item comes first. The User's insertion is shifted to `i + 1`.
 
 
 * **Deletion (Shift Down & Invalidate):**
 * *Event:* Upstream removes item at index `i`.
-* *Effect (Target):* Index `i` becomes a **Dead Zone**. Any user patch targeting exactly `i` is marked for discard/conflict.
-* *Effect (Siblings):* All logical indices `k > i` are shifted down to `k - 1`.
+* *Effect:* Index `i` becomes a **Dead Zone**.
+* *Siblings:* All logical indices `k > i` are shifted down to `k - 1`.
 
 
-* **Reorder (Permutation Remap):**
-* *Event:* Upstream reorders an array using `new_order`.
-* *Effect:* Indices are scrambled based on the permutation.
-* *Logic:* `Map[OldIndex] = NewIndex`. Any user patch targeting `OldIndex` is remapped to `NewIndex`.
+* **Reorder (Permutation):**
+* *Event:* Upstream reorders an array.
+* *Effect:* Indices are scrambled based on the new permutation.
 
 
 
-**Phase 2: Transformation (Adjust User Patches)**
-Iterate through the `UserChain` and clone each patch `P` into a candidate patch `P'`.
+**Phase 2: Verification (Conflict Detection)**
+Iterate through `UserChain` to check for operations that cannot be safely transformed.
 
-* **Path Transformation:** Apply the `TranslationMap` to `P.path`.
-* *Example:* If Upstream inserted 1 block at index 0, and `P` targets `blocks[5]`, `P'.path` becomes `blocks[6]`.
-
-
-* **Dead Zone Check:** If `P` targets a Dead Zone (an entity deleted upstream), the patch is **Discarded** (it modifies something that no longer exists).
-
-**Phase 3: Verification (Conflict Detection)**
-Check for semantic conflicts that cannot be resolved automatically.
-
-* **Content Conflict:** Upstream modified `/blocks/0/text`. User modified `/blocks/0/text`.
-* *Action:* **Reject Rebase**. User must choose whose version to keep or manually edit.
+* **Dead Zone Conflict:** User patch targets an index `i` that was deleted upstream.
+* *Action:* **Reject Rebase**. (Cannot edit what doesn't exist).
 
 
-* **Structural Integrity:** Ensure the transformed path `P'.path` is valid in the new document structure (e.g., not out of bounds).
+* **Structural Conflict (The Reorder Trap):** User patch attempts to `reorder` an array that the Upstream has structurally modified (added/removed items).
+* *Reasoning:* The User's permutation vector (`new_order`) relies on the *old* array length and indices. Upstream changes make this vector mathematically invalid.
+* *Action:* **Reject Rebase**.
+
+
+* **Content Conflict:** User and Upstream modified the exact same leaf property (e.g., both changed text of Line 1).
+* *Action:* **Reject Rebase**.
+
+
+
+**Phase 3: Transformation**
+If no conflicts are found, clone and transform the User patches.
+
+* **Path Mapping:** Apply the calculated shifts/permutations to `P.path`.
+* *Example:* `/blocks/0/lines/1` becomes `/blocks/1/lines/1`.
+
+
 
 **Phase 4: Execution (Atomic Commit)**
-If all user patches are successfully transformed or cleanly discarded:
+**CRITICAL:** This entire phase must run within a **Database Transaction**.
 
-1. **Reset:** Set User Branch `head = AdminHead`, `root = NULL`. (Branch is momentarily clean).
-2. **Replay:** For each transformed patch `P'`:
-* Insert `P'` into DB with `parentId = CurrentHead`.
-* Update `CurrentHead = P'.id`.
-* Set `root = P'.id` (on the first replayed patch).
+1. **Delete Old History:** Delete the `Root` patch of the User Branch. (Cascade deletion wipes the old private timeline).
+2. **Reset Pointer:** Set User Branch `head = AdminHead`, `root = NULL`.
+3. **Replay New History:** For each transformed patch `P'`:
+    * Insert `P'` (with `parentId` = previous patch).
+    * Update Branch `head` and `root` pointers.
 
-
-3. **Result:** The User Branch now sits on top of the new Admin Head, with all indices correctly shifted to match the new reality.
