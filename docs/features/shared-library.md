@@ -138,6 +138,62 @@ model OcrBranch {
 - `rootPatchId = NULL` → Branch is "Clean" (synced with admin)
 - `rootPatchId != NULL` → Branch is "Dirty" (has private edits)
 
+### 3.4 Submissions (`Submission`)
+
+Tracks volume submissions from users to the shared library.
+
+```prisma
+model Submission {
+  id              String   @id @default(cuid())
+  
+  userId          String
+  status          String   @default("pending")  // 'pending' | 'accepted' | 'rejected'
+  
+  // Target: NULL = create new series, set = existing admin series
+  targetSeriesId  String?
+  
+  // Source series (for cloning metadata when creating new series)
+  sourceSeriesId  String?
+  
+  submittedAt     DateTime @default(now())
+  reviewedAt      DateTime?
+  reviewNote      String?
+  
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  targetSeries    Series?  @relation("SubmissionTarget", fields: [targetSeriesId], references: [id], onDelete: SetNull)
+  sourceSeries    Series?  @relation("SubmissionSource", fields: [sourceSeriesId], references: [id], onDelete: SetNull)
+  
+  // Volumes in this submission
+  volumes         Volume[]
+}
+
+model Volume {
+  // ... existing fields ...
+  
+  // Tracks last/current submission attempt
+  submission   Submission? @relation(fields: [submissionId], references: [id], onDelete: SetNull)
+  submissionId String?
+}
+```
+
+**Submission types:**
+- `targetSeriesId` set → Submit volumes to existing shared series
+- `targetSeriesId` null → Create new shared series (metadata from `sourceSeriesId`)
+
+**Submission lifecycle:**
+
+| Action | `Submission.status` | `Volume.submissionId` |
+|--------|---------------------|----------------------|
+| User submits | `pending` | Set to submission ID |
+| Admin accepts | `accepted` | Keep (historical link) |
+| Admin rejects | `rejected` | Keep (until resubmit) |
+| User resubmits | New `pending` | Overwrite with new ID |
+
+**Benefits:**
+- Referential integrity (no stale IDs)
+- Query volumes by submission status
+- Historical record for gamification/stats
+
 ### 3.3 Patches (`Patch`)
 
 Uses a linked list of atomic operations with cascade delete. Admin branch is doubly-linked (has forward pointers), user branches are singly-linked.
@@ -263,7 +319,7 @@ See `ocr-version-control-v3.md` Section 5.3 for details.
 
 ### 4.9 Private Library Submission
 
-Users can submit their private series to the admin's shared library. This acts as a "staging area" workflow.
+Users can submit volumes from their private library to the admin's shared library. Submissions are volume-based, allowing flexible contribution to existing or new shared series.
 
 **Private Library Structure:**
 - Admin branch exists but stays frozen at genesis (never moves)
@@ -272,28 +328,42 @@ Users can submit their private series to the admin's shared library. This acts a
 
 **Submission Flow:**
 
-1. **User submits series:** 
-   - Series appears in admin's "pending submissions" queue
-   - Series remains in user's private library until accepted/rejected
+1. **User selects volumes** from their private library (via selection mode)
+2. **Clicks "Submit"** in action bar
+3. **Modal appears** with options:
+   - **Submit to existing shared series:** Dropdown lists matching admin series
+   - **Create new shared series:** Metadata cloned from source private series
+4. **Submission created** with selected volume IDs
+5. **Admin reviews** in `/api/admin/submissions`
+6. **On accept:** Volumes **move** (not copy) to shared library
+7. **On reject:** Volumes stay in user's private series
 
-2. **Admin reviews submission:**
-   - **Accept:** 
-     1. Conflict check: Verify no existing series/volume with same `folderName`
-     2. Filesystem: Move files from user's folder to admin's shared folder
-     3. Database: Update `Series.ownerId` to `admin`
-     4. OCR tree: Optionally auto-fast-forward admin branch to user's HEAD (sets `nextPatchId` links)
-   - **Reject:**
-     1. Series stays in user's private library
-     2. Optionally notify user with reason
+**Metadata Handling:**
 
-3. **After acceptance:**
-   - Series is now part of shared library
-   - Other users can view and fork from it
-   - Original submitter's branch becomes a regular user branch (if they had edits beyond the accepted HEAD)
+| Target | Metadata Source |
+|--------|-----------------|
+| Existing shared series | Admin's series (unchanged) |
+| New shared series | Cloned from user's private series (title, description, cover, etc.) |
 
-**Conflict Check (same as upload):**
-- `Series.folderName` + `ownerId = admin` must be unique
-- `Volume.folderName` within series must be unique
+**What Gets Moved on Accept:**
+- Volume files (`filePath`)
+- Volume `.mokuro` files (`mokuroPath`)
+- OCR branches (same `volumeId`, just new parent series)
+- Cover file (if creating new series)
+
+**Edge Cases:**
+
+| Scenario | Behavior |
+|----------|----------|
+| User submits all volumes from a series | Private series becomes empty (user can delete) |
+| User submits some volumes | Private series keeps remaining volumes |
+| Admin rejects | Volumes stay in user's private series |
+| Volume has OCR edits | Branch moves with volume (same volumeId) |
+| Folder name conflict | Admin resolves or rejects |
+
+**Conflict Check:**
+- `Volume.folderName` must be unique within target series
+- If creating new series: `Series.folderName` must not exist for admin
 
 ### 4.10 Contribution Page
 
@@ -306,7 +376,7 @@ A dedicated route (`/contributions`) for users who want to contribute OCR fixes.
 **Page Features:**
 - List of volumes where user is behind admin (can rebase)
 - List of volumes where user is ahead of admin (potential contributions)
-- Filters: `behind` | `ahead` | `both`
+- Filters: `behind` | `ahead` | `all`
 - Series grouping with volume thumbnails
 - One-click rebase actions
 - Stats dashboard (edits made, edits merged, activity graph)
@@ -423,12 +493,30 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 
 **POST** `/api/me/submissions`
 
-* **Body:** `{ seriesId: string, message?: string }`
-* **Behavior:** Adds series to admin's pending submissions queue
+* **Body (submit to existing series):**
+```json
+{
+  "volumeIds": ["vol1", "vol2", "vol3"],
+  "targetSeriesId": "admin-series-id"
+}
+```
+
+* **Body (create new series):**
+```json
+{
+  "volumeIds": ["vol1", "vol2", "vol3"],
+  "targetSeriesId": null,
+  "sourceSeriesId": "user-private-series-id"
+}
+```
+
+* **Behavior:** 
+  1. Create submission record with `pending` status
+  2. Set `Volume.submissionId` on all selected volumes (overwrites previous if any)
 * **Response:** `{ success: true, submissionId: string }`
 * **Errors:**
-  - `400`: Series is already shared (ownerId = admin)
-  - `404`: Series not found or not owned by user
+  - `400`: No volumes selected, or volumes not owned by user
+  - `404`: Target series not found (if specified)
 
 **GET** `/api/admin/submissions` (Admin only)
 
@@ -438,11 +526,16 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
   "submissions": [
     {
       "id": "...",
-      "seriesId": "...",
-      "seriesTitle": "Naruto",
-      "submittedBy": "user123",
-      "submittedAt": "2025-01-15T10:00:00Z",
-      "volumeCount": 5
+      "userId": "user123",
+      "username": "john",
+      "status": "pending",
+      "targetSeriesId": "admin-naruto",
+      "targetSeriesTitle": "Naruto",
+      "sourceSeriesId": null,
+      "volumes": [
+        { "id": "vol1", "title": "Volume 1", "folderName": "vol1" }
+      ],
+      "submittedAt": "2025-01-15T10:00:00Z"
     }
   ]
 }
@@ -450,21 +543,31 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 
 **POST** `/api/admin/submissions/:submissionId/accept` (Admin only)
 
-* **Body:** `{ autoFastForward?: boolean }` (default: true)
+* **Body:** `{ }` (no options needed)
 * **Behavior:**
-  1. Check for folder name conflicts with existing shared series/volumes
-  2. Move files from user folder to admin shared folder
-  3. Update `Series.ownerId` to `admin`
-  4. If `autoFastForward`: Set admin branch HEAD to user's HEAD, link `nextPatchId` chain
-  5. Remove from submissions queue
-* **Response:** `{ success: true }`
+  1. If `targetSeriesId` is set:
+     - Check for volume folder name conflicts
+     - Move volume files to target series folder
+     - Update `Volume.seriesId` to target series
+  2. If `targetSeriesId` is null (new series):
+     - Check for series folder name conflict
+     - Create new admin series with metadata from `sourceSeriesId`
+     - Move cover file to admin folder
+     - Move volume files to admin folder
+     - Update `Volume.seriesId` to new series
+  3. OCR branches remain attached (same `volumeId`)
+  4. Update submission status to `accepted`, set `reviewedAt`
+  5. Keep `Volume.submissionId` intact (historical record for stats)
+* **Response:** `{ success: true, seriesId: string }`
 * **Errors:**
-  - `409`: Conflict — series or volume folder name already exists in shared library
+  - `409`: Folder name conflict
 
 **POST** `/api/admin/submissions/:submissionId/reject` (Admin only)
 
 * **Body:** `{ reason?: string }`
-* **Behavior:** Remove from queue, optionally notify user
+* **Behavior:** 
+  1. Update status to `rejected`, set `reviewedAt` and `reviewNote`
+  2. Keep `Volume.submissionId` intact (user can see rejection reason)
 * **Response:** `{ success: true }`
 
 ### 6.5 Contribution Page
