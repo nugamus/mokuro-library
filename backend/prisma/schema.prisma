@@ -151,6 +151,13 @@ model OcrBranch {
   rootPatchId String?
   rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
 
+  // --- Snapshot Cache ---
+  // The patch ID that the cached snapshot represents.
+  // IF NULL: No snapshot exists, reconstruct from .mokuro file + patches.
+  // IF SET: Snapshot file exists at cache/snapshots/{branchId}.json
+  // Stale check: snapshotPatchId !== headPatchId means snapshot is outdated.
+  snapshotPatchId String?
+
   // --- Concurrency ---
   version     Int      @default(0)     // Optimistic Locking Counter
   isFloating  Boolean  @default(false) // True during rebase operations
