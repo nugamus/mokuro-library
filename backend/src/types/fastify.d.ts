@@ -11,7 +11,17 @@ export type AuthUser = {
 // This declaration merges with Fastify's existing types
 declare module 'fastify' {
   export interface FastifyInstance {
-    prisma: PrismaClient;
+    prisma: DynamicClientExtensionThis<TypeMap<InternalArgs & {
+      result: {};
+      model: {};
+      query: {};
+      client: {};
+    }, GlobalOmitConfig | undefined>, TypeMapCb<GlobalOmitConfig | undefined>, {
+      result: {};
+      model: {};
+      query: {};
+      client: {};
+    }>;
     projectRoot: string;
     // Our custom authentication hook
     authenticate: (

@@ -2,6 +2,7 @@ import 'dotenv/config'; // important to make environment variables available to 
 import Fastify from 'fastify';
 import { PrismaClient } from './generated/prisma/client'
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
+import { ensureAdminUser } from './utils/bootstrap';
 
 import fastifyCookie from '@fastify/cookie';
 import fastifyMultipart from '@fastify/multipart';
@@ -11,6 +12,7 @@ import fs from 'fs';
 
 // Import Plugins
 import authPlugin from './plugins/auth';
+import { ulidExtension } from './plugins/prisma-extensions';
 
 // Import Routes
 import authRoutes from './routes/auth';
@@ -47,7 +49,7 @@ const adapter = new PrismaBetterSqlite3({
 }, {
   timestampFormat: 'iso8601'
 });
-const prisma = new PrismaClient({ adapter });
+const prisma = new PrismaClient({ adapter }).$extends(ulidExtension);;
 
 // Register the cookie plugin
 fastify.register(fastifyCookie, {
@@ -143,9 +145,15 @@ const start = async () => {
   try {
     // Wait for all plugins to load
     await fastify.ready();
+
+    // Ensure the system "admin" user exists for OCR constraints
+    // We cast prisma to 'any' or the specific client type because of the extension
+    await ensureAdminUser(prisma as any, fastify.log);
+
     // Print the routing tree to the console
     console.log(fastify.printRoutes());
     console.log(projectRoot);
+
     // Listen on 0.0.0.0:3001
     await fastify.listen({ port: 3001, host: '0.0.0.0' });
   } catch (err) {

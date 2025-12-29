@@ -40,7 +40,8 @@
     "fastify-plugin": "^5.1.0",
     "fs-extra": "^11.3.2",
     "pdfkit": "^0.17.2",
-    "prisma": "^6.18.0"
+    "prisma": "^6.18.0",
+    "ulid": "^3.0.2"
   },
   "devDependencies": {
     "@types/archiver": "^7.0.0",
