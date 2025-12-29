@@ -31,8 +31,9 @@ model OcrBranch {
 
   // --- Pointers ---
   // The current state of this branch (Latest Edit)
-  headPatchId String?
-  headPatch   Patch?   @relation("BranchHead", fields: [headPatchId], references: [id])
+  // Always points to some patch (admin HEAD for clean branch, user's HEAD for dirty)
+  headPatchId String
+  headPatch   Patch    @relation("BranchHead", fields: [headPatchId], references: [id])
 
   // The start of the private timeline.
   // IF NULL: Branch is synonymous with its parent (Clean).
@@ -427,6 +428,7 @@ For reorder conflicts, we use permutation composition.
 **Keep Mine:** User wants their intended final order. Transform user's patch to `U' = A_inv * U`.
 
 **Keep Admin:** Skip user's reorder. Propagate `A_inv * U` to subsequent patches so they account for the missing reorder.
+
 
 ### 5.6 Per-User Snapshot Strategy
 

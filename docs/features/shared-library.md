@@ -12,7 +12,7 @@ A designated "Admin" account hosts a central library visible to all users. Users
 * **Non-Destructive Editing:** Users view the Admin's OCR text by default. If they make an edit, they seamlessly "fork" into a private branch. The original Admin text remains untouched.
 * **Self-Cleaning History:** The branching model uses cascade deletes—"Resetting" a branch automatically removes the entire private history without complex garbage collection.
 
-**Related Document:** For detailed OCR versioning, conflict resolution, and rebase algorithms, see `ocr-version-control-v3.md`.
+**Related Document:** For detailed OCR versioning, conflict resolution, and rebase algorithms, see the [version control doc](./ocr-version-control.md).
 
 ---
 
@@ -60,6 +60,25 @@ Users need clear feedback about their branch state:
 | Has Behind only | "Update to Latest" (auto-applies, no conflicts possible) |
 | Both | "Update to Latest" (triggers rebase, may have conflicts) |
 
+### 2.5 User Permissions on Shared Content
+
+Users have limited permissions on admin-owned (shared) content:
+
+| Action | Allowed? | Notes |
+|--------|----------|-------|
+| View/Read | ✅ | Shared content appears in user's library |
+| Track reading progress | ✅ | Per-user `UserSeriesSettings` / `UserProgress` |
+| Edit OCR | ✅ | Creates private branch (copy-on-write) |
+| Download/Export | ✅ | Can export shared content |
+| Edit metadata | ❌ | Admin only (title, description, cover) |
+| Scrape metadata | ❌ | Admin only |
+| Delete series/volume | ❌ | Admin only |
+
+**Implementation Note:** Export queries must include both user-owned and admin-owned content:
+```
+where: { id: { in: ids }, ownerId: { in: [userId, 'admin'] } }
+```
+
 ---
 
 ## 3. Database Architecture
@@ -102,7 +121,7 @@ model OcrBranch {
   userId      String   // The owner of this branch (User or Admin)
 
   // --- The Pointers ---
-  headPatchId String?  // Current state (latest edit)
+  headPatchId String   // Current state (always points to some patch)
   rootPatchId String?  // First private patch (NULL = clean/synced)
 
   // --- Concurrency ---
@@ -276,6 +295,37 @@ Users can submit their private series to the admin's shared library. This acts a
 - `Series.folderName` + `ownerId = admin` must be unique
 - `Volume.folderName` within series must be unique
 
+### 4.10 Contribution Page
+
+A dedicated route (`/contributions`) for users who want to contribute OCR fixes. A badge in the sidebar/header provides visibility without being intrusive.
+
+**Hybrid Approach:**
+- **Badge/Indicator:** Shown in sidebar or header, displays count of volumes needing rebase
+- **Click → Route:** Navigating to `/contributions` opens the full page
+
+**Page Features:**
+- List of volumes where user is behind admin (can rebase)
+- List of volumes where user is ahead of admin (potential contributions)
+- Filters: `behind` | `ahead` | `both`
+- Series grouping with volume thumbnails
+- One-click rebase actions
+- Stats dashboard (edits made, edits merged, activity graph)
+
+**User Stories:**
+1. User sees badge "3" in sidebar (3 volumes need rebase)
+2. User clicks badge → navigates to `/contributions`
+3. User sees "Naruto Vol 34 — behind by 3 patches"
+4. User clicks "Rebase", resolves any conflicts
+5. Admin can now fast-forward merge the user's edits
+
+**Statistics:**
+- Total edits made by user
+- Edits merged into official branch
+- Volumes edited
+- Contribution streak / activity graph
+
+This encourages volunteer contributions while keeping the main reading experience uncluttered.
+
 ---
 
 ## 5. Implementation Requirements
@@ -371,9 +421,9 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 
 ### 6.4 Submission (Private → Shared)
 
-**POST** `/api/series/:seriesId/submit`
+**POST** `/api/me/submissions`
 
-* **Body:** `{ }` (or optional message to admin)
+* **Body:** `{ seriesId: string, message?: string }`
 * **Behavior:** Adds series to admin's pending submissions queue
 * **Response:** `{ success: true, submissionId: string }`
 * **Errors:**
@@ -417,6 +467,47 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 * **Behavior:** Remove from queue, optionally notify user
 * **Response:** `{ success: true }`
 
+### 6.5 Contribution Page
+
+**GET** `/api/me/contributions`
+
+* **Query:** `{ page?: number, limit?: number, filter?: 'behind' | 'ahead' | 'all' }`
+* **Behavior:** Returns paginated list of volumes where user has a branch, with status
+* **Response:**
+```json
+{
+  "data": [
+    {
+      "volumeId": "...",
+      "volumeTitle": "Naruto Vol 34",
+      "seriesTitle": "Naruto",
+      "hasAhead": true,
+      "hasBehind": true,
+      "userPatchCount": 5,
+      "behindByCount": 3
+    }
+  ],
+  "meta": {
+    "total": 42,
+    "page": 1,
+    "limit": 20,
+    "totalPages": 3
+  }
+}
+```
+
+**GET** `/api/me/stats`
+
+* **Response:**
+```json
+{
+  "totalEdits": 150,
+  "editsMerged": 45,
+  "volumesEdited": 23,
+  "lastEditAt": "2025-01-15T10:00:00Z"
+}
+```
+
 For OCR-specific endpoints (patch, rebase, reset, revert, undo, redo), see `ocr-version-control-v3.md` Section 6.
 
 ---
@@ -433,5 +524,6 @@ For OCR-specific endpoints (patch, rebase, reset, revert, undo, redo), see `ocr-
 | Performance | Per-user snapshot caching |
 | Admin mistakes | Undo (limited) or Revert (inverse patch) |
 | Private → Shared | Submission queue with accept/reject |
+| Contribution UX | Badge → `/contributions` route with stats |
 
 For technical implementation details, refer to `ocr-version-control-v3.md`.
