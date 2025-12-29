@@ -170,7 +170,7 @@
 					</div>
 				</div>
 
-				{#if uiState.context !== 'library'}
+				{#if uiState.context === 'series'}
 					<div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
 
 					<button
@@ -195,6 +195,31 @@
 						</svg>
 
 						<span class="inline md:hidden lg:inline text-sm font-medium">Back to Library</span>
+					</button>
+				{:else if uiState.context !== 'library'}
+					<div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
+
+					<button
+						onclick={() => window.history.back()}
+						class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
+						title="Back to Library"
+						aria-label="Back to Library"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							class="transition-all duration-200 group-hover:-translate-x-1.5 group-hover:scale-120"
+						>
+							<path d="m15 18-6-6 6-6" />
+						</svg>
+						<span class="inline md:hidden lg:inline text-sm font-medium">Back</span>
 					</button>
 				{/if}
 			</div>
