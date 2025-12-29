@@ -41,6 +41,13 @@ model OcrBranch {
   rootPatchId String?
   rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
 
+  // --- Snapshot Cache ---
+  // The patch ID that the cached snapshot represents.
+  // IF NULL: No snapshot exists, reconstruct from .mokuro file + patches.
+  // IF SET: Snapshot file exists at cache/snapshots/{branchId}.json
+  // Stale check: snapshotPatchId !== headPatchId means snapshot is outdated.
+  snapshotPatchId String?
+
   // --- Concurrency ---
   version     Int      @default(0)     // Optimistic Locking Counter
   isFloating  Boolean  @default(false) // If true, this is a temp branch being built during rebase
@@ -83,6 +90,8 @@ model Patch {
 
   // --- Payload ---
   // JSON String adhering to PatchOperation interface
+  // Genesis patch: "{}" (empty/noop, means "load from .mokuro file")
+  // Regular patch: { op, path, value, old_value, ... }
   operation   String
 
   volume      Volume   @relation(fields: [volumeId], references: [id], onDelete: Cascade)
@@ -98,7 +107,103 @@ model Patch {
 - **Admin patches:** Have both `parentId` (backward) and `nextPatchId` (forward), forming a doubly-linked list
 - **User patches:** Have only `parentId` (backward); use `branch.rootPatchId` for forward navigation at branch point
 
-### 2.3 ID Generation (Prisma Middleware)
+**Genesis Patch Convention:**
+- `parentId = NULL` indicates genesis (root of the tree)
+- `operation = "{}"` (empty) — a "noop" indicating state should be read from the `.mokuro` file
+- No file content duplication in the database
+- Detection: `patch.parentId === null` means "this is genesis, load from file"
+
+### 2.3 Snapshot Strategy
+
+Snapshots are cached JSON files that store the computed state at a specific patch. They are disposable and can be regenerated.
+
+**Storage Location:** `cache/snapshots/{branchId}.json`
+
+The path is derived from `branchId`, so `OcrBranch` only stores `snapshotPatchId` to track validity.
+
+**Read Logic:**
+```
+if (branch.snapshotPatchId === branch.headPatchId):
+  return readFile(cache/snapshots/{branchId}.json)  // Exact match
+else if (branch.snapshotPatchId !== null):
+  state = readFile(cache/snapshots/{branchId}.json)
+  state = applyPatches(state, from: snapshotPatchId, to: headPatchId)
+  return state
+else:
+  state = readFile(volume.mokuroPath)  // Original file
+  state = applyPatches(state, from: genesis, to: headPatchId)
+  return state
+```
+
+**Write Logic:**
+- Update snapshot after applying patches
+- Or when patch count from snapshot to HEAD exceeds threshold (e.g., 20)
+- Set `branch.snapshotPatchId = branch.headPatchId` after write
+
+**Invalidation:**
+- `snapshotPatchId !== headPatchId` → snapshot is stale (walk delta or rebuild)
+- Cache clear: `rm -rf cache/snapshots/` is safe (will regenerate on next read)
+
+### 2.4 Lazy Genesis (Bootstrap)
+
+Genesis patches and branches are created on-demand when a volume is first accessed, not during migration.
+
+**On `GET /volume/:id`:**
+
+```
+1. Check: Does Admin Branch exist for this volume?
+   
+   IF NO (First Access):
+     - Create Genesis Patch: { id: ulid(), parentId: null, operation: "{}", volumeId, userId: "admin" }
+     - Create Admin Branch: { headPatchId: genesisPatchId, rootPatchId: null }
+   
+   IF YES:
+     - Use existing admin branch
+
+2. Check: Does User Branch exist?
+   
+   IF NO (User's First Visit):
+     - Create User Branch: { headPatchId: adminBranch.headPatchId, rootPatchId: null }
+     - User starts "clean" (synced with admin)
+   
+   IF YES:
+     - Use existing user branch
+
+3. Serve Data:
+   
+   IF branch is clean (rootPatchId === null):
+     - Optimization: Read directly from .mokuro file (matches admin state)
+   
+   IF branch is dirty (rootPatchId !== null):
+     - Reconstruct state using snapshot strategy (Section 2.3)
+```
+
+**Race Condition Handling:**
+
+Use a database transaction with double-check pattern:
+```typescript
+try {
+  await prisma.$transaction(async (tx) => {
+    // Double-check inside transaction
+    const existing = await tx.ocrBranch.findUnique({ where: { volumeId_userId: { volumeId, userId: 'admin' } } });
+    if (existing) return existing;
+    
+    // Create genesis + branch
+    await tx.patch.create({ data: { id: genesisPatchId, ... } });
+    await tx.ocrBranch.create({ data: { id: branchId, headPatchId: genesisPatchId, ... } });
+  });
+} catch (e) {
+  // Race condition: another request won, re-fetch
+  return await prisma.ocrBranch.findUnique({ ... });
+}
+```
+
+**Benefits:**
+- No upfront migration cost
+- Processes volumes only when accessed
+- Backwards compatible with existing `.mokuro` files
+
+### 2.5 ID Generation (Prisma Middleware)
 
 All IDs use ULID for chronological sortability and better index performance.
 

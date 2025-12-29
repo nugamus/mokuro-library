@@ -124,6 +124,10 @@ model OcrBranch {
   headPatchId String   // Current state (always points to some patch)
   rootPatchId String?  // First private patch (NULL = clean/synced)
 
+  // --- Snapshot Cache ---
+  snapshotPatchId String?  // Patch ID of cached snapshot (NULL = no cache)
+  // Snapshot file: cache/snapshots/{branchId}.json
+
   // --- Concurrency ---
   version     Int      @default(0)  // Optimistic locking
 
@@ -137,6 +141,15 @@ model OcrBranch {
 **Key concepts:**
 - `rootPatchId = NULL` → Branch is "Clean" (synced with admin)
 - `rootPatchId != NULL` → Branch is "Dirty" (has private edits)
+- `snapshotPatchId` → Points to the patch ID the cached snapshot represents; `NULL` means no cache
+
+### 3.3 Genesis Patch Convention
+
+The genesis patch is a "dummy" patch that anchors the patch tree without duplicating file content.
+
+- `parentId = NULL` → This is the genesis patch
+- `operation = "{}"` → Empty/noop, means "state = read from `.mokuro` file"
+- Created lazily on first volume access (see `ocr-version-control-v3.md` Section 2.4)
 
 ### 3.4 Submissions (`Submission`)
 
@@ -194,7 +207,7 @@ model Volume {
 - Query volumes by submission status
 - Historical record for gamification/stats
 
-### 3.3 Patches (`Patch`)
+### 3.5 Patches (`Patch`)
 
 Uses a linked list of atomic operations with cascade delete. Admin branch is doubly-linked (has forward pointers), user branches are singly-linked.
 
