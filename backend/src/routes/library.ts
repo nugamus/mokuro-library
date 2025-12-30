@@ -81,7 +81,18 @@ async function deleteSeriesById(fastify: FastifyInstance, seriesId: string, user
 }
 
 async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, userId: string) {
-  // 1. Find volume with ownership check (via Series)
+  // 1. Check if this is Official Content (Forbidden)
+  const adminVolume = await fastify.prisma.volume.findFirst({
+    where: { id: volumeId, series: { ownerId: 'admin' } }
+  });
+
+  if (adminVolume) {
+    const err = new Error('Cannot delete official content. Only the admin can delete this volume.');
+    (err as any).statusCode = 403;
+    throw err;
+  }
+
+  // 2. Find volume with ownership check (via Series)
   const volume = await fastify.prisma.volume.findFirst({
     where: { id: volumeId, series: { ownerId: userId } },
     include: {
@@ -102,11 +113,11 @@ async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, user
     throw new Error('Volume not found or access denied');
   }
 
-  // 2. Cleanup Snapshots (Disk)
+  // 3. Cleanup Snapshots (Disk)
   const branchIds = volume.branches.map((b: any) => b.id);
   await deleteBranchSnapshots(fastify, branchIds);
 
-  // 3. Delete Volume Files (Disk)
+  // 4. Delete Volume Files (Disk)
   const absVolPath = path.join(fastify.projectRoot, volume.filePath);
   const absMokuroPath = path.join(fastify.projectRoot, volume.mokuroPath);
 
@@ -117,16 +128,10 @@ async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, user
     fastify.log.warn(`Failed to delete volume files: ${e}`);
   }
 
-  // 4. Delete from DB
+  // 5. Delete from DB
   await fastify.prisma.volume.delete({ where: { id: volumeId } });
 
-  // 5. Cleanup empty series logic
-  // If this was the last volume and no cover exists, the series folder is technically empty.
-  // Note: We usually keep the series entry in DB until explicit delete, 
-  // but we might want to clean up the empty folder structure if desired.
-  // For now, let's leave the series folder unless the series itself is deleted.
-
-  // Recalculate series status
+  // 6. Recalculate series status
   await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
 
   return volume.title || volume.folderName;
@@ -690,27 +695,15 @@ const libraryRoutes: FastifyPluginAsync = async (
         const series = await fastify.prisma.series.findFirst({
           where: {
             id: seriesId,
-            // Security: Allow Owner OR Admin
-            OR: [
-              { ownerId: userId },
-              { ownerId: 'admin' }
-            ]
+            OR: [{ ownerId: userId }, { ownerId: 'admin' }]
           },
           include: {
-            // Include user settings to flatten them
-            userSettings: {
-              where: { userId }
-            },
+            userSettings: { where: { userId } },
             volumes: {
-              orderBy: {
-                sortTitle: 'asc',
-              },
+              orderBy: { sortTitle: 'asc' },
               include: {
-                // Return progress as an array (max 1 item due to where clause)
                 progress: {
-                  where: {
-                    userId: userId
-                  },
+                  where: { userId: userId },
                   select: {
                     page: true,
                     completed: true,
@@ -732,38 +725,22 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
-        // --- Transform / Flatten ---
-        // Extract the user-specific settings (if they exist)
         const userStats = series.userSettings[0];
-
-        // Remove the raw relation from the response object
         const { userSettings, ...cleanSeries } = series;
 
         const response = {
           ...cleanSeries,
-          // Flattened User State (Defaults if no interaction yet)
           bookmarked: userStats?.bookmarked ?? false,
           status: userStats?.status ?? 0,
           organized: userStats?.organized ?? false,
           lastReadAt: userStats?.lastReadAt ?? new Date(0),
-
-          // Computed Flags
-          isOfficial: series.ownerId === 'admin',
-          canEdit: series.ownerId === userId
         };
 
         return reply.status(200).send(response);
 
       } catch (error) {
-        fastify.log.error(
-          { err: error },
-          'Error fetching single series'
-        );
-        return reply.status(500).send({
-          statusCode: 500,
-          error: 'Internal Server Error',
-          message: 'An unexpected error occurred.',
-        });
+        fastify.log.error({ err: error }, 'Error fetching single series');
+        return reply.status(500).send({ message: 'An unexpected error occurred.' });
       }
     }
   );
@@ -777,23 +754,6 @@ const libraryRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       const { id: volumeId } = request.params;
       const userId = request.user.id;
-      // Helper for consistency
-      const buildResponse = (volume: any, data: MokuroData, branch: any) => {
-        return {
-          id: volume.id,
-          title: volume.title ?? volume.folderName,
-          seriesId: volume.seriesId,
-          pageCount: volume.pageCount,
-          coverImageName: volume.coverImageName,
-          progress: volume.progress,
-          mokuroData: data,
-          versionInfo: {
-            branchId: branch.id,
-            headPatchId: branch.headPatchId,
-            isReadOnly: false
-          }
-        };
-      };
 
       try {
         const volume = await fastify.prisma.volume.findFirst({
@@ -808,16 +768,49 @@ const libraryRoutes: FastifyPluginAsync = async (
 
         if (!volume) return reply.status(404).send({ message: 'Volume not found.' });
 
-        // 1. Get Branch Metadata (Required for API response 'versionInfo')
-        // We call these explicitly so we have the branch objects in scope.
+        // 1. Get Branch Metadata
         const adminBranch = await ensureAdminBranch(fastify, volumeId, volume.mokuroPath);
         const userBranch = await ensureUserBranch(fastify, volumeId, userId, adminBranch);
 
-        // 2. Get Computed Data (Source of Truth)
-        // This handles all the complex Snapshot/Regen/Sync logic.
+        // 2. Compute Status (HasAhead / HasBehind)
+        const hasAhead = userBranch.rootPatchId !== null;
+        let hasBehind = false;
+
+        if (!hasAhead) {
+          // Clean: Behind if admin moved past user's HEAD
+          hasBehind = userBranch.headPatchId !== adminBranch.headPatchId;
+        } else {
+          // Dirty: Behind if admin moved past user's fork point
+          // We must fetch the fork point (rootPatch's parent)
+          const rootPatch = await fastify.prisma.patch.findUnique({
+            where: { id: userBranch.rootPatchId! },
+            select: { parentId: true }
+          });
+          // If parentId matches admin HEAD, we are up to date with where admin is.
+          // If mismatch, admin moved.
+          if (rootPatch) {
+            hasBehind = rootPatch.parentId !== adminBranch.headPatchId;
+          }
+        }
+
+        // 3. Get Computed Data
         const mokuroData = await getComputedMokuroState(fastify, userId, volume);
 
-        return reply.send(buildResponse(volume, mokuroData, userBranch));
+        return reply.send({
+          id: volume.id,
+          title: volume.title ?? volume.folderName,
+          seriesId: volume.seriesId,
+          pageCount: volume.pageCount,
+          coverImageName: volume.coverImageName,
+          progress: volume.progress,
+          mokuroData: mokuroData,
+          versionInfo: {
+            branchId: userBranch.id,
+            headPatchId: userBranch.headPatchId,
+            hasAhead,
+            hasBehind,
+          }
+        });
 
       } catch (error) {
         fastify.log.error(error);
