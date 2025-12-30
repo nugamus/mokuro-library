@@ -4,6 +4,7 @@ import fs from 'fs';
 import { PatchApplicator } from '../lib/PatchApplicator';
 import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
+import { OcrBranch } from '../generated/prisma/client';
 
 // ============================================================================
 // LOW-LEVEL HELPERS
@@ -33,11 +34,10 @@ export async function loadOriginalMokuro(fastify: FastifyInstance, mokuroPath: s
 // --- Helper: Persist Snapshot ---
 export async function saveSnapshot(fastify: FastifyInstance, branchId: string, data: MokuroData, patchId: string) {
   const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
-  data.patch_id = patchId; // Tag data
+  data.patch_id = patchId;
   await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
   await fs.promises.writeFile(snapshotPath, JSON.stringify(data));
 
-  // Update DB Pointer
   await fastify.prisma.ocrBranch.update({
     where: { id: branchId },
     data: { snapshotPatchId: patchId }
@@ -45,6 +45,7 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
 }
 
 // --- Helper: Fetch Ancestry Chain (CTE) ---
+// Returns patches from startId walking up to (but not including) stopId
 export async function fetchAncestryChain(fastify: FastifyInstance, startId: string, stopId: string | null = null) {
   return await fastify.prisma.$queryRaw<any[]>`
     WITH RECURSIVE chain AS (
@@ -69,13 +70,15 @@ export async function regenerateFromGenesis(
   const history = await fetchAncestryChain(fastify, targetPatchId, null);
   const data = await loadOriginalMokuro(fastify, mokuroPath);
 
-  // Replay (Reverse: Root -> Target)
+  // Replay (Reverse: Genesis -> Target)
   for (let i = history.length - 1; i >= 0; i--) {
     const patch = history[i];
     if (patch.operation && patch.operation !== '{}') {
       try {
         const op = JSON.parse(patch.operation);
-        PatchApplicator.apply(data, op);
+        if (op.path !== 'genesis') {
+          PatchApplicator.apply(data, op);
+        }
       } catch (e) {
         fastify.log.error(`Patch apply failed during regen: ${e}`);
       }
@@ -86,60 +89,95 @@ export async function regenerateFromGenesis(
   return data;
 }
 
-// --- Helper: Sync Snapshot to Head ---
+// --- Helper: Load Snapshot (internal) ---
+// Returns snapshot data if valid, otherwise regenerates from genesis
+export async function loadSnapshot(
+  fastify: FastifyInstance,
+  mokuroPath: string,
+  branch: OcrBranch
+): Promise<MokuroData> {
+  const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branch.id}.json`);
+
+  try {
+    const content = await fs.promises.readFile(snapshotPath, 'utf-8');
+    const data: MokuroData = JSON.parse(content);
+
+    // Validate: snapshot patchId must match DB
+    if (data.patch_id === branch.snapshotPatchId) {
+      return data;
+    }
+
+    fastify.log.warn(`Snapshot corruption detected for ${branch.id}`);
+  } catch (e) {
+    // File missing or unreadable
+  }
+
+  return regenerateFromGenesis(fastify, mokuroPath, branch.headPatchId, branch.id);
+}
+
+// --- Helper: Get Synced Snapshot ---
+// Returns up-to-date MokuroData for a branch.
+// Loads snapshot, syncs if stale, regenerates if corrupt/missing.
 export async function syncSnapshot(
   fastify: FastifyInstance,
   mokuroPath: string,
-  data: MokuroData,
-  startPatchId: string,
-  endPatchId: string,
-  branchId: string
+  branch: OcrBranch
 ): Promise<MokuroData> {
-  if (startPatchId === endPatchId) return data;
+  const data = await loadSnapshot(fastify, mokuroPath, branch);
 
-  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${endPatchId}`);
-  const isLikelyForward = endPatchId > startPatchId;
+  const startPatchId = branch.snapshotPatchId!;
+  const endPatchId = branch.headPatchId;
 
-  const tryForward = async () => {
+  // Already up to date
+  if (startPatchId === endPatchId) {
+    return data;
+  }
+
+  const isForward = endPatchId > startPatchId;
+  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${endPatchId} (${isForward ? 'forward' : 'backward'})`);
+
+  if (isForward) {
     const chain = await fetchAncestryChain(fastify, endPatchId, startPatchId);
+
     const last = chain[chain.length - 1];
-    if (last && last.parentId === startPatchId) {
-      for (let i = chain.length - 1; i >= 0; i--) {
-        const p = chain[i];
-        if (p.operation !== '{}') {
-          PatchApplicator.apply(data, JSON.parse(p.operation));
+    if (!last || last.parentId !== startPatchId) {
+      fastify.log.warn(`Forward chain broken, regenerating from genesis`);
+      return regenerateFromGenesis(fastify, mokuroPath, endPatchId, branch.id);
+    }
+
+    // Apply in chronological order (reverse of ancestry)
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const p = chain[i];
+      if (p.operation && p.operation !== '{}') {
+        const op = JSON.parse(p.operation);
+        if (op.path !== 'genesis') {
+          PatchApplicator.apply(data, op);
         }
       }
-      return true;
     }
-    return false;
-  };
-
-  const tryBackward = async () => {
+  } else {
     const chain = await fetchAncestryChain(fastify, startPatchId, endPatchId);
+
     const last = chain[chain.length - 1];
-    if (last && last.parentId === endPatchId) {
-      for (const p of chain) {
-        if (p.operation !== '{}') {
-          const op = JSON.parse(p.operation);
+    if (!last || last.parentId !== endPatchId) {
+      fastify.log.warn(`Backward chain broken, regenerating from genesis`);
+      return regenerateFromGenesis(fastify, mokuroPath, endPatchId, branch.id);
+    }
+
+    // Invert in reverse chronological order
+    for (const p of chain) {
+      if (p.operation && p.operation !== '{}') {
+        const op = JSON.parse(p.operation);
+        if (op.path !== 'genesis') {
           const inv = PatchInverter.invert(op);
           PatchApplicator.apply(data, inv);
         }
       }
-      return true;
     }
-    return false;
-  };
-
-  if (isLikelyForward) {
-    if (await tryForward()) { await saveSnapshot(fastify, branchId, data, endPatchId); return data; }
-    if (await tryBackward()) { await saveSnapshot(fastify, branchId, data, endPatchId); return data; }
-  } else {
-    if (await tryBackward()) { await saveSnapshot(fastify, branchId, data, endPatchId); return data; }
-    if (await tryForward()) { await saveSnapshot(fastify, branchId, data, endPatchId); return data; }
   }
 
-  return regenerateFromGenesis(fastify, mokuroPath, endPatchId, branchId);
+  await saveSnapshot(fastify, branch.id, data, endPatchId);
+  return data;
 }
 
 // --- Helper: Ensure Admin Branch ---
@@ -150,7 +188,7 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
 
   if (!adminBranch) {
     const genesisPatch = await fastify.prisma.patch.create({
-      data: { volumeId, userId: 'admin', parentId: null, operation: '{ "op": "replace", "path": "genesis" }' }
+      data: { volumeId, userId: 'admin', parentId: null, operation: JSON.stringify({ op: 'replace', path: 'genesis' }) }
     });
 
     adminBranch = await fastify.prisma.ocrBranch.create({
@@ -164,7 +202,6 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
     });
 
     const data = await loadOriginalMokuro(fastify, mokuroPath);
-    data.patch_id = genesisPatch.id;
     await saveSnapshot(fastify, adminBranch.id, data, genesisPatch.id);
   }
   return adminBranch;
@@ -175,7 +212,7 @@ export async function ensureUserBranch(
   fastify: FastifyInstance,
   volumeId: string,
   userId: string,
-  adminBranch: any
+  adminBranch: OcrBranch
 ) {
   let userBranch = await fastify.prisma.ocrBranch.findUnique({
     where: { volumeId_userId: { volumeId, userId } }
@@ -204,63 +241,18 @@ export async function ensureUserBranch(
 }
 
 // ============================================================================
-// HIGH-LEVEL HELPER (Reusable "Fetch State" Logic)
+// HIGH-LEVEL HELPER
 // ============================================================================
 
 /**
  * Retrieves the fully computed MokuroData for a given user and volume.
- * Handles the entire lifecycle:
- * 1. Ensures Admin Branch exists
- * 2. Ensures User Branch exists (forks if needed)
- * 3. Loads Snapshot from disk
- * 4. Syncs or Regenerates if Snapshot is stale/corrupt
- * @param fastify Fastify Instance
- * @param userId The ID of the user requesting the data
- * @param volume The volume object (must include id and mokuroPath)
- * @returns The up-to-date MokuroData object
  */
 export async function getComputedMokuroState(
   fastify: FastifyInstance,
   userId: string,
   volume: { id: string; mokuroPath: string }
 ): Promise<MokuroData> {
-  // 1. Ensure Branches Exist
   const adminBranch = await ensureAdminBranch(fastify, volume.id, volume.mokuroPath);
   const userBranch = await ensureUserBranch(fastify, volume.id, userId, adminBranch);
-
-  const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
-  let mokuroData: MokuroData;
-
-  // 2. Load Snapshot
-  try {
-    const content = await fs.promises.readFile(snapshotPath, 'utf-8');
-    mokuroData = JSON.parse(content);
-  } catch (e) {
-    // Missing file -> Regenerate
-    return regenerateFromGenesis(fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id);
-  }
-
-  // 3. Validate (Corruption Check)
-  if (mokuroData.patch_id !== userBranch.snapshotPatchId) {
-    fastify.log.warn(`Snapshot corruption detected for ${userBranch.id}.`);
-    return regenerateFromGenesis(fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id);
-  }
-
-  // 4. Sync (Staleness Check)
-  if (!userBranch.snapshotPatchId) {
-    return regenerateFromGenesis(fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id);
-  }
-
-  if (userBranch.snapshotPatchId !== userBranch.headPatchId) {
-    mokuroData = await syncSnapshot(
-      fastify,
-      volume.mokuroPath,
-      mokuroData,
-      userBranch.snapshotPatchId!,
-      userBranch.headPatchId,
-      userBranch.id
-    );
-  }
-
-  return mokuroData;
+  return syncSnapshot(fastify, volume.mokuroPath, userBranch);
 }

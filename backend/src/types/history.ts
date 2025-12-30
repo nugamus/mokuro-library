@@ -31,7 +31,7 @@ export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
 // --- 3. The Patch Operation ---
 export type OpType = 'replace' | 'add' | 'remove' | 'reorder_lines' | 'reorder_blocks';
 
-export type PatchOperation = {
+export interface PatchOperation {
   op: OpType;
   path: string; // JSON Pointer
   value?: PatchValue;
@@ -42,34 +42,51 @@ export type PatchOperation = {
 // --- 4. Network Payload Types ---
 
 export interface ApplyPatchRequest {
-  operations: Omit<PatchOperation, 'id'>[];
-  parent_id: string;
+  operation: PatchOperation;
+  branchVersion: number;
 }
 
 export interface ApplyPatchResponse {
   success: boolean;
-  new_version_id: string;
+  newHeadId: string;
+  newVersion: number;
+  patch: PatchOperation;  // Echo back (with any server-side normalization)
+}
+
+export interface UndoRequest {
+  branchVersion: number;
 }
 
 export interface UndoResponse {
   success: boolean;
-  new_version_id: string;
-  prev_version_id: string | null;
-  next_version_id: string | null;
-  inverse_patch: PatchOperation;
+  newHeadId: string;
+  newVersion: number;
+  patch: PatchOperation;      // Inverse patch to apply locally
+  draggedToUser?: string;     // Admin only: user who received dragged patches
+}
+
+export interface RedoRequest {
+  branchVersion: number;
 }
 
 export interface RedoResponse {
   success: boolean;
-  new_version_id: string;
-  prev_version_id: string | null;
-  next_version_id: string | null;
-  patch: PatchOperation;
+  newHeadId: string;
+  newVersion: number;
+  patch: PatchOperation;      // Re-applied patch to apply locally
+}
+
+export interface BranchStatusResponse {
+  hasAhead: boolean;          // User has patches admin doesn't have
+  hasBehind: boolean;         // Admin has patches user doesn't have
+  version: number;
+  headPatchId: string;
 }
 
 export interface VolumeStateResponse {
-  version_id: string;
-  prev_version_id: string | null;
-  next_version_id: string | null;
-  data: import('./mokuro').MokuroData; // Lazy import or explicit import at top
+  data: import('./mokuro').MokuroData;
+  headPatchId: string;
+  version: number;
+  hasAhead: boolean;
+  hasBehind: boolean;
 }

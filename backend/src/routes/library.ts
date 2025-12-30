@@ -4,14 +4,14 @@ import util from 'util';
 import fs from 'fs';
 import path from 'path';
 import { updateSeriesStatus } from '../utils/seriesStatus';
-import { MokuroData } from '../types/mokuro';
 import { Prisma } from '../generated/prisma/client';
 import { FastifyInstance } from 'fastify/types/instance';
 import {
   getComputedMokuroState,
   deleteBranchSnapshots,
   ensureAdminBranch,
-  ensureUserBranch
+  ensureUserBranch,
+  syncSnapshot
 } from '../utils/ocrHelpers';
 
 // Promisify pipeline for async/await
@@ -794,7 +794,7 @@ const libraryRoutes: FastifyPluginAsync = async (
         }
 
         // 3. Get Computed Data
-        const mokuroData = await getComputedMokuroState(fastify, userId, volume);
+        const mokuroData = await syncSnapshot(fastify, volume.mokuroPath, userBranch);
 
         return reply.send({
           id: volume.id,

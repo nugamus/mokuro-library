@@ -20,6 +20,8 @@ import metadataRoutes from './routes/metadata';
 import libraryRoutes from './routes/library';
 import filesRoutes from './routes/files';
 import exportRoutes from './routes/export';
+import ocrRoutes from './routes/ocr';
+import { PrismaClient } from '@prisma/client';
 
 
 // Initialize Fastify server
@@ -80,6 +82,7 @@ fastify.register(metadataRoutes, { prefix: '/api/metadata' });
 fastify.register(libraryRoutes, { prefix: '/api/library' });
 fastify.register(filesRoutes, { prefix: '/api/files' });
 fastify.register(exportRoutes, { prefix: '/api/export' });
+fastify.register(ocrRoutes, { prefix: '/api/library' });
 
 // --- Health Check Route ---
 fastify.get('/api/health', async (request, reply) => {
