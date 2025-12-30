@@ -570,13 +570,24 @@ Snapshots are regenerated **ONLY** during these events:
 
 ## 6. API Specification
 
+All volume-related endpoints are under `/api/library/volumes/`.
+
 ### 6.1 Patching & Editing
 
-**POST** `/api/volumes/:volumeId/patch`
+**POST** `/api/library/volumes/:volumeId/patch`
 
 * **Body:** `{ operation: PatchOperation, branchVersion: number }`
 * **Behavior:** Validates op, creates `Patch`, updates `OcrBranch` head, increments version.
-* **Response:** `{ success: true, newHeadId: string, newVersion: number }`
+* **Response:**
+```json
+{
+  "success": true,
+  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "newVersion": 43,
+  "patch": { "op": "replace", "path": "/pages/0/blocks/1/lines/0/text", "value": "...", "old_value": "..." }
+}
+```
+The `patch` field echoes back the operation with any server-side additions (e.g., normalized values).
 * **Errors:**
   - `400`: Validation failed
   - `409`: Version mismatch (concurrent edit)
@@ -585,21 +596,21 @@ Snapshots are regenerated **ONLY** during these events:
 
 Rebase is a stateful, multi-step operation that pauses when conflicts are encountered, similar to Git.
 
-**POST** `/api/volumes/:volumeId/rebase/start`
+**POST** `/api/library/volumes/:volumeId/rebase/start`
 
 * **Body:** `{ targetHeadId: string }`
 * **Response:**
   - No conflicts: `{ status: 'complete', newHeadId: string }`
   - Conflict encountered: `{ status: 'paused', rebaseId: string, conflict: ConflictInfo }`
 
-**POST** `/api/volumes/:volumeId/rebase/continue`
+**POST** `/api/library/volumes/:volumeId/rebase/continue`
 
 * **Body:** `{ rebaseId: string, resolution: 'keep_admin' | 'keep_mine' | 'resurrect' }`
 * **Response:**
   - More conflicts: `{ status: 'paused', conflict: ConflictInfo }`
   - Done: `{ status: 'complete', newHeadId: string }`
 
-**POST** `/api/volumes/:volumeId/rebase/abort`
+**POST** `/api/library/volumes/:volumeId/rebase/abort`
 
 * **Body:** `{ rebaseId: string }`
 * **Response:** `{ status: 'aborted' }`
@@ -620,7 +631,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 **Rebase State:** In-progress rebase state is stored in the floating branch. If a rebase is abandoned (no continue/abort), the floating branch is cleaned up after a timeout.
 
-**POST** `/api/volumes/:volumeId/reset`
+**POST** `/api/library/volumes/:volumeId/reset`
 
 * **Body:** `{ }`
 * **Behavior:**
@@ -629,13 +640,13 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
   3. Overwrite user's `.mokuro` snapshot with Admin's current state.
 * **Response:** `{ success: true }`
 
-**POST** `/api/volumes/:volumeId/revert` (Admin only)
+**POST** `/api/library/volumes/:volumeId/revert` (Admin only)
 
 * **Body:** `{ patchId: string, reason?: string }`
 * **Behavior:** Creates inverse patch as child of current HEAD.
 * **Response:** `{ success: true, revertPatchId: string }`
 
-**POST** `/api/volumes/:volumeId/snapshot`
+**POST** `/api/library/volumes/:volumeId/snapshot`
 
 * **Body:** `{ }`
 * **Behavior:** Reconstructs full state from DB and writes to user's snapshot file.
@@ -643,7 +654,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 ### 6.3 Status
 
-**GET** `/api/volumes/:volumeId/status`
+**GET** `/api/library/volumes/:volumeId/status`
 
 * **Response:**
 ```json
@@ -664,7 +675,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 ### 6.4 History
 
-**GET** `/api/volumes/:volumeId/history`
+**GET** `/api/library/volumes/:volumeId/history`
 
 * **Query:** `{ branchId?: string, limit?: number, offset?: number }`
 * **Response:**
@@ -684,7 +695,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 ### 6.5 Merge (Admin Fast-Forward)
 
-**POST** `/api/volumes/:volumeId/merge`
+**POST** `/api/library/volumes/:volumeId/merge`
 
 * **Body:** `{ sourceBranchUserId: string }`
 * **Behavior:** 
@@ -725,7 +736,7 @@ Undo/redo behavior differs between users and admin.
 - Redo is not available for admin — undone patches are either deleted or transferred to a user branch
 - This is intentional: admin's branch is the foundation, dangling admin patches could cause confusion
 
-**POST** `/api/volumes/:volumeId/undo`
+**POST** `/api/library/volumes/:volumeId/undo`
 
 * **Body:** `{ branchVersion: number }`
 * **Behavior:** 
@@ -733,19 +744,38 @@ Undo/redo behavior differs between users and admin.
   - **User past root:** Also deletes old root (cascade), sets `rootPatchId = NULL`
   - **Admin:** Applies branch drag rules (see Section 5.3), permanently discards or transfers patches
 * **Response:**
-  - `200 OK`: `{ success: true, newHeadId: string, newVersion: number, draggedToUser?: string }`
+```json
+{
+  "success": true,
+  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "newVersion": 42,
+  "patch": { "op": "replace", "path": "...", "value": "old", "old_value": "new" },
+  "draggedToUser": "user123"
+}
+```
+The `patch` field contains the **inverse** of the undone patch, so the frontend can apply it locally without re-fetching state. `draggedToUser` is only present for admin undo with branch drag.
+* **Errors:**
   - `400`: `{ error: "Cannot undo: at genesis" }`
   - `403`: `{ error: "Cannot undo: multiple user branches would be affected" }` (admin only)
   - `409`: Version mismatch
 
-**POST** `/api/volumes/:volumeId/redo` (User only)
+**POST** `/api/library/volumes/:volumeId/redo` (User only)
 
 * **Body:** `{ branchVersion: number }`
 * **Behavior:**
   - Moves HEAD to child patch (if exactly one exists)
   - Only valid after undo, before any new edits
 * **Response:**
-  - `200 OK`: `{ success: true, newHeadId: string, newVersion: number }`
+```json
+{
+  "success": true,
+  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "newVersion": 43,
+  "patch": { "op": "replace", "path": "...", "value": "new", "old_value": "old" }
+}
+```
+The `patch` field contains the re-applied patch, so the frontend can apply it locally without re-fetching state.
+* **Errors:**
   - `400`: `{ error: "Cannot redo: no forward history" }` or `{ error: "Cannot redo: multiple children" }`
   - `409`: Version mismatch
 

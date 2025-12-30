@@ -483,14 +483,14 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 
 ### 6.2 Update Reading Progress
 
-**POST** `/api/series/:seriesId/progress`
+**POST** `/api/library/series/:seriesId/progress`
 
 * **Body:** `{ status?: number, bookmarked?: boolean, lastReadAt?: string }`
 * **Response:** `{ success: true }`
 
 ### 6.3 Branch Status
 
-**GET** `/api/volumes/:volumeId/status`
+**GET** `/api/library/volumes/:volumeId/status`
 
 * **Response:**
 ```json
@@ -625,6 +625,38 @@ See `ocr-version-control-v3.md` Section 5.6 for details.
 ```
 
 For OCR-specific endpoints (patch, rebase, reset, revert, undo, redo), see `ocr-version-control-v3.md` Section 6.
+
+### 6.7 API Structure Overview
+
+```
+/api/library/
+  ├── /                              GET    - List library (series)
+  ├── /series/:seriesId/progress     POST   - Update reading progress
+  └── /volumes/:volumeId/
+        ├── /                        GET    - Get volume state
+        ├── /status                  GET    - Branch status
+        ├── /history                 GET    - Patch history
+        ├── /patch                   POST   - Apply patch
+        ├── /undo                    POST   - Undo
+        ├── /redo                    POST   - Redo
+        ├── /rebase                  POST   - Start rebase
+        ├── /rebase/continue         POST   - Continue rebase
+        ├── /rebase/abort            POST   - Abort rebase
+        ├── /reset                   POST   - Reset to official
+        ├── /snapshot                POST   - Force snapshot
+        ├── /merge                   POST   - Admin merge
+        └── /revert                  POST   - Admin revert
+
+/api/me/
+  ├── /contributions                 GET    - Contribution page data
+  ├── /stats                         GET    - User statistics
+  └── /submissions                   POST   - Submit volumes
+
+/api/admin/
+  ├── /submissions                   GET    - List pending submissions
+  ├── /submissions/:id/accept        POST   - Accept submission
+  └── /submissions/:id/reject        POST   - Reject submission
+```
 
 ---
 
