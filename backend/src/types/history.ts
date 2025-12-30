@@ -29,11 +29,9 @@ export interface UnifiedBlock {
 export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
 
 // --- 3. The Patch Operation ---
+export type OpType = 'replace' | 'add' | 'remove' | 'reorder_lines' | 'reorder_blocks';
 
-export type OpType = 'replace' | 'add' | 'remove' | 'reorder_lines';
-
-export interface PatchOperation {
-  id: string;
+export type PatchOperation = {
   op: OpType;
   path: string; // JSON Pointer
   value?: PatchValue;

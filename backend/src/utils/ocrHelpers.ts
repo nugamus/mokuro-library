@@ -150,7 +150,7 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
 
   if (!adminBranch) {
     const genesisPatch = await fastify.prisma.patch.create({
-      data: { volumeId, userId: 'admin', parentId: null, operation: '{}' }
+      data: { volumeId, userId: 'admin', parentId: null, operation: '{ "op": "replace", "path": "genesis" }' }
     });
 
     adminBranch = await fastify.prisma.ocrBranch.create({
@@ -247,6 +247,10 @@ export async function getComputedMokuroState(
   }
 
   // 4. Sync (Staleness Check)
+  if (!userBranch.snapshotPatchId) {
+    return regenerateFromGenesis(fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id);
+  }
+
   if (userBranch.snapshotPatchId !== userBranch.headPatchId) {
     mokuroData = await syncSnapshot(
       fastify,
