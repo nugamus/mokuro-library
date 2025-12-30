@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { readerState } from '$lib/states/ReaderState.svelte';
+	import { uiState } from '$lib/states/uiState.svelte';
 	import FontSizeSlider from '$lib/components/FontSizeSlider.svelte';
 	import { fade } from 'svelte/transition';
 
@@ -65,7 +66,9 @@
 			disabled={!headerIsVisible}
 			onclick={(e) => {
 				e.stopPropagation();
-				goto(`/series/${readerState.seriesId}`);
+				const destination = uiState.returnPath || `/series/${readerState.seriesId}`;
+				goto(destination);
+				uiState.clearReturnPath();
 			}}
 			class="group flex items-center gap-2 pr-4 text-theme-secondary hover:text-theme-primary transition-colors"
 		>
@@ -85,7 +88,7 @@
 					<path d="m15 18-6-6 6-6" />
 				</svg>
 			</div>
-			<span class="text-sm font-medium hidden sm:inline">Back to Series</span>
+			<span class="text-sm font-medium hidden sm:inline">{uiState.returnLabel}</span>
 		</button>
 	</div>
 

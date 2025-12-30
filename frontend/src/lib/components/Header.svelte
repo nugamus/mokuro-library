@@ -200,7 +200,7 @@
 					<div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
 
 					<button
-						onclick={() => window.history.back()}
+						onclick={() => goto('/')}
 						class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
 						title="Back to Library"
 						aria-label="Back to Library"

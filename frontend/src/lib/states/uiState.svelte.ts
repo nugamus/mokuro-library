@@ -41,6 +41,10 @@ class UiState {
   isAboutOpen = $state(false);
   isAppearanceOpen = $state(false);
 
+  // --- Return Navigation ---
+  returnPath = $state<string | null>(null);
+  returnLabel = $state<string>('Back to Series');
+
   // --- Options Configuration ---
   availableSorts = $state<{ key: SortKey; label: string }[]>([
     { key: 'title', label: 'Title' },
@@ -137,6 +141,16 @@ class UiState {
     if (typeof window !== 'undefined') {
       localStorage.setItem('mokuro_view_mode', mode);
     }
+  }
+
+  setReturnPath(path: string | null, label: string = 'Back to Series') {
+    this.returnPath = path;
+    this.returnLabel = label;
+  }
+
+  clearReturnPath() {
+    this.returnPath = null;
+    this.returnLabel = 'Back to Series';
   }
 
   // Helper: Get strictly typed list (e.g. ensure all are Series)

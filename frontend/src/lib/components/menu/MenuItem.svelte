@@ -5,6 +5,7 @@
 	let {
 		label,
 		icon,
+		badge,
 		variant = 'default',
 		onClick,
 		className = '',
@@ -12,6 +13,7 @@
 	} = $props<{
 		label: string;
 		icon?: Snippet;
+		badge?: Snippet;
 		// Added 'unread'
 		variant?: 'default' | 'danger' | 'success' | 'primary' | 'unread';
 		onClick: () => void;
@@ -56,4 +58,7 @@
 		</div>
 	{/if}
 	<span class="flex-grow truncate">{label}</span>
+	{#if badge}
+		{@render badge()}
+	{/if}
 </button>
