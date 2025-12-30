@@ -373,88 +373,76 @@ const metadataRoutes: FastifyPluginAsync = async (
    */
   fastify.patch<{ Params: ProgressParams; Body: ProgressBody }>(
     '/volume/:id/progress',
-    { schema: { body: progressBodySchema } }, // Apply schema validation
+    { schema: { body: progressBodySchema } },
     async (request, reply) => {
       const { id: volumeId } = request.params;
       const userId = request.user.id;
-      const data = request.body; // 'data' is now type-safe and validated
+      const data = request.body;
 
       try {
+        // 1. Upsert UserProgress
         const upsertedProgress = await fastify.prisma.userProgress.upsert({
-          where: {
-            // Use the @@unique([userId, volumeId]) index
-            userId_volumeId: {
-              userId,
-              volumeId,
-            },
-          },
-          // Data to use if UPDATING an existing record
-          update: {
-            ...data,
-          },
-          // Data to use if CREATING a new record
-          create: {
-            userId,
-            volumeId,
-            ...data,
-          },
+          where: { userId_volumeId: { userId, volumeId } },
+          update: { ...data },
+          create: { userId, volumeId, ...data },
         });
 
-        // Recalculate Series Status (Read/Unread/InProgress)
-        // We need to find the seriesId first
+        // 2. Series Status Update
         const volume = await fastify.prisma.volume.findUnique({
           where: { id: volumeId },
           select: { seriesId: true }
         });
-        if (volume && data.completed !== undefined) {
-          await updateSeriesStatus(fastify.prisma, volume.seriesId);
-        } else if (volume && data.page !== undefined) {
-          // current page update means series is touched
-          const series = await fastify.prisma.series.findUnique({
-            where: { id: volume.seriesId },
-            select: { ownerId: true, status: true }
-          });
-          if (series?.status === 0)
-            await fastify.prisma.series.update({
-              where: { id: volume.seriesId },
-              data: { status: 1 }
-            });
-        }
 
-        // Update the parent Series 'lastReadAt' timestamp
-        // This ensures the series bubbles to the top of "Recently Read" lists
-        await fastify.prisma.series.updateMany({
-          where: {
-            volumes: {
-              some: { id: volumeId } // Find series containing this volume
-            },
-            ownerId: userId // Ensure we only update series owned by user
-          },
-          data: {
-            lastReadAt: new Date()
+        if (volume) {
+          const seriesId = volume.seriesId;
+
+          // Case A: Completion Status Changed -> Must Recalculate Full Status
+          if (data.completed !== undefined) {
+            await updateSeriesStatus(fastify.prisma, userId, seriesId);
+
+            // Also update 'lastReadAt'
+            await fastify.prisma.userSeriesSettings.upsert({
+              where: { userId_seriesId: { userId, seriesId } },
+              create: { userId, seriesId, lastReadAt: new Date(), status: data.completed ? 1 : 0 },
+              update: { lastReadAt: new Date() }
+            });
           }
-        });
+          // Case B: Simple Page Update -> Lightweight Update
+          else if (data.page !== undefined) {
+            // 1. Check current status to decide if we need to bump it to 'Reading'
+            const currentSettings = await fastify.prisma.userSeriesSettings.findUnique({
+              where: { userId_seriesId: { userId, seriesId } },
+              select: { status: true }
+            });
+
+            // If missing or Unread(0), bump to Reading(1). 
+            // If already Reading(1) or Completed(2), leave status alone.
+            const shouldBumpStatus = !currentSettings || currentSettings.status === 0;
+
+            await fastify.prisma.userSeriesSettings.upsert({
+              where: { userId_seriesId: { userId, seriesId } },
+              create: {
+                userId,
+                seriesId,
+                lastReadAt: new Date(),
+                status: 1
+              },
+              update: {
+                lastReadAt: new Date(),
+                // Conditionally update status only if needed
+                ...(shouldBumpStatus ? { status: 1 } : {})
+              }
+            });
+          }
+        }
 
         return reply.status(200).send(upsertedProgress);
       } catch (error) {
-        // Handle case where the volumeId is invalid
-        if (
-          error instanceof Prisma.PrismaClientKnownRequestError &&
-          error.code === 'P2003' // Foreign key constraint failed
-        ) {
-          return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: 'The specified volume does not exist.',
-          });
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+          return reply.status(404).send({ message: 'Volume not found.' });
         }
-
         fastify.log.error(error);
-        return reply.status(500).send({
-          statusCode: 500,
-          error: 'Internal Server Error',
-          message: 'Could not save progress.',
-        });
+        return reply.status(500).send({ message: 'Could not save progress.' });
       }
     }
   );
@@ -474,16 +462,14 @@ const metadataRoutes: FastifyPluginAsync = async (
           where: { userId_volumeId: { userId, volumeId } },
         });
 
-        // Recalculate Series Status (Read/Unread/InProgress)
-        // We need to find the seriesId first
         const volume = await fastify.prisma.volume.findUnique({
           where: { id: volumeId },
           select: { seriesId: true }
         });
-        if (volume) await updateSeriesStatus(fastify.prisma, volume.seriesId);
+        if (volume) await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
+
         return reply.send({ message: 'Progress reset successfully.' });
       } catch (error) {
-        // P2025 = Record not found (already empty)
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
           return reply.send({ message: 'Progress was already empty.' });
         }
@@ -492,6 +478,7 @@ const metadataRoutes: FastifyPluginAsync = async (
       }
     }
   );
+
 
   // ===========================================================================
   // METADATA ENDPOINTS (Renaming & Descriptions)
@@ -508,49 +495,80 @@ const metadataRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       const { id } = request.params;
       const userId = request.user.id;
-      const { tempCoverPath, ...updateData } = request.body;
+      const {
+        bookmarked,
+        organized,
+        tempCoverPath,
+        ...sharedData
+      } = request.body;
 
       try {
+        // 1. Fetch Series to check ownership & existing paths
         const series = await fastify.prisma.series.findFirst({
-          where: { id, ownerId: userId },
-          select: { folderName: true, coverPath: true },
+          where: {
+            id,
+            OR: [{ ownerId: userId }, { ownerId: 'admin' }]
+          },
+          select: { ownerId: true, folderName: true, coverPath: true, title: true },
         });
 
         if (!series) return reply.status(404).send({ message: 'Series not found.' });
 
-        let finalCoverPath = series.coverPath;
+        const isOwner = series.ownerId === userId;
 
-        // Handle file persistence if a temporary cover was provided
-        if (tempCoverPath) {
-          const tempPathAbsolute = path.join(fastify.projectRoot, tempCoverPath);
+        // 2. Handle SHARED Data Update (Only if Owner)
+        // If user is NOT owner but tries to update title/description, we ignore/warn
+        const hasSharedUpdates = Object.keys(compact(sharedData)).length > 0 || tempCoverPath;
 
-          // Verify the temp file actually exists and belongs to the user
-          if (tempCoverPath.includes(`uploads/temp/${userId}/`)) {
-            const ext = path.extname(tempCoverPath);
-            const seriesDirRelative = path.join('uploads', userId, series.folderName);
-            const seriesDirAbsolute = path.join(fastify.projectRoot, seriesDirRelative);
+        if (hasSharedUpdates) {
+          if (!isOwner) {
+            // We don't throw error, just log and ignore shared updates 
+            // to allow "mixed" requests (bookmark + title) to partially succeed
+            fastify.log.warn(`User ${userId} attempted to edit shared series ${id}`);
+          } else {
+            let finalCoverPath = series.coverPath;
 
-            await fs.promises.mkdir(seriesDirAbsolute, { recursive: true });
+            // Handle Cover Move
+            if (tempCoverPath && tempCoverPath.includes(`uploads/temp/${userId}/`)) {
+              const tempPathAbsolute = path.join(fastify.projectRoot, tempCoverPath);
+              const ext = path.extname(tempCoverPath);
+              const seriesDirRelative = path.join('uploads', userId, series.folderName);
+              const seriesDirAbsolute = path.join(fastify.projectRoot, seriesDirRelative);
 
-            const fileName = `${series.folderName}${ext}`;
-            const finalPathAbsolute = path.join(seriesDirAbsolute, fileName);
-            finalCoverPath = path.join(seriesDirRelative, fileName).replace(/\\/g, '/');
+              await fs.promises.mkdir(seriesDirAbsolute, { recursive: true });
 
-            // Move file from temp to permanent location
-            await fs.promises.rename(tempPathAbsolute, finalPathAbsolute);
+              const fileName = `${series.folderName}${ext}`;
+              const finalPathAbsolute = path.join(seriesDirAbsolute, fileName);
+              finalCoverPath = path.join(seriesDirRelative, fileName).replace(/\\/g, '/');
+
+              await fs.promises.rename(tempPathAbsolute, finalPathAbsolute);
+            }
+
+            const dataToUpdate: Prisma.SeriesUpdateInput = compact({
+              ...sharedData,
+              sortTitle: sharedData.title !== undefined ? (sharedData.title ?? series.folderName) : undefined,
+              coverPath: finalCoverPath,
+            });
+
+            await fastify.prisma.series.update({
+              where: { id },
+              data: dataToUpdate,
+            });
           }
         }
 
-        const dataToUpdate: Prisma.SeriesUpdateInput = compact({
-          ...updateData,
-          sortTitle: updateData.title !== undefined ? (updateData.title ?? series.folderName) : undefined,
-          coverPath: finalCoverPath,
-        });
+        // 3. Handle PRIVATE Data Update (Settings)
+        if (bookmarked !== undefined || organized !== undefined) {
+          const settingsUpdate: any = {};
+          if (bookmarked !== undefined) settingsUpdate.bookmarked = bookmarked;
+          if (organized !== undefined) settingsUpdate.organized = organized;
 
-        await fastify.prisma.series.update({
-          where: { id, ownerId: userId },
-          data: dataToUpdate,
-        });
+          await fastify.prisma.userSeriesSettings.upsert({
+            where: { userId_seriesId: { userId, seriesId: id } },
+            create: { userId, seriesId: id, ...settingsUpdate },
+            update: settingsUpdate
+          });
+        }
 
         return reply.send({ message: 'Series updated successfully.' });
       } catch (error) {
@@ -570,15 +588,16 @@ const metadataRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       const { id } = request.params;
       const { title } = request.body;
+      const userId = request.user.id;
 
       try {
-        // Verify ownership via series relation
+        // Only owner can rename volume titles
         const vol = await fastify.prisma.volume.findFirst({
-          where: { id, series: { ownerId: request.user.id } },
+          where: { id, series: { ownerId: userId } },
           select: { folderName: true },
         });
 
-        if (!vol) return reply.status(404).send({ message: 'Volume not found.' });
+        if (!vol) return reply.status(403).send({ message: 'Access denied or volume not found.' });
 
         await fastify.prisma.volume.update({
           where: { id },
@@ -603,25 +622,21 @@ const metadataRoutes: FastifyPluginAsync = async (
       const { ids, value } = request.body;
       const userId = request.user.id;
 
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
-        return reply.status(400).send({ message: 'No IDs provided' });
-      }
+      if (!ids || !Array.isArray(ids)) return reply.status(400).send({ message: 'No IDs provided' });
 
       try {
-        const result = await fastify.prisma.series.updateMany({
-          where: {
-            id: { in: ids },
-            ownerId: userId // Security: Only touch user's own series
-          },
-          data: {
-            organized: value
-          }
-        });
+        // Iterate and upsert for each series ID to ensure settings exist
+        await fastify.prisma.$transaction(
+          ids.map(id =>
+            fastify.prisma.userSeriesSettings.upsert({
+              where: { userId_seriesId: { userId, seriesId: id } },
+              create: { userId, seriesId: id, organized: value },
+              update: { organized: value }
+            })
+          )
+        );
 
-        return reply.send({
-          message: 'Batch update successful.',
-          count: result.count
-        });
+        return reply.send({ message: 'Batch update successful.', count: ids.length });
       } catch (error) {
         fastify.log.error(error);
         return reply.status(500).send({ message: 'Batch update failed.' });

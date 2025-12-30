@@ -1,75 +1,70 @@
-import { PrismaClient } from '../generated/prisma/client';
+import { PrismaClient } from '../generated/prisma/client'; // Adjust path if needed
 
 /**
- * Recalculates the status of a series based on its volumes using DB Aggregation.
- * Status Enum: 0 = Unread, 1 = In Progress, 2 = Read
+ * Recalculates the "Read Status" for a user on a specific series.
+ * * Logic:
+ * - 0 (Unread): No volumes started or completed.
+ * - 1 (Reading): At least one volume completed OR in progress.
+ * - 2 (Completed): All volumes in the series are marked as completed.
+ * @param prisma The Prisma Client instance
+ * @param userId The ID of the user whose status needs updating
+ * @param seriesId The ID of the series to check
  */
-export async function updateSeriesStatus(prisma: PrismaClient, seriesId: string) {
-  // 1. Get Series Owner (critical for correctly filtering progress)
-  const series = await prisma.series.findUnique({
-    where: { id: seriesId },
-    select: { ownerId: true, status: true }
-  });
+export async function updateSeriesStatus(
+  prisma: PrismaClient,
+  userId: string,
+  seriesId: string
+) {
+  if (!userId || !seriesId) return;
 
-  if (!series) return;
+  try {
+    // 1. Get counts in parallel
+    const [totalVolumes, completedVolumes, inProgressVolumes] = await Promise.all([
+      // Count all volumes in this series
+      prisma.volume.count({
+        where: { seriesId }
+      }),
 
-  const userId = series.ownerId;
+      // Count volumes this user has finished
+      prisma.userProgress.count({
+        where: { userId, volume: { seriesId }, completed: true }
+      }),
 
-  // 2. Run Aggregations in Parallel
-  const [totalVolumes, readVolumes, startedVolumes] = await prisma.$transaction([
-    // A. How many volumes are there?
-    prisma.volume.count({
-      where: { seriesId }
-    }),
+      // Count volumes this user has started but not finished (page > 1)
+      prisma.userProgress.count({
+        where: { userId, volume: { seriesId }, completed: false, page: { gt: 1 } }
+      })
+    ]);
 
-    // B. How many are marked as "Completed"?
-    prisma.volume.count({
+    // 2. Determine Status
+    let newStatus = 0; // Default: Unread
+
+    if (totalVolumes > 0 && completedVolumes === totalVolumes) {
+      newStatus = 2; // Completed
+    } else if (completedVolumes > 0 || inProgressVolumes > 0) {
+      newStatus = 1; // Reading
+    }
+
+    // 3. Upsert UserSeriesSettings
+    // We use upsert because the user might not have interacted with this series before
+    await prisma.userSeriesSettings.upsert({
       where: {
+        userId_seriesId: { userId, seriesId }
+      },
+      create: {
+        userId,
         seriesId,
-        progress: {
-          some: {
-            userId,
-            completed: true
-          }
-        }
+        status: newStatus
+        // Note: We don't touch 'bookmarked' or 'organized' here, they default to false/false
+      },
+      update: {
+        status: newStatus
       }
-    }),
-
-    // C. How many have ANY progress?
-    prisma.volume.count({
-      where: {
-        seriesId,
-        progress: {
-          some: {
-            userId,
-            page: { gte: 1 } // Page cannot be zero unless untouched
-          }
-        }
-      }
-    })
-  ]);
-
-  // 3. Determine Status Logic
-  let newStatus = 0; // Default: Unread
-
-  if (totalVolumes === 0) {
-    newStatus = 0;
-  } else if (readVolumes === totalVolumes) {
-    // Every single volume is marked as read
-    newStatus = 2; // Read
-  } else if (startedVolumes > 0) {
-    // Not finished, but at least one volume has been started
-    newStatus = 1; // In Progress
-  } else {
-    // No volumes have been started
-    newStatus = 0; // Unread
-  }
-
-  // 4. Write to DB only if changed
-  if (series.status !== newStatus) {
-    await prisma.series.update({
-      where: { id: seriesId },
-      data: { status: newStatus }
     });
+
+  } catch (error) {
+    console.error(`Failed to update series status for user ${userId} series ${seriesId}:`, error);
+    // We swallow the error here because status updates are often side effects 
+    // and shouldn't crash the main request (like an upload or delete).
   }
 }

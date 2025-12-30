@@ -1,6 +1,6 @@
 import 'dotenv/config'; // important to make environment variables available to the server
 import Fastify from 'fastify';
-import { PrismaClient } from './generated/prisma/client'
+import { prisma } from './lib/prisma';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { ensureAdminUser } from './utils/bootstrap';
 
@@ -12,7 +12,6 @@ import fs from 'fs';
 
 // Import Plugins
 import authPlugin from './plugins/auth';
-import { ulidExtension } from './plugins/prisma-extensions';
 
 // Import Routes
 import authRoutes from './routes/auth';
@@ -44,12 +43,6 @@ const dbUrl = process.env.DATABASE_URL;
 // Initialize the Prisma Client
 
 fastify.log.info(dbUrl);
-const adapter = new PrismaBetterSqlite3({
-  url: dbUrl
-}, {
-  timestampFormat: 'iso8601'
-});
-const prisma = new PrismaClient({ adapter }).$extends(ulidExtension);;
 
 // Register the cookie plugin
 fastify.register(fastifyCookie, {

@@ -28,8 +28,9 @@ export interface MokuroPage {
 }
 
 export interface MokuroData {
-  // The UUID of the snapshot version (optional in raw OCR output, mandatory in Library)
-  version_id?: string;
+  // The UUID of the patch this snapshot represents. 
+  // Used for optimistic locking and staleness checks.
+  patch_id?: string;
 
   title?: string;
   pages: MokuroPage[];

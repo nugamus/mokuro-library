@@ -4,7 +4,11 @@ import util from 'util';
 import fs from 'fs';
 import path from 'path';
 import { updateSeriesStatus } from '../utils/seriesStatus';
+import { PatchApplicator } from '../lib/PatchApplicator';
+import { PatchInverter } from '../lib/PatchInverter';
+import { MokuroData } from '../types/mokuro';
 import { Prisma } from '../generated/prisma/client';
+import { FastifyInstance } from 'fastify/types/instance';
 
 // Promisify pipeline for async/await
 const pump = util.promisify(pipeline);
@@ -27,67 +31,369 @@ async function deleteFolder(pathStr: string) {
   }
 }
 
-async function deleteSeriesById(fastify: any, seriesId: string, userId: string) {
-  // 1. Find series
+// Clean up Snapshots
+// Deletes .mokuro snapshot files for a list of Branch IDs
+async function deleteBranchSnapshots(fastify: FastifyInstance, branchIds: string[]) {
+  for (const branchId of branchIds) {
+    const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
+    try {
+      await fs.promises.unlink(snapshotPath);
+    } catch (e: any) {
+      // Ignore "file not found", log others
+      if (e.code !== 'ENOENT') {
+        fastify.log.warn(`Failed to delete snapshot ${snapshotPath}: ${e.message}`);
+      }
+    }
+  }
+}
+
+async function deleteSeriesById(fastify: FastifyInstance, seriesId: string, userId: string) {
+  // 1. Find series with ownership check
   const series = await fastify.prisma.series.findFirst({
     where: { id: seriesId, ownerId: userId },
-    include: { volumes: { select: { mokuroPath: true } } }
+    include: {
+      volumes: {
+        include: {
+          branches: { select: { id: true } }
+        }
+      }
+    }
   });
 
-  if (!series) throw new Error('Series not found or access denied');
-
-  // 2. Determine path
-  let seriesDirRelative: string | null = null;
-  if (series.volumes.length > 0) {
-    seriesDirRelative = path.dirname(series.volumes[0].mokuroPath);
-  } else if (series.coverPath) {
-    seriesDirRelative = path.dirname(series.coverPath);
+  if (!series) {
+    // Improvement: Check if it exists as Admin content to give a better error
+    const adminSeries = await fastify.prisma.series.findFirst({
+      where: { id: seriesId, ownerId: 'admin' }
+    });
+    if (adminSeries) {
+      throw new Error('Cannot delete official content. Only the owner can delete this series.');
+    }
+    throw new Error('Series not found or access denied');
   }
 
-  // 3. Delete from disk
-  if (seriesDirRelative) {
-    const seriesDirAbsolute = path.join(fastify.projectRoot, seriesDirRelative);
+  // 2. Cleanup Snapshots (Disk)
+  const allBranchIds = series.volumes.flatMap((v: any) => v.branches.map((b: any) => b.id));
+  await deleteBranchSnapshots(fastify, allBranchIds);
+
+  // 3. Delete Series Directory (Disk)
+  // Construct path deterministically: uploads/{userId}/{folderName}
+  const seriesDirRelative = path.join('uploads', series.ownerId, series.folderName);
+  const seriesDirAbsolute = path.join(fastify.projectRoot, seriesDirRelative);
+
+  try {
     await fs.promises.rm(seriesDirAbsolute, { recursive: true, force: true });
+  } catch (e) {
+    fastify.log.error(`Failed to delete series directory: ${seriesDirAbsolute}. ${e}`);
   }
 
-  // 4. Delete from DB
+  // 4. Delete from DB (Cascade handles Volumes, Branches, Patches, Settings)
   await fastify.prisma.series.delete({ where: { id: seriesId } });
+
   return series.title || series.folderName;
 }
 
-async function deleteVolumeById(fastify: any, volumeId: string, userId: string) {
-  // 1. Find volume
+async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, userId: string) {
+  // 1. Find volume with ownership check (via Series)
   const volume = await fastify.prisma.volume.findFirst({
     where: { id: volumeId, series: { ownerId: userId } },
-    include: { series: { include: { _count: { select: { volumes: true } } } } }
+    include: {
+      series: {
+        select: {
+          id: true,
+          ownerId: true,
+          folderName: true,
+          coverPath: true,
+          _count: { select: { volumes: true } }
+        }
+      },
+      branches: { select: { id: true } }
+    }
   });
 
-  if (!volume) throw new Error('Volume not found or access denied');
-
-  // 2. Delete files
-  const absVolPath = path.join(fastify.projectRoot, volume.filePath);
-  const absMokuroPath = path.join(fastify.projectRoot, volume.mokuroPath);
-  await fs.promises.rm(absVolPath, { recursive: true, force: true });
-  await fs.promises.rm(absMokuroPath, { force: true });
-
-  // 3. Delete from DB
-  await fastify.prisma.volume.delete({ where: { id: volumeId } });
-
-  // 4. Cleanup empty series logic (Optional but good)
-  const volCount = volume.series._count.volumes;
-  if (volCount === 1 && !volume.series.coverPath) {
-    const seriesDir = path.dirname(volume.mokuroPath);
-    const absSeriesDir = path.join(fastify.projectRoot, seriesDir);
-    await fs.promises.rm(absSeriesDir, { recursive: true, force: true }).catch(() => { });
+  if (!volume) {
+    throw new Error('Volume not found or access denied');
   }
 
+  // 2. Cleanup Snapshots (Disk)
+  const branchIds = volume.branches.map((b: any) => b.id);
+  await deleteBranchSnapshots(fastify, branchIds);
+
+  // 3. Delete Volume Files (Disk)
+  const absVolPath = path.join(fastify.projectRoot, volume.filePath);
+  const absMokuroPath = path.join(fastify.projectRoot, volume.mokuroPath);
+
+  try {
+    await fs.promises.rm(absVolPath, { recursive: true, force: true });
+    await fs.promises.rm(absMokuroPath, { force: true });
+  } catch (e) {
+    fastify.log.warn(`Failed to delete volume files: ${e}`);
+  }
+
+  // 4. Delete from DB
+  await fastify.prisma.volume.delete({ where: { id: volumeId } });
+
+  // 5. Cleanup empty series logic
+  // If this was the last volume and no cover exists, the series folder is technically empty.
+  // Note: We usually keep the series entry in DB until explicit delete, 
+  // but we might want to clean up the empty folder structure if desired.
+  // For now, let's leave the series folder unless the series itself is deleted.
+
   // Recalculate series status
-  await updateSeriesStatus(fastify.prisma, volume.seriesId);
+  await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
 
   return volume.title || volume.folderName;
 }
 
-// 3. File consume
+// --- Helper: Load the original .mokuro file (Genesis State) ---
+async function loadOriginalMokuro(fastify: FastifyInstance, mokuroPath: string): Promise<MokuroData> {
+  const absPath = path.join(fastify.projectRoot, mokuroPath);
+  const content = await fs.promises.readFile(absPath, 'utf-8');
+  return JSON.parse(content);
+}
+
+// --- Helper: Persist Snapshot ---
+async function saveSnapshot(fastify: FastifyInstance, branchId: string, data: MokuroData, patchId: string) {
+  const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
+
+  // Tag data
+  data.patch_id = patchId;
+
+  await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
+  await fs.promises.writeFile(snapshotPath, JSON.stringify(data));
+
+  // Update DB Pointer
+  await fastify.prisma.ocrBranch.update({
+    where: { id: branchId },
+    data: { snapshotPatchId: patchId }
+  });
+}
+
+// --- Helper: Fetch Ancestry Chain (CTE Optimization) ---
+// Returns the path from [StartId] up to [EndId] (exclusive of EndId by default logic, but we handle that in JS)
+// If EndId is NULL, it fetches up to Genesis (root).
+async function fetchAncestryChain(fastify: FastifyInstance, startId: string, stopId: string | null = null) {
+  // SQLite Recursive CTE to traverse 'parentId' upwards
+  // We select the whole patch object.
+  // Note: We cast to unknown first because Prisma's raw query return types are loose.
+  const path = await fastify.prisma.$queryRaw<any[]>`
+    WITH RECURSIVE chain AS (
+      SELECT * FROM "Patch" WHERE id = ${startId}
+      UNION ALL
+      SELECT p.* FROM "Patch" p
+      INNER JOIN chain c ON c.parentId = p.id
+      WHERE c.id <> ${stopId ?? ''}  -- Stop if we reach the target (optimization)
+    )
+    SELECT * FROM chain;
+  `;
+  return path;
+}
+
+// --- Helper: Regenerate Snapshot from Genesis (MVP) ---
+// Traces history back to NULL parent, loads original file, and replays all patches.
+async function regenerateFromGenesis(
+  fastify: FastifyInstance,
+  mokuroPath: string,
+  targetPatchId: string,
+  branchId: string
+): Promise<MokuroData> {
+  fastify.log.warn(`Regenerating snapshot from GENESIS for branch ${branchId}`);
+
+  // 1. Fetch entire history in ONE query (Target -> Genesis)
+  // The CTE returns [Target, Parent, Parent's Parent, ... Root]
+  const history = await fetchAncestryChain(fastify, targetPatchId, null);
+
+  // 2. Load Genesis
+  const data = await loadOriginalMokuro(fastify, mokuroPath);
+
+  // 3. Replay (Reverse the array: Root -> Target)
+  for (let i = history.length - 1; i >= 0; i--) {
+    const patch = history[i];
+    if (patch.operation && patch.operation !== '{}') {
+      try {
+        const op = JSON.parse(patch.operation);
+        PatchApplicator.apply(data, op);
+      } catch (e) {
+        fastify.log.error(`Patch apply failed during regen: ${e}`);
+      }
+    }
+  }
+
+  // 4. Save
+  await saveSnapshot(fastify, branchId, data, targetPatchId);
+  return data;
+}
+
+// --- Helper: syncSnapshot to head ---
+// Replay patches from startPatchId to endPatchId
+async function syncSnapshot(
+  fastify: FastifyInstance,
+  mokuroPath: string,
+  data: MokuroData,
+  startPatchId: string, // Current Snapshot
+  endPatchId: string,   // Target Head
+  branchId: string
+): Promise<MokuroData> {
+  if (startPatchId === endPatchId) return data;
+
+  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${endPatchId}`);
+
+  // --- 1. ULID Heuristic ---
+  // If End > Start, it's likely newer (Forward).
+  // If End < Start, it's likely older (Backward).
+  const isLikelyForward = endPatchId > startPatchId;
+
+  // We define the logic blocks so we can run them in determined order
+  const tryForward = async () => {
+    // Forward = Target is a descendant of Snapshot.
+    // Trace UP from Target. If we hit Snapshot, we found the path.
+    const chain = await fetchAncestryChain(fastify, endPatchId, startPatchId);
+
+    // Check if the last element's parent is indeed the StartPatchId
+    // (The CTE stops AT the record before the stopId, or at root)
+    const last = chain[chain.length - 1];
+    if (last && last.parentId === startPatchId) {
+      // Valid Link! Apply Forward (Reverse order: Oldest -> Newest)
+      for (let i = chain.length - 1; i >= 0; i--) {
+        const p = chain[i];
+        if (p.operation !== '{}') {
+          PatchApplicator.apply(data, JSON.parse(p.operation));
+        }
+      }
+      return true;
+    }
+    return false;
+  };
+
+  const tryBackward = async () => {
+    // Backward = Snapshot is a descendant of Target.
+    // Trace UP from Snapshot. If we hit Target, we found the path.
+    const chain = await fetchAncestryChain(fastify, startPatchId, endPatchId);
+
+    const last = chain[chain.length - 1];
+    if (last && last.parentId === endPatchId) {
+      // Valid Link! Apply Backward (Natural order: Newest -> Oldest)
+      // We traverse the chain exactly as returned (Start -> ... -> Target Child)
+      for (const p of chain) {
+        if (p.operation !== '{}') {
+          const op = JSON.parse(p.operation);
+          const inv = PatchInverter.invert(op);
+          PatchApplicator.apply(data, inv);
+        }
+      }
+      return true;
+    }
+    return false;
+  };
+
+  // --- 2. Execution based on Heuristic ---
+  if (isLikelyForward) {
+    if (await tryForward()) {
+      await saveSnapshot(fastify, branchId, data, endPatchId);
+      return data;
+    }
+    // Fallback: If heuristic failed (maybe branch jump?), try other way
+    if (await tryBackward()) {
+      await saveSnapshot(fastify, branchId, data, endPatchId);
+      return data;
+    }
+  } else {
+    // Likely Backward
+    if (await tryBackward()) {
+      await saveSnapshot(fastify, branchId, data, endPatchId);
+      return data;
+    }
+    if (await tryForward()) {
+      await saveSnapshot(fastify, branchId, data, endPatchId);
+      return data;
+    }
+  }
+
+  // --- 3. Divergence Fallback ---
+  // Neither is an ancestor of the other (Siblings/Diverged Branches).
+  // Must regenerate from Genesis.
+  return regenerateFromGenesis(fastify, mokuroPath, endPatchId, branchId);
+}
+
+// --- Helper: Ensure Admin Branch Exists ---
+async function ensureAdminBranch(fastify: FastifyInstance, volumeId: string, mokuroPath: string) {
+  let adminBranch = await fastify.prisma.ocrBranch.findUnique({
+    where: { volumeId_userId: { volumeId, userId: 'admin' } }
+  });
+
+  if (!adminBranch) {
+    // 1. Create Genesis Patch (Dummy Root)
+    // ID generated automatically by prisma-extensions
+    const genesisPatch = await fastify.prisma.patch.create({
+      data: {
+        volumeId,
+        userId: 'admin',
+        parentId: null,
+        operation: '{}', // No-op
+      }
+    });
+
+    // 2. Create Admin Branch
+    // ID generated automatically by prisma-extensions
+    adminBranch = await fastify.prisma.ocrBranch.create({
+      data: {
+        volumeId,
+        userId: 'admin',
+        headPatchId: genesisPatch.id,
+        rootPatchId: genesisPatch.id,
+        snapshotPatchId: genesisPatch.id
+      }
+    });
+
+    // 3. Create Initial Snapshot (Copy Original)
+    const data = await loadOriginalMokuro(fastify, mokuroPath);
+    data.patch_id = genesisPatch.id; // Tag with genesis ID
+
+    const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
+    await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
+    await fs.promises.writeFile(snapshotPath, JSON.stringify(data));
+  }
+
+  return adminBranch;
+}
+
+// --- Helper: Ensure User Branch Exists ---
+async function ensureUserBranch(
+  fastify: FastifyInstance,
+  volumeId: string,
+  userId: string,
+  adminBranch: any
+) {
+  let userBranch = await fastify.prisma.ocrBranch.findUnique({
+    where: { volumeId_userId: { volumeId, userId } }
+  });
+
+  if (!userBranch) {
+    // 1. Create User Branch pointing to Admin Head
+    userBranch = await fastify.prisma.ocrBranch.create({
+      data: {
+        volumeId,
+        userId,
+        headPatchId: adminBranch.headPatchId,
+        rootPatchId: null, // Synced state
+        snapshotPatchId: adminBranch.snapshotPatchId
+      }
+    });
+
+    // 2. Clone Admin Snapshot
+    const adminSnapPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
+    const userSnapPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
+
+    try {
+      await fs.promises.copyFile(adminSnapPath, userSnapPath);
+    } catch (e) {
+      fastify.log.warn(`Admin snapshot missing, will regenerate on next read.`);
+    }
+  }
+
+  return userBranch;
+}
+
+// File consume
 // Drains a readable stream completely by resuming it and waiting for the 'end' event.
 // This is used to discard file contents we don't want to save.
 
@@ -137,10 +443,6 @@ interface LibraryQuery {
 
 interface MokuroPage { }
 
-interface MokuroData {
-  pages: MokuroPage[];
-}
-
 const libraryRoutes: FastifyPluginAsync = async (
   fastify,
   opts
@@ -150,14 +452,15 @@ const libraryRoutes: FastifyPluginAsync = async (
 
   /**
    * GET /api/library
-   * Gets a list of all Series and Volume metadata owned by the current user.
+   * Gets a list of all Series and Volume metadata visible to the current user.
+   * Includes both private uploads and Admin's shared content.
    */
   fastify.get<{ Querystring: LibraryQuery }>('/', async (request, reply) => {
-    const userId = request.user.id; // provided by the authenticate hook
+    const userId = request.user.id;
 
-    // 1. Parse Query Params with Defaults
+    // 1. Parse Query Params
     const page = Math.max(1, request.query.page ?? 1);
-    const limit = Math.max(1, Math.min(100, request.query.limit ?? 20)); // Max 100 per page
+    const limit = Math.max(1, Math.min(100, request.query.limit ?? 20));
     const q = request.query.q?.trim() ?? '';
     const sort = request.query.sort ?? 'title';
     const order = request.query.order ?? 'asc';
@@ -166,14 +469,43 @@ const libraryRoutes: FastifyPluginAsync = async (
     const filter_missing = request.query.filter_missing ?? 'none';
     const is_organized = request.query.is_organized;
 
-    // 2. Build Where Clause (Search)
-    // We use AND[] to combine multiple independent filters safely
-    const andConditions: Prisma.SeriesWhereInput[] = [];
+    // --- HELPER: Flatten Series + Settings ---
+    // Merges the separate "Settings" object back into the "Series" object
+    // so the frontend receives the flat structure it expects.
+    const transformSeries = (series: any, settings?: any) => {
+      // If we came from the 'recent' sort, settings are passed directly.
+      // If we came from standard sort, settings are in series.userSettings[0].
+      const userStats = settings || (series.userSettings && series.userSettings[0]);
 
-    // A. Base Ownership
-    andConditions.push({ ownerId: userId });
+      // Remove internal relations we don't want to send raw
+      const { userSettings, ...cleanSeries } = series;
 
-    // B. Search (q)
+      return {
+        ...cleanSeries,
+        // 1. Flattened User State (Defaults if no interaction yet)
+        bookmarked: userStats?.bookmarked ?? false,
+        status: userStats?.status ?? 0,
+        organized: userStats?.organized ?? false,
+        lastReadAt: userStats?.lastReadAt ?? new Date(0), // Epoch if never read
+
+        // 2. Computed "Official" Indicator
+        isOfficial: series.ownerId === 'admin',
+
+        // 3. Permissions Flag (Optional, helps frontend disable delete buttons)
+        canEdit: series.ownerId === userId
+      };
+    };
+
+    // --- QUERY BUILDERS ---
+
+    const seriesWhere: Prisma.SeriesWhereInput = {
+      AND: [
+        { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
+      ]
+    };
+    const andConditions = (seriesWhere.AND as Prisma.SeriesWhereInput[]);
+
+    // A. Text Search
     if (q) {
       andConditions.push({
         OR: [
@@ -185,126 +517,110 @@ const libraryRoutes: FastifyPluginAsync = async (
       });
     }
 
-    // C. Bookmark & Status
-    if (bookmarked) {
-      andConditions.push({ bookmarked: true });
-    }
-
-    if (status !== 'all') {
-      if (status === 'unread') andConditions.push({ status: 0 });
-      else if (status === 'reading') andConditions.push({ status: 1 });
-      else if (status === 'read') andConditions.push({ status: 2 });
-    }
-
-    // D. Organization Filter
-    if (is_organized === 'true') {
-      andConditions.push({ organized: true });
-    } else if (is_organized === 'false') {
-      andConditions.push({ organized: false });
-    }
-
-    // E. Missing Metadata Filter
+    // B. Missing Metadata Filters
     if (filter_missing !== 'none') {
-      if (filter_missing === 'cover') {
-        andConditions.push({ coverPath: null });
-      }
-      else if (filter_missing === 'description') {
-        andConditions.push({
-          OR: [{ description: null }, { description: "" }]
-        });
-      }
-      else if (filter_missing === 'title') {
-        // Matches frontend logic: Missing "Metadata Titles" (JP or Romaji)
-        andConditions.push({
-          OR: [
-            { japaneseTitle: null }, { japaneseTitle: "" },
-            { romajiTitle: null }, { romajiTitle: "" }
-          ]
-        });
-      }
-      else if (filter_missing === 'any') {
-        // Matches any of the above
-        andConditions.push({
-          OR: [
-            { coverPath: null },
-            { description: null }, { description: "" },
-            { japaneseTitle: null }, { japaneseTitle: "" },
-            { romajiTitle: null }, { romajiTitle: "" }
-          ]
-        });
-      }
+      if (filter_missing === 'cover') andConditions.push({ coverPath: null });
+      else if (filter_missing === 'description') andConditions.push({ OR: [{ description: null }, { description: "" }] });
+      else if (filter_missing === 'title') andConditions.push({ OR: [{ japaneseTitle: null }, { romajiTitle: null }] });
+      else if (filter_missing === 'any') andConditions.push({ OR: [{ coverPath: null }, { description: null }, { japaneseTitle: null }] });
     }
 
-    // Combine into final where object
-    const where: Prisma.SeriesWhereInput = {
-      AND: andConditions
+    // C. User Settings Filters (Status, Bookmark, Organized)
+    const addUserFilter = (filter: Prisma.UserSeriesSettingsWhereInput) => {
+      andConditions.push({ userSettings: { some: { userId: userId, ...filter } } });
     };
 
-    // 3. Build OrderBy Clause
-    let orderBy: Prisma.SeriesOrderByWithRelationInput | Prisma.SeriesOrderByWithRelationInput[];
+    if (bookmarked) addUserFilter({ bookmarked: true });
+    if (is_organized === 'true') addUserFilter({ organized: true });
+    else if (is_organized === 'false') {
+      andConditions.push({
+        OR: [{ userSettings: { none: { userId } } }, { userSettings: { some: { userId, organized: false } } }]
+      });
+    }
 
-    switch (sort) {
-      case 'created':
-        orderBy = { createdAt: order };
-        break;
-      case 'updated':
-        orderBy = { updatedAt: order };
-        break;
-      case 'recent':
-        // Sort by the denormalized lastReadAt field on Series
-        orderBy = { lastReadAt: order };
-        break;
-      case 'title':
-      default:
-        // Secondary sort by folderName ensures stable sorting if titles are null/identical
-        orderBy = { sortTitle: order };
-        break;
+    if (status === 'reading') addUserFilter({ status: 1 });
+    else if (status === 'read') addUserFilter({ status: 2 });
+    else if (status === 'unread') {
+      andConditions.push({
+        OR: [{ userSettings: { none: { userId } } }, { userSettings: { some: { userId, status: 0 } } }]
+      });
     }
 
     try {
-      // 4. Execute Transaction for Data + Count
-      const [total, series] = await fastify.prisma.$transaction([
-        fastify.prisma.series.count({ where }),
-        fastify.prisma.series.findMany({
-          where,
-          orderBy,
-          take: limit,
-          skip: (page - 1) * limit,
-          include: {
-            volumes: {
-              orderBy: { title: 'asc' },
-              select: {
-                pageCount: true,
-                progress: {
-                  select: {
-                    completed: true,
-                    page: true
+      // BRANCH A: "Recently Read" (Query UserSeriesSettings)
+      if (sort === 'recent') {
+        const [total, settings] = await fastify.prisma.$transaction([
+          fastify.prisma.userSeriesSettings.count({
+            where: { userId, series: seriesWhere }
+          }),
+          fastify.prisma.userSeriesSettings.findMany({
+            where: { userId, series: seriesWhere },
+            orderBy: { lastReadAt: order },
+            take: limit,
+            skip: (page - 1) * limit,
+            include: {
+              series: {
+                include: {
+                  volumes: {
+                    orderBy: { sortTitle: 'asc' },
+                    select: {
+                      pageCount: true,
+                      progress: { where: { userId }, select: { completed: true, page: true } }
+                    }
                   }
                 }
               }
-            },
-          },
-        }),
-      ]);
+            }
+          })
+        ]);
 
-      // 5. Return Paginated Response
-      return reply.status(200).send({
-        data: series,
-        meta: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit)
-        }
-      });
+        const data = settings.map((s: any) => transformSeries(s.series, s));
+
+        return reply.send({
+          data,
+          meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        });
+      }
+
+      // BRANCH B: Standard Sort (Query Series)
+      else {
+        let orderBy: any;
+        if (sort === 'created') orderBy = { createdAt: order };
+        else if (sort === 'updated') orderBy = { updatedAt: order };
+        else orderBy = { sortTitle: order };
+
+        const [total, seriesList] = await fastify.prisma.$transaction([
+          fastify.prisma.series.count({ where: seriesWhere }),
+          fastify.prisma.series.findMany({
+            where: seriesWhere,
+            orderBy,
+            take: limit,
+            skip: (page - 1) * limit,
+            include: {
+              // Include settings to flatten them later
+              userSettings: { where: { userId } },
+              volumes: {
+                orderBy: { sortTitle: 'asc' },
+                select: {
+                  pageCount: true,
+                  progress: { where: { userId }, select: { completed: true, page: true } }
+                }
+              },
+            },
+          }),
+        ]);
+
+        const data = seriesList.map((s: any) => transformSeries(s));
+
+        return reply.send({
+          data,
+          meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+        });
+      }
 
     } catch (error) {
       fastify.log.error(error);
-      return reply.status(500).send({
-        statusCode: 500,
-        error: 'Internal Server Error',
-        message: 'Could not retrieve library.',
-      });
+      return reply.status(500).send({ message: 'Could not retrieve library.' });
     }
   });
 
@@ -448,15 +764,10 @@ const libraryRoutes: FastifyPluginAsync = async (
       }
 
       // --- PHASE 3: Database Update ---
-      if (pageCount === 0) {
-        throw new Error('No files received.');
-      }
-      if (!mokuroPathRelative) {
-        throw new Error('Mokuro file missing.');
-      }
+      if (pageCount === 0) throw new Error('No files received.');
+      if (!mokuroPathRelative) throw new Error('Mokuro file missing.');
 
-      // 1. Upsert Series
-      // We use the folder name as the ID. Title comes from metadata if available.
+      // 1. Upsert Series (SHARED METADATA ONLY)
       let series = await fastify.prisma.series.findFirst({
         where: { folderName: seriesFolder, ownerId: userId }
       });
@@ -469,28 +780,20 @@ const libraryRoutes: FastifyPluginAsync = async (
             title: metadata.series_title || null,
             description: metadata.series_description || null,
             sortTitle: metadata.series_title || seriesFolder,
-            bookmarked: metadata.series_bookmarked ?? false,
             // If we found a file matching "SeriesName.jpg", use it as cover
             coverPath: potentialSeriesCoverPath
           }
         });
       } else {
-        let updateData: Prisma.SeriesUpdateInput = {
-          updatedAt: new Date()
-        };
-
-        // Update title if provided and missing
+        // Prepare partial update
+        let updateData: Prisma.SeriesUpdateInput = { updatedAt: new Date() };
         if (metadata.series_title && !series.title) {
           updateData.title = metadata.series_title;
           updateData.sortTitle = metadata.series_title;
         }
-
-        // Update description if provided and missing
         if (metadata.series_description && !series.description) {
           updateData.description = metadata.series_description;
         }
-
-        // Update cover if we found a better candidate and one didn't exist
         if (potentialSeriesCoverPath && !series.coverPath) {
           updateData.coverPath = potentialSeriesCoverPath;
         }
@@ -501,9 +804,25 @@ const libraryRoutes: FastifyPluginAsync = async (
         });
       }
 
-      // 2. Create Volume
-      const volumePathRelative = path.join('uploads', userId, seriesFolder, volumeFolder).replace(/\\/g, '/');
+      // 2. Handle User Settings (PRIVATE METADATA)
+      // We must explicitly upsert the settings to save the bookmark
+      await fastify.prisma.userSeriesSettings.upsert({
+        where: { userId_seriesId: { userId, seriesId: series.id } },
+        update: {
+          // If metadata specifically sends true/false, update it.
+          // If undefined, keep existing state.
+          bookmarked: metadata.series_bookmarked !== undefined ? metadata.series_bookmarked : undefined
+        },
+        create: {
+          userId,
+          seriesId: series.id,
+          bookmarked: metadata.series_bookmarked ?? false,
+          // Default status is 0 (Unread)
+        }
+      });
 
+      // 3. Create Volume
+      const volumePathRelative = path.join('uploads', userId, seriesFolder, volumeFolder).replace(/\\/g, '/');
       const volume = await fastify.prisma.volume.create({
         data: {
           seriesId: series.id,
@@ -512,23 +831,15 @@ const libraryRoutes: FastifyPluginAsync = async (
           sortTitle: metadata.volume_title || volumeFolder,
           pageCount: pageCount,
           filePath: volumePathRelative,
-          mokuroPath: mokuroPathRelative || '', // Might be empty if user uploaded raw images
+          mokuroPath: mokuroPathRelative || '',
           coverImageName: coverImageName
         }
       });
 
-      // 3. Update Progress (if provided)
+      // 4. Update Progress (if provided)
       if (metadata.volume_progress) {
-        // We upsert progress for the current uploading user
-        // Although user progress shouldn't exist at this point,
-        // we use upsert as insurance
         await fastify.prisma.userProgress.upsert({
-          where: {
-            userId_volumeId: {
-              userId: userId,
-              volumeId: volume.id
-            }
-          },
+          where: { userId_volumeId: { userId, volumeId: volume.id } },
           update: {
             page: metadata.volume_progress.page,
             completed: metadata.volume_progress.isCompleted
@@ -541,10 +852,10 @@ const libraryRoutes: FastifyPluginAsync = async (
           }
         });
 
-        // Recalculate Status (e.g. adding a volume might un-complete a series)
-        // TODO: this is O(N^2)! although the number of volumes per series shouldn't go that high
-        await updateSeriesStatus(fastify.prisma, series.id);
+        // Recalculate Series Status via Settings (Helper handles the redirection)
+        await updateSeriesStatus(fastify.prisma, userId, series.id);
       }
+
       return reply.status(200).send({
         message: 'Upload processed.',
         processed: 1,
@@ -552,10 +863,9 @@ const libraryRoutes: FastifyPluginAsync = async (
       });
 
     } catch (err) {
-      // ROLLBACK: If anything failed, delete the half-written folder
-      if (targetDir) {
-        await deleteFolder(targetDir);
-      }
+      // ROLLBACK
+      if (targetDir) await deleteFolder(targetDir);
+
       fastify.log.error(err);
       return reply.status(500).send({
         message: (err as Error).message || 'Upload failed.'
@@ -629,26 +939,35 @@ const libraryRoutes: FastifyPluginAsync = async (
   /**
    * GET /api/library/series/:id
    * Gets full data for one series, including its volumes.
+   * Flattens user settings into the series object, but keeps volume progress as an array.
    */
   fastify.get<{ Params: SeriesParams }>(
     '/series/:id',
     async (request, reply) => {
       const { id: seriesId } = request.params;
       const userId = request.user.id;
-      fastify.log.info(seriesId);
 
       try {
         const series = await fastify.prisma.series.findFirst({
           where: {
             id: seriesId,
-            ownerId: userId, // Security check
+            // Security: Allow Owner OR Admin
+            OR: [
+              { ownerId: userId },
+              { ownerId: 'admin' }
+            ]
           },
           include: {
+            // Include user settings to flatten them
+            userSettings: {
+              where: { userId }
+            },
             volumes: {
               orderBy: {
-                sortTitle: 'asc', // Or by a 'volumeNumber' if we add one later
+                sortTitle: 'asc',
               },
               include: {
+                // Return progress as an array (max 1 item due to where clause)
                 progress: {
                   where: {
                     userId: userId
@@ -674,8 +993,28 @@ const libraryRoutes: FastifyPluginAsync = async (
           });
         }
 
-        // Return the single series object
-        return reply.status(200).send(series);
+        // --- Transform / Flatten ---
+        // Extract the user-specific settings (if they exist)
+        const userStats = series.userSettings[0];
+
+        // Remove the raw relation from the response object
+        const { userSettings, ...cleanSeries } = series;
+
+        const response = {
+          ...cleanSeries,
+          // Flattened User State (Defaults if no interaction yet)
+          bookmarked: userStats?.bookmarked ?? false,
+          status: userStats?.status ?? 0,
+          organized: userStats?.organized ?? false,
+          lastReadAt: userStats?.lastReadAt ?? new Date(0),
+
+          // Computed Flags
+          isOfficial: series.ownerId === 'admin',
+          canEdit: series.ownerId === userId
+        };
+
+        return reply.status(200).send(response);
+
       } catch (error) {
         fastify.log.error(
           { err: error },
@@ -694,235 +1033,93 @@ const libraryRoutes: FastifyPluginAsync = async (
    * GET /api/library/volume/:id
    * Gets full data for one volume, including the parsed .mokuro JSON.
    */
-  fastify.get<{ Params: VolumeParams }>(
+  fastify.get<{ Params: { id: string } }>(
     '/volume/:id',
     async (request, reply) => {
       const { id: volumeId } = request.params;
       const userId = request.user.id;
-
-      try {
-        // First, find the volume and verify ownership
-        const volume = await fastify.prisma.volume.findFirst({
-          where: {
-            id: volumeId,
-            series: {
-              // This nested 'where' is the security check
-              ownerId: userId,
-            },
-          },
-          include: {
-            progress: {
-              where: {
-                userId: userId
-              },
-              select: {
-                page: true,
-                completed: true,
-                timeRead: true,
-                charsRead: true
-              }
-            }
-          }
-        });
-
-        // Case 1: Volume not found or user does not own it
-        if (!volume) {
-          return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: 'Volume not found or you do not have permission to access it.',
-          });
-        }
-
-        // Case 2: Volume found, read the .mokuro file
-        const absoluteMokuroPath = path.join(
-          fastify.projectRoot,
-          volume.mokuroPath
-        );
-        let mokuroContent: string;
-        try {
-          mokuroContent = await fs.promises.readFile(absoluteMokuroPath, 'utf-8');
-        } catch (fileError) {
-          // Handle file system errors (e.g., file deleted)
-          fastify.log.error(
-            { err: fileError }, // 1. Pass the error object here
-            `File not found for volume ${volume.id}: ${absoluteMokuroPath}` // 2. Pass the message here
-          );
-          return reply.status(500).send({
-            statusCode: 500,
-            error: 'Internal Server Error',
-            message: 'Could not read volume data file.',
-          });
-        }
-
-        // Case 3: Parse the file content as JSON
-        let mokuroJson: MokuroData;
-        try {
-          mokuroJson = JSON.parse(mokuroContent);
-        } catch (parseError) {
-          // Handle corrupted or malformed JSON
-          fastify.log.error(
-            { err: parseError }, // 1. Pass the error object here
-            `Malformed JSON for volume ${volume.id}: ${absoluteMokuroPath}` // 2. Pass the message here
-          );
-          return reply.status(500).send({
-            statusCode: 500,
-            error: 'Internal Server Error',
-            message: 'Failed to parse volume data. The file may be corrupted.',
-          });
-        }
-        // --- SANITY CHECK ---
-        if (
-          !mokuroJson.pages ||
-          !Array.isArray(mokuroJson.pages) ||
-          volume.pageCount !== mokuroJson.pages.length
-        ) {
-          fastify.log.warn(
-            {
-              volumeId: volume.id,
-              dbPageCount: volume.pageCount,
-              mokuroPagesLength: mokuroJson.pages?.length ?? 'undefined',
-            },
-            'Page count mismatch: DB record and .mokuro file disagree.'
-          );
-          // We don't stop the request, just log the warning.
-        }
-        // Case 4: Success. create and send reply.
-        const responseData = {
+      // Helper for consistency
+      const buildResponse = (volume: any, data: MokuroData, branch: any) => {
+        return {
           id: volume.id,
           title: volume.title ?? volume.folderName,
           seriesId: volume.seriesId,
           pageCount: volume.pageCount,
           coverImageName: volume.coverImageName,
           progress: volume.progress,
-          mokuroData: mokuroJson,
+          mokuroData: data,
+          versionInfo: {
+            branchId: branch.id,
+            headPatchId: branch.headPatchId,
+            isReadOnly: false
+          }
         };
-
-        return reply.status(200).send(responseData);
-
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({
-          statusCode: 500,
-          error: 'Internal Server Error',
-          message: 'An unexpected error occurred.',
-        });
-      }
-    }
-  );
-
-  /**
-   * PUT /api/library/volume/:id/ocr
-   * Saves modified OCR data.
-   */
-  fastify.put<{ Params: VolumeParams }>(
-    '/volume/:id/ocr',
-    async (request, reply) => {
-      const { id: volumeId } = request.params;
-      const userId = request.user.id;
-
-      // 1. The request body should be the NEW, complete "pages" array
-      const newPagesArray = request.body as Prisma.InputJsonValue;
-
-      if (!Array.isArray(newPagesArray)) {
-        return reply.status(400).send({
-          statusCode: 400,
-          error: 'Bad Request',
-          message: 'Request body must be an array of page data.',
-        });
-      }
+      };
 
       try {
-        // 2. Find the volume and verify ownership
         const volume = await fastify.prisma.volume.findFirst({
           where: {
             id: volumeId,
-            series: {
-              ownerId: userId,
-            },
+            series: { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
           },
+          include: {
+            progress: { where: { userId }, select: { page: true, completed: true, timeRead: true, charsRead: true } }
+          }
         });
 
-        if (!volume) {
-          return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: 'Volume not found or access denied.',
-          });
-        }
+        if (!volume) return reply.status(404).send({ message: 'Volume not found.' });
 
-        // 3. Read the existing .mokuro file
-        const absoluteMokuroPath = path.join(
-          fastify.projectRoot,
-          volume.mokuroPath
-        );
-        let mokuroContent: string;
+        // fetch branches
+        const adminBranch = await ensureAdminBranch(fastify, volumeId, volume.mokuroPath);
+        const userBranch = await ensureUserBranch(fastify, volumeId, userId, adminBranch);
+
+        const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
+        let mokuroData: MokuroData;
+
+        // --- LOAD ---
         try {
-          mokuroContent = await fs.promises.readFile(absoluteMokuroPath, 'utf-8');
-        } catch (readError) {
-          fastify.log.error(
-            { err: readError },
-            `File not found for volume ${volume.id}: ${absoluteMokuroPath}`
+          const content = await fs.promises.readFile(snapshotPath, 'utf-8');
+          mokuroData = JSON.parse(content);
+        } catch (e) {
+          // File missing -> regenerate from scratch
+          mokuroData = await regenerateFromGenesis(
+            fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id
           );
-          return reply.status(500).send({
-            statusCode: 500,
-            error: 'Internal Server Error',
-            message: 'Could not read volume data file.',
-          });
+          // Return early since we are now fully synced
+          return reply.send(buildResponse(volume, mokuroData, userBranch));
         }
 
-        // 4. Parse the file
-        let mokuroData: any; // Use 'any' to allow dynamic key assignment
-        try {
-          mokuroData = JSON.parse(mokuroContent);
-        } catch (parseError) {
-          fastify.log.error(
-            { err: parseError },
-            `Malformed JSON for volume ${volume.id}: ${absoluteMokuroPath}`
+        // --- VALIDATE ---
+        // Check 1: Corruption (ID mismatch)
+        // If the file says it is Patch A, but DB says Snapshot IS Patch B.
+        // This implies the file on disk was overwritten or is wrong.
+        if (mokuroData.patch_id !== userBranch.snapshotPatchId) {
+          fastify.log.warn(`Snapshot corruption detected for ${userBranch.id}. Disk: ${mokuroData.patch_id}, DB: ${userBranch.snapshotPatchId}`);
+          mokuroData = await regenerateFromGenesis(
+            fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id
           );
-          return reply.status(500).send({
-            statusCode: 500,
-            error: 'Internal Server Error',
-            message: 'Failed to parse volume data. The file may be corrupted.',
-          });
+          return reply.send(buildResponse(volume, mokuroData, userBranch));
         }
 
-        // 5. Replace the 'pages' key with the new array from the request.
-        mokuroData.pages = newPagesArray;
-
-        // 6. Stringify and write the updated JSON back to the file
-        const updatedMokuroContent = JSON.stringify(mokuroData); // No pretty-print, save space
-
-        try {
-          await fs.promises.writeFile(
-            absoluteMokuroPath,
-            updatedMokuroContent,
-            'utf-8'
+        // --- SYNC ---
+        // Check 2: Staleness (Snapshot ID != Head ID)
+        // This is a valid state (Undo, Redo, or Catchup). We use Sync.
+        if (userBranch.snapshotPatchId !== userBranch.headPatchId) {
+          mokuroData = await syncSnapshot(
+            fastify,
+            volume.mokuroPath,
+            mokuroData,
+            userBranch.snapshotPatchId!,
+            userBranch.headPatchId,
+            userBranch.id
           );
-        } catch (writeError) {
-          fastify.log.error(
-            { err: writeError },
-            `Failed to write updates to ${absoluteMokuroPath}`
-          );
-          return reply.status(500).send({
-            statusCode: 500,
-            error: 'Internal Server Error',
-            message: 'Could not save OCR data.',
-          });
         }
 
-        // 7. Success
-        return reply.status(200).send({ message: 'OCR data updated successfully.' });
+        return reply.send(buildResponse(volume, mokuroData, userBranch));
+
       } catch (error) {
-        fastify.log.error(
-          { err: error },
-          'An unexpected error occurred in PUT /api/library/volume/:id/ocr'
-        );
-        return reply.status(500).send({
-          statusCode: 500,
-          error: 'Internal Server Error',
-          message: 'An unexpected error occurred.',
-        });
+        fastify.log.error(error);
+        return reply.status(500).send({ message: 'Failed to load volume.' });
       }
     }
   );
