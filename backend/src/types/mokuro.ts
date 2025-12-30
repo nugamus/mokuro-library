@@ -23,8 +23,8 @@ export interface MokuroPage {
   blocks: MokuroBlock[];
   img_path: string;
   // Add dimensions or other page metadata if needed
-  width?: number;
-  height?: number;
+  img_width: number;
+  img_height: number;
 }
 
 export interface MokuroData {

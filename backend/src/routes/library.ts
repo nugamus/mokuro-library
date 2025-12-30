@@ -4,11 +4,15 @@ import util from 'util';
 import fs from 'fs';
 import path from 'path';
 import { updateSeriesStatus } from '../utils/seriesStatus';
-import { PatchApplicator } from '../lib/PatchApplicator';
-import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
 import { Prisma } from '../generated/prisma/client';
 import { FastifyInstance } from 'fastify/types/instance';
+import {
+  getComputedMokuroState,
+  deleteBranchSnapshots,
+  ensureAdminBranch,
+  ensureUserBranch
+} from '../utils/ocrHelpers';
 
 // Promisify pipeline for async/await
 const pump = util.promisify(pipeline);
@@ -28,22 +32,6 @@ async function deleteFolder(pathStr: string) {
     await fs.promises.rm(pathStr, { recursive: true, force: true });
   } catch (e) {
     console.error(`Failed to cleanup folder: ${pathStr}`, e);
-  }
-}
-
-// Clean up Snapshots
-// Deletes .mokuro snapshot files for a list of Branch IDs
-async function deleteBranchSnapshots(fastify: FastifyInstance, branchIds: string[]) {
-  for (const branchId of branchIds) {
-    const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
-    try {
-      await fs.promises.unlink(snapshotPath);
-    } catch (e: any) {
-      // Ignore "file not found", log others
-      if (e.code !== 'ENOENT') {
-        fastify.log.warn(`Failed to delete snapshot ${snapshotPath}: ${e.message}`);
-      }
-    }
   }
 }
 
@@ -142,255 +130,6 @@ async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, user
   await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
 
   return volume.title || volume.folderName;
-}
-
-// --- Helper: Load the original .mokuro file (Genesis State) ---
-async function loadOriginalMokuro(fastify: FastifyInstance, mokuroPath: string): Promise<MokuroData> {
-  const absPath = path.join(fastify.projectRoot, mokuroPath);
-  const content = await fs.promises.readFile(absPath, 'utf-8');
-  return JSON.parse(content);
-}
-
-// --- Helper: Persist Snapshot ---
-async function saveSnapshot(fastify: FastifyInstance, branchId: string, data: MokuroData, patchId: string) {
-  const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
-
-  // Tag data
-  data.patch_id = patchId;
-
-  await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
-  await fs.promises.writeFile(snapshotPath, JSON.stringify(data));
-
-  // Update DB Pointer
-  await fastify.prisma.ocrBranch.update({
-    where: { id: branchId },
-    data: { snapshotPatchId: patchId }
-  });
-}
-
-// --- Helper: Fetch Ancestry Chain (CTE Optimization) ---
-// Returns the path from [StartId] up to [EndId] (exclusive of EndId by default logic, but we handle that in JS)
-// If EndId is NULL, it fetches up to Genesis (root).
-async function fetchAncestryChain(fastify: FastifyInstance, startId: string, stopId: string | null = null) {
-  // SQLite Recursive CTE to traverse 'parentId' upwards
-  // We select the whole patch object.
-  // Note: We cast to unknown first because Prisma's raw query return types are loose.
-  const path = await fastify.prisma.$queryRaw<any[]>`
-    WITH RECURSIVE chain AS (
-      SELECT * FROM "Patch" WHERE id = ${startId}
-      UNION ALL
-      SELECT p.* FROM "Patch" p
-      INNER JOIN chain c ON c.parentId = p.id
-      WHERE c.id <> ${stopId ?? ''}  -- Stop if we reach the target (optimization)
-    )
-    SELECT * FROM chain;
-  `;
-  return path;
-}
-
-// --- Helper: Regenerate Snapshot from Genesis (MVP) ---
-// Traces history back to NULL parent, loads original file, and replays all patches.
-async function regenerateFromGenesis(
-  fastify: FastifyInstance,
-  mokuroPath: string,
-  targetPatchId: string,
-  branchId: string
-): Promise<MokuroData> {
-  fastify.log.warn(`Regenerating snapshot from GENESIS for branch ${branchId}`);
-
-  // 1. Fetch entire history in ONE query (Target -> Genesis)
-  // The CTE returns [Target, Parent, Parent's Parent, ... Root]
-  const history = await fetchAncestryChain(fastify, targetPatchId, null);
-
-  // 2. Load Genesis
-  const data = await loadOriginalMokuro(fastify, mokuroPath);
-
-  // 3. Replay (Reverse the array: Root -> Target)
-  for (let i = history.length - 1; i >= 0; i--) {
-    const patch = history[i];
-    if (patch.operation && patch.operation !== '{}') {
-      try {
-        const op = JSON.parse(patch.operation);
-        PatchApplicator.apply(data, op);
-      } catch (e) {
-        fastify.log.error(`Patch apply failed during regen: ${e}`);
-      }
-    }
-  }
-
-  // 4. Save
-  await saveSnapshot(fastify, branchId, data, targetPatchId);
-  return data;
-}
-
-// --- Helper: syncSnapshot to head ---
-// Replay patches from startPatchId to endPatchId
-async function syncSnapshot(
-  fastify: FastifyInstance,
-  mokuroPath: string,
-  data: MokuroData,
-  startPatchId: string, // Current Snapshot
-  endPatchId: string,   // Target Head
-  branchId: string
-): Promise<MokuroData> {
-  if (startPatchId === endPatchId) return data;
-
-  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${endPatchId}`);
-
-  // --- 1. ULID Heuristic ---
-  // If End > Start, it's likely newer (Forward).
-  // If End < Start, it's likely older (Backward).
-  const isLikelyForward = endPatchId > startPatchId;
-
-  // We define the logic blocks so we can run them in determined order
-  const tryForward = async () => {
-    // Forward = Target is a descendant of Snapshot.
-    // Trace UP from Target. If we hit Snapshot, we found the path.
-    const chain = await fetchAncestryChain(fastify, endPatchId, startPatchId);
-
-    // Check if the last element's parent is indeed the StartPatchId
-    // (The CTE stops AT the record before the stopId, or at root)
-    const last = chain[chain.length - 1];
-    if (last && last.parentId === startPatchId) {
-      // Valid Link! Apply Forward (Reverse order: Oldest -> Newest)
-      for (let i = chain.length - 1; i >= 0; i--) {
-        const p = chain[i];
-        if (p.operation !== '{}') {
-          PatchApplicator.apply(data, JSON.parse(p.operation));
-        }
-      }
-      return true;
-    }
-    return false;
-  };
-
-  const tryBackward = async () => {
-    // Backward = Snapshot is a descendant of Target.
-    // Trace UP from Snapshot. If we hit Target, we found the path.
-    const chain = await fetchAncestryChain(fastify, startPatchId, endPatchId);
-
-    const last = chain[chain.length - 1];
-    if (last && last.parentId === endPatchId) {
-      // Valid Link! Apply Backward (Natural order: Newest -> Oldest)
-      // We traverse the chain exactly as returned (Start -> ... -> Target Child)
-      for (const p of chain) {
-        if (p.operation !== '{}') {
-          const op = JSON.parse(p.operation);
-          const inv = PatchInverter.invert(op);
-          PatchApplicator.apply(data, inv);
-        }
-      }
-      return true;
-    }
-    return false;
-  };
-
-  // --- 2. Execution based on Heuristic ---
-  if (isLikelyForward) {
-    if (await tryForward()) {
-      await saveSnapshot(fastify, branchId, data, endPatchId);
-      return data;
-    }
-    // Fallback: If heuristic failed (maybe branch jump?), try other way
-    if (await tryBackward()) {
-      await saveSnapshot(fastify, branchId, data, endPatchId);
-      return data;
-    }
-  } else {
-    // Likely Backward
-    if (await tryBackward()) {
-      await saveSnapshot(fastify, branchId, data, endPatchId);
-      return data;
-    }
-    if (await tryForward()) {
-      await saveSnapshot(fastify, branchId, data, endPatchId);
-      return data;
-    }
-  }
-
-  // --- 3. Divergence Fallback ---
-  // Neither is an ancestor of the other (Siblings/Diverged Branches).
-  // Must regenerate from Genesis.
-  return regenerateFromGenesis(fastify, mokuroPath, endPatchId, branchId);
-}
-
-// --- Helper: Ensure Admin Branch Exists ---
-async function ensureAdminBranch(fastify: FastifyInstance, volumeId: string, mokuroPath: string) {
-  let adminBranch = await fastify.prisma.ocrBranch.findUnique({
-    where: { volumeId_userId: { volumeId, userId: 'admin' } }
-  });
-
-  if (!adminBranch) {
-    // 1. Create Genesis Patch (Dummy Root)
-    // ID generated automatically by prisma-extensions
-    const genesisPatch = await fastify.prisma.patch.create({
-      data: {
-        volumeId,
-        userId: 'admin',
-        parentId: null,
-        operation: '{}', // No-op
-      }
-    });
-
-    // 2. Create Admin Branch
-    // ID generated automatically by prisma-extensions
-    adminBranch = await fastify.prisma.ocrBranch.create({
-      data: {
-        volumeId,
-        userId: 'admin',
-        headPatchId: genesisPatch.id,
-        rootPatchId: genesisPatch.id,
-        snapshotPatchId: genesisPatch.id
-      }
-    });
-
-    // 3. Create Initial Snapshot (Copy Original)
-    const data = await loadOriginalMokuro(fastify, mokuroPath);
-    data.patch_id = genesisPatch.id; // Tag with genesis ID
-
-    const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
-    await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
-    await fs.promises.writeFile(snapshotPath, JSON.stringify(data));
-  }
-
-  return adminBranch;
-}
-
-// --- Helper: Ensure User Branch Exists ---
-async function ensureUserBranch(
-  fastify: FastifyInstance,
-  volumeId: string,
-  userId: string,
-  adminBranch: any
-) {
-  let userBranch = await fastify.prisma.ocrBranch.findUnique({
-    where: { volumeId_userId: { volumeId, userId } }
-  });
-
-  if (!userBranch) {
-    // 1. Create User Branch pointing to Admin Head
-    userBranch = await fastify.prisma.ocrBranch.create({
-      data: {
-        volumeId,
-        userId,
-        headPatchId: adminBranch.headPatchId,
-        rootPatchId: null, // Synced state
-        snapshotPatchId: adminBranch.snapshotPatchId
-      }
-    });
-
-    // 2. Clone Admin Snapshot
-    const adminSnapPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
-    const userSnapPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
-
-    try {
-      await fs.promises.copyFile(adminSnapPath, userSnapPath);
-    } catch (e) {
-      fastify.log.warn(`Admin snapshot missing, will regenerate on next read.`);
-    }
-  }
-
-  return userBranch;
 }
 
 // File consume
@@ -1069,51 +808,14 @@ const libraryRoutes: FastifyPluginAsync = async (
 
         if (!volume) return reply.status(404).send({ message: 'Volume not found.' });
 
-        // fetch branches
+        // 1. Get Branch Metadata (Required for API response 'versionInfo')
+        // We call these explicitly so we have the branch objects in scope.
         const adminBranch = await ensureAdminBranch(fastify, volumeId, volume.mokuroPath);
         const userBranch = await ensureUserBranch(fastify, volumeId, userId, adminBranch);
 
-        const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
-        let mokuroData: MokuroData;
-
-        // --- LOAD ---
-        try {
-          const content = await fs.promises.readFile(snapshotPath, 'utf-8');
-          mokuroData = JSON.parse(content);
-        } catch (e) {
-          // File missing -> regenerate from scratch
-          mokuroData = await regenerateFromGenesis(
-            fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id
-          );
-          // Return early since we are now fully synced
-          return reply.send(buildResponse(volume, mokuroData, userBranch));
-        }
-
-        // --- VALIDATE ---
-        // Check 1: Corruption (ID mismatch)
-        // If the file says it is Patch A, but DB says Snapshot IS Patch B.
-        // This implies the file on disk was overwritten or is wrong.
-        if (mokuroData.patch_id !== userBranch.snapshotPatchId) {
-          fastify.log.warn(`Snapshot corruption detected for ${userBranch.id}. Disk: ${mokuroData.patch_id}, DB: ${userBranch.snapshotPatchId}`);
-          mokuroData = await regenerateFromGenesis(
-            fastify, volume.mokuroPath, userBranch.headPatchId, userBranch.id
-          );
-          return reply.send(buildResponse(volume, mokuroData, userBranch));
-        }
-
-        // --- SYNC ---
-        // Check 2: Staleness (Snapshot ID != Head ID)
-        // This is a valid state (Undo, Redo, or Catchup). We use Sync.
-        if (userBranch.snapshotPatchId !== userBranch.headPatchId) {
-          mokuroData = await syncSnapshot(
-            fastify,
-            volume.mokuroPath,
-            mokuroData,
-            userBranch.snapshotPatchId!,
-            userBranch.headPatchId,
-            userBranch.id
-          );
-        }
+        // 2. Get Computed Data (Source of Truth)
+        // This handles all the complex Snapshot/Regen/Sync logic.
+        const mokuroData = await getComputedMokuroState(fastify, userId, volume);
 
         return reply.send(buildResponse(volume, mokuroData, userBranch));
 

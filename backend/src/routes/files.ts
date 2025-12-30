@@ -62,12 +62,15 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
       const userId = request.user.id;
 
       try {
-        // Find the volume and verify ownership
+        // Find the volume and verify ownership (User OR Admin)
         const volume = await fastify.prisma.volume.findFirst({
           where: {
             id: volumeId,
             series: {
-              ownerId: userId,
+              OR: [
+                { ownerId: userId },
+                { ownerId: 'admin' }
+              ]
             },
           },
           select: {
@@ -75,7 +78,7 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           },
         });
 
-        // Case 1: Volume not found or user does not own it
+        // Case 1: Volume not found or access denied
         if (!volume) {
           return reply.status(404).send({
             statusCode: 404,
@@ -85,19 +88,15 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
         }
 
         // Security: Path Traversal Mitigation
-        // We use path.basename() to strip all directory information
-        // from the user-provided 'imageName'.
-        // This prevents requests like '../other_series/image.jpg'
         const cleanImageName = path.basename(imageName);
 
         // Construct the absolute file path
-        // path.resolve() turns our relative DB path into an absolute one
         const relativePath = path.join(
           volume.filePath,
           cleanImageName
         );
 
-        // Check if file exists before sending
+        // Check if file exists using normalization helper
         const validPath = await resolveNormalizedPath(fastify.projectRoot, relativePath);
 
         if (!validPath) {
@@ -108,9 +107,7 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           });
         }
 
-        // 5. Securely stream the file
-        // 'reply.sendFile' handles Content-Type, ETag, and
-        // range requests automatically.
+        // Stream the file
         return reply.sendFile(validPath);
 
       } catch (error) {
@@ -138,7 +135,10 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
         const series = await fastify.prisma.series.findFirst({
           where: {
             id: seriesId,
-            ownerId: userId,
+            OR: [
+              { ownerId: userId },
+              { ownerId: 'admin' }
+            ]
           },
           select: {
             coverPath: true,
