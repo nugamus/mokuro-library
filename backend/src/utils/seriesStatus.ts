@@ -1,4 +1,4 @@
-import { PrismaClient } from '../generated/prisma/client'; // Adjust path if needed
+import { ExtendedPrismaClient } from '../lib/prisma';
 
 /**
  * Recalculates the "Read Status" for a user on a specific series.
@@ -11,7 +11,7 @@ import { PrismaClient } from '../generated/prisma/client'; // Adjust path if nee
  * @param seriesId The ID of the series to check
  */
 export async function updateSeriesStatus(
-  prisma: PrismaClient,
+  prisma: ExtendedPrismaClient,
   userId: string,
   seriesId: string
 ) {

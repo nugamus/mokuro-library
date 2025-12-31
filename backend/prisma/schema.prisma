@@ -99,7 +99,7 @@ model Volume {
 }
 
 model Patch {
-  id          String   @id // ULID (generated via middleware)
+  id          String     @id @default(ulid())
 
   // --- The Tree Structure ---
   parentId    String?
@@ -139,7 +139,7 @@ model Patch {
 }
 
 model OcrBranch {
-  id          String   @id // ULID
+  id          String     @id @default(cuid())
 
   volumeId    String
   userId      String   // Owner of this branch

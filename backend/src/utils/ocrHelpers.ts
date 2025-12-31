@@ -5,6 +5,7 @@ import { PatchApplicator } from '../lib/PatchApplicator';
 import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
 import { OcrBranch, PrismaClient } from '../generated/prisma/client';
+import { ExtendedPrismaClient } from '../lib/prisma';
 
 // ============================================================================
 // LOW-LEVEL HELPERS
@@ -46,7 +47,7 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
 
 // --- Helper: Fetch Ancestry Chain (CTE) ---
 // Returns patches from startId walking up to (but not including) stopId
-export async function fetchAncestryChain(prisma: PrismaClient, startId: string, stopId: string | null = null) {
+export async function fetchAncestryChain(prisma: ExtendedPrismaClient, startId: string, stopId: string | null = null) {
   return await prisma.$queryRaw<any[]>`
     WITH RECURSIVE chain AS (
       SELECT * FROM "Patch" WHERE id = ${startId}

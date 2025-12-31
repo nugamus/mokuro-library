@@ -2,16 +2,17 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { ensureAdminBranch, ensureUserBranch, syncSnapshot } from '../utils/ocrHelpers';
 import { PatchInverter } from '../lib/PatchInverter';
+import { RebaseEngine } from '../lib/rebase/RebaseEngine';
 import { ApplyPatchResponse, UndoResponse, RedoResponse, PatchOperation } from '../types/history';
 
 // --- Zod Schemas ---
 
 const patchOperationSchema = z.object({
   op: z.enum(['replace', 'add', 'remove', 'reorder_lines', 'reorder_blocks']),
-  path: z.string().regex(/^\/pages\/\d+\/.*/, "Path must start with /pages/{n}/"),
+  path: z.string().regex(/^\/pages\/\d+\/.+/, "Path must start with /pages/{n}/ and have content"),
   value: z.any().optional(),
   old_value: z.any().optional(),
-  new_order: z.array(z.number()).optional(),
+  new_order: z.array(z.number().int().nonnegative()).optional(),
 }).superRefine((data, ctx) => {
   // Conditional Validation Logic (Spec 3.3)
   if ((data.op === 'add' || data.op === 'replace') && data.value === undefined) {
@@ -23,6 +24,14 @@ const patchOperationSchema = z.object({
   if ((data.op === 'reorder_lines' || data.op === 'reorder_blocks') && !data.new_order) {
     ctx.addIssue({ code: 'custom', message: "New_order is required for reorder operations", path: ['new_order'] });
   }
+  // Validate new_order is a valid permutation
+  if (data.new_order) {
+    const sorted = [...data.new_order].sort((a, b) => a - b);
+    const isValidPermutation = sorted.every((v, i) => v === i);
+    if (!isValidPermutation) {
+      ctx.addIssue({ code: 'custom', message: "new_order must be a valid permutation (0 to n-1)", path: ['new_order'] });
+    }
+  }
 });
 
 const patchBodySchema = z.object({
@@ -33,6 +42,23 @@ const patchBodySchema = z.object({
 // Schema for Undo/Redo which only require the version
 const versionBodySchema = z.object({
   branchVersion: z.number().int().nonnegative(),
+});
+
+// --- Rebase Schemas ---
+
+const rebaseStartSchema = z.object({
+  targetHeadId: z.string().optional(), // Client may send this for consistency checks, though Engine determines it
+});
+
+const rebaseContinueSchema = z.object({
+  rebaseId: z.string(),
+  adminPatchId: z.string(),
+  patchId: z.string(),
+  resolution: z.enum(['keep_admin', 'keep_mine']),
+});
+
+const rebaseAbortSchema = z.object({
+  rebaseId: z.string(),
 });
 
 const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
@@ -75,80 +101,67 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         const snapshotPatchId = userBranch.snapshotPatchId;
 
         // Check if snapshot is "in the future" (ahead of HEAD)
-        // This is our safety check for potential data loss
         const isSnapshotAhead = snapshotPatchId && snapshotPatchId > headPatchId;
 
-        const ensureSnapshotSafe = async () => {
-          if (isSnapshotAhead) {
-            fastify.log.info(`[Patch] Snapshot ahead of HEAD (${snapshotPatchId} > ${headPatchId}). Syncing back before write.`);
-            // Sync snapshot back to HEAD
-            await syncSnapshot(fastify, volume.mokuroPath, userBranch);
+        // Sync snapshot before transaction if needed (file I/O outside transaction)
+        if (isSnapshotAhead) {
+          fastify.log.info(`[Patch] Snapshot ahead of HEAD (${snapshotPatchId} > ${headPatchId}). Syncing back before write.`);
+          await syncSnapshot(fastify, volume.mokuroPath, userBranch);
+        }
+
+        // 4. Execute all DB operations in a transaction
+        const result = await fastify.prisma.$transaction(async (tx) => {
+          // CASE 1: Root is NULL (Clean state -> Fork)
+          // No deletion needed
+
+          // CASE 2: Root > Head (User undid past their own root -> Re-fork)
+          if (rootPatchId && rootPatchId > headPatchId) {
+            await tx.patch.delete({ where: { id: rootPatchId } });
           }
-        };
 
-        // --- THE FULL CHECK LOGIC ---
+          // CASE 3: Head has children (User undid within branch -> Wipe Future)
+          else if (rootPatchId) {
+            const children = await tx.patch.findMany({
+              where: { parentId: headPatchId },
+              select: { id: true }
+            });
+            if (children.length > 1) fastify.log.warn(`User branch shouldn't have multiple leaves: ${userBranch.id}`);
 
-        // CASE 1: Root is NULL (Clean state -> Fork)
-        if (!rootPatchId) {
-          await ensureSnapshotSafe();
-          // New patch will become ROOT and HEAD
-        }
-
-        // CASE 2: Root > Head (User undid past their own root -> Re-fork)
-        else if (rootPatchId > headPatchId) {
-          await ensureSnapshotSafe();
-          // The old private branch (starting at Root) is abandoned. Delete it.
-          await fastify.prisma.patch.delete({ where: { id: rootPatchId } });
-          // New patch will become ROOT and HEAD
-        }
-
-        // CASE 3: Head has children (User undid within branch -> Wipe Future)
-        else {
-          const children = await fastify.prisma.patch.findMany({
-            where: { parentId: headPatchId },
-            select: { id: true }
-          });
-          if (children.length > 1) fastify.log.warn(`User branch shouldn't have multiple leaves: ${userBranch.id}`);
-
-          // If children exist, user undid and is now editing -> wipe future
-          if (children.length > 0) {
-            await ensureSnapshotSafe();
-            // Delete each child (cascade handles grandchildren)
             for (const child of children) {
-              await fastify.prisma.patch.delete({ where: { id: child.id } });
+              await tx.patch.delete({ where: { id: child.id } });
             }
           }
-        }
 
-        // 4. Create the New Patch
-        const newPatch = await fastify.prisma.patch.create({
-          data: {
-            volumeId,
-            userId,
-            parentId: headPatchId,
-            operation: JSON.stringify(operation),
-          }
-        });
+          // Create the New Patch
+          const newPatch = await tx.patch.create({
+            data: {
+              volumeId,
+              userId,
+              parentId: headPatchId,
+              operation: JSON.stringify(operation),
+            }
+          });
 
-        // 5. Update Branch Pointers
-        // If Root is NULL or we just deleted the old Root, the new patch is the new Root.
-        // Otherwise, keep existing Root.
-        const shouldSetNewRoot = !rootPatchId || (rootPatchId > headPatchId);
-        const finalRootId = shouldSetNewRoot ? newPatch.id : rootPatchId;
+          // Update Branch Pointers
+          const shouldSetNewRoot = !rootPatchId || (rootPatchId > headPatchId);
+          const finalRootId = shouldSetNewRoot ? newPatch.id : rootPatchId;
 
-        const updatedBranch = await fastify.prisma.ocrBranch.update({
-          where: { id: userBranch.id },
-          data: {
-            headPatchId: newPatch.id,
-            rootPatchId: finalRootId,
-            version: { increment: 1 }
-          }
+          const updatedBranch = await tx.ocrBranch.update({
+            where: { id: userBranch.id },
+            data: {
+              headPatchId: newPatch.id,
+              rootPatchId: finalRootId,
+              version: { increment: 1 }
+            }
+          });
+
+          return { newPatch, updatedBranch };
         });
 
         const response: ApplyPatchResponse = {
           success: true,
-          newHeadId: newPatch.id,
-          newVersion: updatedBranch.version,
+          newHeadId: result.newPatch.id,
+          newVersion: result.updatedBranch.version,
           patch: operation
         };
 
@@ -197,10 +210,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         }
 
         const operation = JSON.parse(currentPatch.operation) as PatchOperation;
-        if (operation.path === 'genesis') {
-          return reply.status(400).send({ message: 'Cannot undo genesis.' });
-        }
-
         const inversePatch = PatchInverter.invert(operation);
         const newHeadId = currentPatch.parentId;
 
@@ -312,6 +321,142 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       } catch (error: any) {
         fastify.log.error(error);
         return reply.status(500).send({ message: error.message || 'Failed to redo' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/library/volumes/:volumeId/rebase/start
+   */
+  fastify.post<{ Params: { volumeId: string }, Body: z.infer<typeof rebaseStartSchema> }>(
+    '/volumes/:volumeId/rebase/start',
+    async (request, reply) => {
+      const { volumeId } = request.params;
+      const parseResult = rebaseStartSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({ message: 'Invalid request body', errors: parseResult.error });
+      }
+
+      const userId = request.user.id;
+
+      try {
+        const volume = await fastify.prisma.volume.findUnique({ where: { id: volumeId } });
+        if (!volume) return reply.status(404).send({ message: 'Volume not found' });
+
+        const adminBranch = await ensureAdminBranch(fastify, volumeId, volume.mokuroPath);
+        // Ensure user branch exists before rebasing
+        await ensureUserBranch(fastify, volumeId, userId, adminBranch);
+
+        const engine = new RebaseEngine(fastify);
+        const result = await engine.start(volumeId, userId);
+
+        if (result.status === 'complete') {
+          // Fetch the updated branch to get the new HEAD
+          const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
+            where: { volumeId_userId: { volumeId, userId } }
+          });
+          return reply.send({
+            status: 'complete',
+            newHeadId: updatedBranch?.headPatchId
+          });
+        } else {
+          return reply.send(result);
+        }
+
+      } catch (error: any) {
+        fastify.log.error(error);
+        return reply.status(500).send({ message: error.message || 'Failed to start rebase' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/library/volumes/:volumeId/rebase/continue
+   */
+  fastify.post<{ Params: { volumeId: string }, Body: z.infer<typeof rebaseContinueSchema> }>(
+    '/volumes/:volumeId/rebase/continue',
+    async (request, reply) => {
+      const { volumeId } = request.params;
+      const parseResult = rebaseContinueSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({ message: 'Invalid request body', errors: parseResult.error });
+      }
+      const { rebaseId, adminPatchId, patchId, resolution } = request.body;
+      const userId = request.user.id;
+
+      try {
+        // Verify session belongs to this user
+        const session = await fastify.prisma.rebaseSession.findUnique({
+          where: { id: rebaseId },
+          include: { branch: true }
+        });
+        if (!session) {
+          return reply.status(404).send({ message: 'Rebase session not found' });
+        }
+        if (session.branch.userId !== userId) {
+          return reply.status(403).send({ message: 'Not authorized to continue this rebase session' });
+        }
+
+        const engine = new RebaseEngine(fastify);
+        const result = await engine.continue(rebaseId, {
+          adminPatchId,
+          patchId,
+          resolution
+        });
+
+        if (result.status === 'complete') {
+          // Fetch the updated branch to get the new HEAD
+          const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
+            where: { volumeId_userId: { volumeId, userId } }
+          });
+          return reply.send({
+            status: 'complete',
+            newHeadId: updatedBranch?.headPatchId
+          });
+        } else {
+          return reply.send(result);
+        }
+
+      } catch (error: any) {
+        fastify.log.error(error);
+        return reply.status(500).send({ message: error.message || 'Failed to continue rebase' });
+      }
+    }
+  );
+
+  /**
+   * POST /api/library/volumes/:volumeId/rebase/abort
+   */
+  fastify.post<{ Params: { volumeId: string }, Body: z.infer<typeof rebaseAbortSchema> }>(
+    '/volumes/:volumeId/rebase/abort',
+    async (request, reply) => {
+      const { volumeId } = request.params;
+      const parseResult = rebaseAbortSchema.safeParse(request.body);
+      if (!parseResult.success) {
+        return reply.status(400).send({ message: 'Invalid request body', errors: parseResult.error });
+      }
+      const { rebaseId } = request.body;
+      const userId = request.user.id;
+
+      try {
+        // Verify session belongs to this user
+        const session = await fastify.prisma.rebaseSession.findUnique({
+          where: { id: rebaseId },
+          include: { branch: true }
+        });
+        if (!session) {
+          return reply.status(404).send({ message: 'Rebase session not found' });
+        }
+        if (session.branch.userId !== userId) {
+          return reply.status(403).send({ message: 'Not authorized to abort this rebase session' });
+        }
+
+        const engine = new RebaseEngine(fastify);
+        await engine.abort(rebaseId);
+        return reply.send({ status: 'aborted' });
+      } catch (error: any) {
+        fastify.log.error(error);
+        return reply.status(500).send({ message: error.message || 'Failed to abort rebase' });
       }
     }
   );

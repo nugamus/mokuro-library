@@ -1,6 +1,6 @@
 import { PrismaClient, Prisma } from '../generated/prisma/client';
 import { FastifyReply, FastifyRequest } from 'fastify';
-import { ExtendedPrismaClient } from './lib/prisma';
+import { ExtendedPrismaClien } from './lib/prisma';
 
 // Define the shape of the user data we'll attach to the request
 export type AuthUser = {
@@ -12,7 +12,7 @@ export type AuthUser = {
 // This declaration merges with Fastify's existing types
 declare module 'fastify' {
   export interface FastifyInstance {
-    prisma: ExtendedPrismaClient;
+    // prisma is declared in lib/prisma.ts
     projectRoot: string;
     // Our custom authentication hook
     authenticate: (

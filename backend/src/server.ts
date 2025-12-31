@@ -1,7 +1,5 @@
 import 'dotenv/config'; // important to make environment variables available to the server
 import Fastify from 'fastify';
-import { prisma } from './lib/prisma';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { ensureAdminUser } from './utils/bootstrap';
 
 import fastifyCookie from '@fastify/cookie';
@@ -21,7 +19,7 @@ import libraryRoutes from './routes/library';
 import filesRoutes from './routes/files';
 import exportRoutes from './routes/export';
 import ocrRoutes from './routes/ocr';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from './lib/prisma';
 
 
 // Initialize Fastify server
@@ -88,7 +86,7 @@ fastify.register(ocrRoutes, { prefix: '/api/library' });
 fastify.get('/api/health', async (request, reply) => {
   try {
     // Test database connection
-    await prisma.$queryRaw`SELECT 1`;
+    await fastify.prisma.$queryRaw`SELECT 1`;
     return { status: 'ok', db: 'connected' };
   } catch (error) {
     fastify.log.error(error);

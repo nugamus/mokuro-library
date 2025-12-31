@@ -255,7 +255,7 @@ export class RebaseEngine {
       prevId = newId;
     }
 
-    await this.prisma.$transaction(async (tx: PrismaClient) => {
+    await this.prisma.$transaction(async (tx) => {
       if (newPatchesData.length > 0) {
         await tx.patch.createMany({ data: newPatchesData });
       }

@@ -1,4 +1,4 @@
-import { FastifyPluginAsync, FastifyReply } from 'fastify';
+import { FastifyPluginAsync } from 'fastify';
 import { pipeline, Readable } from 'stream';
 import util from 'util';
 import fs from 'fs';
@@ -7,7 +7,6 @@ import { updateSeriesStatus } from '../utils/seriesStatus';
 import { Prisma } from '../generated/prisma/client';
 import { FastifyInstance } from 'fastify/types/instance';
 import {
-  getComputedMokuroState,
   deleteBranchSnapshots,
   ensureAdminBranch,
   ensureUserBranch,
