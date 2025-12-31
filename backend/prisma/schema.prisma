@@ -130,6 +130,10 @@ model Patch {
   asHeadOf    OcrBranch[]   @relation("BranchHead")
   asRootOf    OcrBranch[]   @relation("BranchRoot")
 
+  // Pointers from rebase session
+  rebaseSessionsAsTarget   RebaseSession[] @relation("RebaseTarget")
+  rebaseSessionsAsSnapshot RebaseSession[] @relation("RebaseSnapshot")
+
   @@index([volumeId])
   @@index([parentId])
 }
@@ -160,7 +164,9 @@ model OcrBranch {
 
   // --- Concurrency ---
   version     Int      @default(0)     // Optimistic Locking Counter
-  isFloating  Boolean  @default(false) // True during rebase operations
+
+  // --- Rebase ---
+  rebaseSession RebaseSession?
 
   // --- Metadata ---
   updatedAt   DateTime @updatedAt
@@ -247,4 +253,27 @@ model Submission {
 
   @@index([userId])
   @@index([status])
+}
+
+model RebaseSession {
+  id              String     @id @default(cuid())
+
+  // The branch being rebased
+  branchId        String     @unique
+  branch          OcrBranch  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  // The target we are moving ONTO (Admin's Head at start of rebase)
+  targetHeadPatchId String
+  targetHeadPatch   Patch    @relation("RebaseTarget", fields: [targetHeadPatchId], references: [id], onDelete: Cascade)
+
+  // The state of the user's branch at start (Safety check & Reference)
+  headPatchIdSnapshot String
+  headPatchSnapshot   Patch  @relation("RebaseSnapshot", fields: [headPatchIdSnapshot], references: [id], onDelete: Cascade)
+
+  // Store the user's decisions as a JSON array
+  // Type: Array<{ patchId: string, resolution: 'keep_admin' | 'keep_mine' | 'resurrect' }>
+  resolutions     String     @default("[]") 
+
+  updatedAt       DateTime   @updatedAt
+  expiresAt       DateTime
 }
