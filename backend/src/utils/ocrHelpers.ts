@@ -4,7 +4,7 @@ import fs from 'fs';
 import { PatchApplicator } from '../lib/PatchApplicator';
 import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
-import { OcrBranch } from '../generated/prisma/client';
+import { OcrBranch, PrismaClient } from '../generated/prisma/client';
 
 // ============================================================================
 // LOW-LEVEL HELPERS
@@ -46,8 +46,8 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
 
 // --- Helper: Fetch Ancestry Chain (CTE) ---
 // Returns patches from startId walking up to (but not including) stopId
-export async function fetchAncestryChain(fastify: FastifyInstance, startId: string, stopId: string | null = null) {
-  return await fastify.prisma.$queryRaw<any[]>`
+export async function fetchAncestryChain(prisma: PrismaClient, startId: string, stopId: string | null = null) {
+  return await prisma.$queryRaw<any[]>`
     WITH RECURSIVE chain AS (
       SELECT * FROM "Patch" WHERE id = ${startId}
       UNION ALL
@@ -67,7 +67,7 @@ export async function regenerateFromGenesis(
   branchId: string
 ): Promise<MokuroData> {
   fastify.log.warn(`Regenerating snapshot from GENESIS for branch ${branchId}`);
-  const history = await fetchAncestryChain(fastify, targetPatchId, null);
+  const history = await fetchAncestryChain(fastify.prisma, targetPatchId, null);
   const data = await loadOriginalMokuro(fastify, mokuroPath);
 
   // Replay (Reverse: Genesis -> Target)
@@ -137,7 +137,7 @@ export async function syncSnapshot(
   fastify.log.info(`Syncing snapshot ${startPatchId} -> ${endPatchId} (${isForward ? 'forward' : 'backward'})`);
 
   if (isForward) {
-    const chain = await fetchAncestryChain(fastify, endPatchId, startPatchId);
+    const chain = await fetchAncestryChain(fastify.prisma, endPatchId, startPatchId);
 
     const last = chain[chain.length - 1];
     if (!last || last.parentId !== startPatchId) {
@@ -156,7 +156,7 @@ export async function syncSnapshot(
       }
     }
   } else {
-    const chain = await fetchAncestryChain(fastify, startPatchId, endPatchId);
+    const chain = await fetchAncestryChain(fastify.prisma, startPatchId, endPatchId);
 
     const last = chain[chain.length - 1];
     if (!last || last.parentId !== endPatchId) {
