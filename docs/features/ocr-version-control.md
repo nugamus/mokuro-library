@@ -503,22 +503,39 @@ WHERE id = :userBranchId AND version = :currentVersion
 
 ### 5.5 Conflict Resolution
 
-All conflict resolution follows a unified pattern:
-1. Delete or transform the conflicting patch
-2. Propagate the appropriate effect to subsequent patches
+#### Unified Model
+
+Every conflict has an **incoming effect** from an admin patch. There are always two resolution paths:
+
+| Resolution | What Happens | Effect |
+|------------|--------------|--------|
+| **Skip / Keep Admin** | Delete user patch | Effect propagates forward (breaks through) |
+| **Keep Mine** | Transform user patch to absorb effect | Propagation stops (absorbed) |
+
+Some conflicts only allow Skip (no valid transformation exists).
+
+#### Transform to Absorb (by conflict type)
+
+| Conflict | Incoming Effect | Transform to Absorb |
+|----------|-----------------|---------------------|
+| Dead Zone | Delete shift (-1) | Resurrect: convert to insert (+1 cancels -1) |
+| Double Delete | Delete shift (-1) | N/A (always skip, operation was redundant) |
+| Reorder + Length Change | Shift | N/A (permutation invalid for new length) |
+| Competing Reorders | `A⁻¹` | Transform to `A⁻¹ * U` |
+| Content Conflict | Value change | Update `old_value` to admin's `value` |
 
 #### Conflict Types and Resolutions
 
-| Conflict Type | Resolution Options | Effect Propagated |
-|---------------|-------------------|-------------------|
-| **Dead Zone** (admin deleted block user edited) | **Skip:** Delete user patch | Admin's delete shift continues |
-| | **Resurrect:** Transform to insert with user's content | Insert cancels admin's delete shift |
-| **Double Delete** (both deleted same block) | **Skip:** Delete user patch | Cancels admin's delete shift (redundant operation) |
-| **Reorder + Length Change** (admin added/removed, user reordered) | **Skip:** Delete user patch | `U` (user's intended reorder, since `A = I`) |
-| **Competing Reorders** (both reordered same array) | **Keep Admin:** Delete user patch | `A_inv * U` |
-| | **Keep Mine:** Transform to `A_inv * U` | `I` (identity, no further effect) |
-| **Content Conflict** (both edited same field) | **Keep Admin:** Delete user patch | No structural effect |
-| | **Keep Mine:** Keep user patch as-is | No structural effect (user's value overwrites admin's) |
+| Conflict Type | Incoming Effect | Resolution Options | Effect After Resolution |
+|---------------|-----------------|-------------------|------------------------|
+| **Dead Zone** (admin deleted block user edited) | Admin's delete shift (-1) | **Skip:** Delete user patch | Admin's delete shift continues (-1) |
+| | | **Resurrect:** Transform to insert with user's content | Insert cancels admin's delete (+1 cancels -1 = 0) |
+| **Double Delete** (both deleted same block) | Admin's delete shift (-1) | **Skip:** Delete user patch | Shift cancelled (user's delete was redundant, 0) |
+| **Reorder + Length Change** (admin added/removed, user reordered) | Admin's insert/delete shift | **Skip:** Delete user patch | Propagate `shift * U` (permute by user's intent, then apply shift with dead zone) |
+| **Competing Reorders** (both reordered same array) | Admin's reorder `A⁻¹` | **Keep Admin:** Delete user patch | Propagate `A⁻¹ * U` (undo admin, apply user intent) |
+| | | **Keep Mine:** Transform user patch to `A⁻¹ * U` | Identity (no further effect) |
+| **Content Conflict** (both edited same field) | Admin's content change | **Keep Admin:** Delete user patch | Propagate continues (breaks through) |
+| | | **Keep Mine:** Update user patch `old_value` to admin's `value` | Absorbed |
 
 #### Permutation Math
 
@@ -587,7 +604,7 @@ All volume-related endpoints are under `/api/library/volumes/`.
   "patch": { "op": "replace", "path": "/pages/0/blocks/1/lines/0/text", "value": "...", "old_value": "..." }
 }
 ```
-The `patch` field echoes back the operation with any server-side additions (e.g., normalized values).
+The `patch` field echoes back the operation for client-side consistency.
 * **Errors:**
   - `400`: Validation failed
   - `409`: Version mismatch (concurrent edit)
