@@ -59,20 +59,21 @@ export type Effect =
 // --- 2. Conflicts & Resolutions ---
 
 export type ConflictReason =
-  | 'dead_zone'
-  | 'double_delete'
-  | 'reorder_collision'
-  | 'content_conflict'
-  | 'reorder_length_mismatch';
+  | 'shift_down_into_add'    // Auto: direct_hit shift_down + add
+  | 'effect_shift'           // Auto: descendant_hit, user add/reorder shifts effect
+  | 'double_delete'          // Auto: both deleted same thing
+  | 'dead_zone'              // User choice: admin deleted, user edited inside
+  | 'reverse_dead_zone'      // User choice: admin edited inside, user deleted
+  | 'reorder_collision'      // User choice: both reordered same array
+  | 'content_conflict';      // User choice: both edited same field
 
 export interface Conflict {
   reason: ConflictReason;
-  path: string;
   userPatch: ExtendedPatch;
   adminPatch: ExtendedPatch;
 }
 
-export type ResolutionType = 'keep_admin' | 'keep_mine' | 'resurrect';
+export type ResolutionType = 'keep_admin' | 'keep_mine';
 
 export interface Resolution {
   adminPatchId: string;
@@ -82,21 +83,25 @@ export interface Resolution {
 
 // --- 3. Engine Output ---
 
-export type TransformResult = {
-  success: true;
-  op: PatchOperation | null;
-  effect: Effect;
-  hadConflict: boolean;
-} | {
-  success: false;
-  conflict: Conflict;
-};
+export type TransformResult =
+  | {
+    success: true;
+    op: PatchOperation | null;
+    effect: Effect;
+    hadConflict: boolean;
+  }
+  | {
+    success: false;
+    conflict: Conflict;
+  };
 
-export type RebaseResult = {
-  status: 'complete';
-  finalPatches?: PatchOperation[];
-} | {
-  status: 'paused';
-  rebaseId: string;
-  conflict: Conflict;
-};
+export type RebaseResult =
+  | {
+    status: 'complete';
+    finalPatches?: PatchOperation[];
+  }
+  | {
+    status: 'paused';
+    rebaseId: string;
+    conflict: Conflict;
+  };

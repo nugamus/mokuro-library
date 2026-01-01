@@ -4,7 +4,10 @@ import {
   TransformResult,
   ResolutionType,
   ConflictReason,
-  ExtendedPatch
+  ExtendedPatch,
+  ShiftUpEffect,
+  ShiftDownEffect,
+  PermuteEffect
 } from '../../types/rebase';
 import { PathUtils, Permutation } from './rebaseUtils';
 
@@ -28,7 +31,7 @@ export class PatchTransformer {
     }
 
     // --- 2. Intersection Check ---
-    const relation = this.checkIntersection(userOp.path, effect);
+    const relation = this.checkIntersection(userOp, effect);
 
     // --- 3. No Hit: Passthrough ---
     if (relation === 'no_hit') {
@@ -37,8 +40,8 @@ export class PatchTransformer {
 
     // --- 4. Patch Shift: Auto-transform path ---
     if (relation === 'sibling_hit') {
-      const newOp = this.applyPathTransform(userOp, effect);
-      return { success: true, op: newOp, effect, hadConflict: false };
+      const { op: newOp, effect: newEffect } = this.handleSiblingHit(userOp, effect as ShiftUpEffect | ShiftDownEffect | PermuteEffect);
+      return { success: true, op: newOp, effect: newEffect, hadConflict: false };
     }
 
     // --- 5. Determine Conflict ---
@@ -65,7 +68,7 @@ export class PatchTransformer {
   }
 
   private static checkIntersection(
-    userPath: string,
+    userOp: PatchOperation,
     effect: Effect
   ): 'no_hit' | 'sibling_hit' | 'direct_hit' | 'ancestor_hit' | 'descendant_hit' {
 
@@ -79,19 +82,27 @@ export class PatchTransformer {
       if (effect.permutation) {
         index = Permutation.mapIndex(Permutation.invert(effect.permutation), index);
       }
-      affectedPath = `${effect.path === '/' ? '' : effect.path}/${index}`;
+      affectedPath = `${effect.path}/${index}`;
+    } else if (effect.type === 'permute') {
+      affectedPath = `${effect.path}/-1`;
     } else {
       affectedPath = effect.path;
     }
 
-    // Direct hit: same path
-    if (userPath === affectedPath) return 'direct_hit';
+    let userPath = userOp.op === 'reorder' ? `${userOp.path}/-1` : userOp.path;
 
-    // Ancestor hit: user path is inside affected path
-    if (PathUtils.isDescendant(userPath, affectedPath)) return 'ancestor_hit';
+    // shift_up can only hit gaps (i.e. sibling_hit or descendant_hit)
+    if (effect.type !== 'shift_up') {
+      // Direct hit: same path
+      if (userPath === affectedPath) return 'direct_hit';
+
+      // Ancestor hit: user path is inside affected path
+      if (PathUtils.isDescendant(userPath, affectedPath)) return 'ancestor_hit';
+    }
 
     // Descendant hit: affected path is inside user path
     if (PathUtils.isDescendant(affectedPath, userPath)) return 'descendant_hit';
+
 
     // Sibling hit: user is in same array (for shift/permute effects)
     if (effect.type === 'shift_up' || effect.type === 'shift_down' || effect.type === 'permute') {
@@ -114,40 +125,33 @@ export class PatchTransformer {
     effect: Effect,
     relation: 'direct_hit' | 'ancestor_hit' | 'descendant_hit'
   ): ConflictReason {
-    // ancestor_hit: user op targets something inside effect's path
-    if (relation === 'ancestor_hit') {
-      if (effect.type === 'shift_down') {
-        if (userOp.op === 'add') return 'effect_shift';
-        return 'dead_zone';
-      }
-      if (effect.type === 'content') {
-        if (userOp.op === 'add') return 'effect_shift';
-      }
-    }
 
-    // descendant_hit: effect targets something inside user op's path
-    if (relation === 'descendant_hit') {
-      if (effect.type === 'content' && userOp.op === 'remove') {
-        return 'reverse_dead_zone';
-      }
-    }
-
+    // --- direct_hit ---
     if (relation === 'direct_hit') {
-      if (effect.type === 'shift_down' && userOp.op === 'remove') return 'double_delete';
-      if (effect.type === 'permute' && userOp.op.startsWith('reorder')) return 'reorder_collision';
-      if (effect.type === 'content') return 'content_conflict';
-      if ((effect.type === 'shift_up' || effect.type === 'shift_down') && userOp.op.startsWith('reorder')) {
-        return 'reorder_length_mismatch';
-      }
+      const directHitMap: Record<string, ConflictReason> = {
+        'shift_down:add': 'shift_down_into_add',
+        'shift_down:remove': 'double_delete',
+        'permute:reorder': 'reorder_collision',
+        'content:replace': 'content_conflict',
+      };
+      const key = `${effect.type}:${userOp.op}`;
+      if (directHitMap[key]) return directHitMap[key];
     }
 
-    return 'content_conflict';
+    // --- ancestor_hit ---
+    if (relation === 'ancestor_hit') {
+      if (effect.type === 'shift_down') return 'dead_zone';
+    }
+
+    // --- descendant_hit ---
+    if (relation === 'descendant_hit') {
+      if (userOp.op === 'add' || userOp.op === 'reorder') return 'effect_shift';
+      if (userOp.op === 'remove') return 'reverse_dead_zone';
+    }
+
+    throw new Error(`Unexpected conflict: relation=${relation}, effect=${effect.type}, op=${userOp.op}`);
   }
 
-  /**
-   * Auto-resolves conflicts that don't require user input.
-   * Returns null if conflict requires user resolution.
-   */
   private static tryAutoResolve(
     userPatch: ExtendedPatch,
     effect: Effect,
@@ -155,34 +159,60 @@ export class PatchTransformer {
   ): TransformResult | null {
     const userOp = userPatch.operation;
 
-    // Effect Shift: User's add shifts the effect
+    // shift_down_into_add: user adding at deleted index
+    // Handle permutation if present, bump effect index
+    if (reason === 'shift_down_into_add' && effect.type === 'shift_down') {
+      const newOp = structuredClone(userOp);
+      const newEffect = structuredClone(effect);
+
+      // If permutation exists, apply it to user's add path
+      if (newEffect.permutation) {
+        const segments = PathUtils.parse(userOp.path);
+        const index = parseInt(segments[segments.length - 1], 10);
+        const newIndex = Permutation.mapIndex(newEffect.permutation, index);
+        segments[segments.length - 1] = newIndex.toString();
+        newOp.path = PathUtils.compile(segments);
+      }
+
+      // Bump effect index
+      newEffect.index = newEffect.index + 1;
+
+      return {
+        success: true,
+        op: newOp,
+        effect: newEffect,
+        hadConflict: true
+      };
+    }
+
+    // effect_shift: user's add/reorder at ancestor shifts effect path
     if (reason === 'effect_shift') {
-      if (effect.type === 'shift_down') {
-        // User inserted at deleted index, shift dead zone index up
-        const newEffect = structuredClone(effect);
-        newEffect.index = effect.index + 1;
+      const newEffect = structuredClone(effect);
+
+      if (userOp.op === 'add') {
+        newEffect.path = this.shiftPath(newEffect.path, userOp.path);
+
         return {
           success: true,
-          op: userOp,  // Keep insert as-is
+          op: userOp,
           effect: newEffect,
           hadConflict: true
         };
       }
-      if (effect.type === 'content') {
-        // User inserted at ancestor of content path, shift content path
-        const newEffect = structuredClone(effect);
-        newEffect.path = this.shiftPath(effect.path, userOp.path);
+
+      if (userOp.op === 'reorder' && userOp.new_order) {
+        newEffect.path = this.permutePath(newEffect.path, userOp.path, userOp.new_order);
+
         return {
           success: true,
-          op: userOp,  // Keep insert as-is
+          op: userOp,
           effect: newEffect,
           hadConflict: true
         };
       }
     }
 
-    // Double Delete: Both deleted same item
-    // Skip user patch, effect nullified (already deleted)
+    // double_delete: both deleted same item, effect nullified
     if (reason === 'double_delete') {
       return {
         success: true,
@@ -192,93 +222,110 @@ export class PatchTransformer {
       };
     }
 
-    // Reorder + Length Change: Admin added/removed, user reordered
-    // Skip user patch, accumulate permutation onto effect
-    if (reason === 'reorder_length_mismatch' && (effect.type === 'shift_up' || effect.type === 'shift_down') && userOp.new_order) {
-      const existingPerm = effect.permutation ?? this.identityPermutation(userOp.new_order.length);
-      const accumulatedPerm = Permutation.compose(existingPerm, userOp.new_order);
-      const newEffect = structuredClone(effect);
-      newEffect.permutation = accumulatedPerm;
-      return {
-        success: true,
-        op: null,
-        effect: newEffect,
-        hadConflict: true
-      };
-    }
-
-    return null;  // Requires user resolution
+    return null;
   }
 
   /**
    * Shifts a path when an insert happens at an ancestor index.
-   * E.g., insert at /pages/0/blocks/1, content path /pages/0/blocks/2/lines/0 -> /pages/0/blocks/3/lines/0
+   * E.g., insert at /blocks/1, effect path /blocks/2/lines/0 -> /blocks/3/lines/0
    */
   private static shiftPath(effectPath: string, insertPath: string): string {
-    const effectSegments = PathUtils.parse(effectPath);
     const insertSegments = PathUtils.parse(insertPath);
-
-    // Find the index being inserted at (last segment of insertPath)
     const insertIndex = parseInt(insertSegments[insertSegments.length - 1], 10);
-    if (isNaN(insertIndex)) return effectPath;
+    const insertParentPath = PathUtils.compile(insertSegments.slice(0, -1));
 
-    // The parent path of the insert
-    const insertParentSegments = insertSegments.slice(0, -1);
-
-    // Check if effect path is under the same parent
-    if (effectSegments.length <= insertParentSegments.length) return effectPath;
-
-    // Check prefix matches
-    for (let i = 0; i < insertParentSegments.length; i++) {
-      if (effectSegments[i] !== insertParentSegments[i]) return effectPath;
+    if (!PathUtils.isDescendant(effectPath, insertParentPath)) {
+      throw new Error(`Effect path ${effectPath} is not descendant of insert parent ${insertParentPath}`);
     }
 
-    // Get the index in effect path at the same level as insert
-    const effectIndex = parseInt(effectSegments[insertParentSegments.length], 10);
-    if (isNaN(effectIndex)) return effectPath;
+    const relative = PathUtils.getRelativeSegments(effectPath, insertParentPath);
+    const effectIndex = parseInt(relative[0], 10);
 
-    // Shift if effect index >= insert index
     if (effectIndex >= insertIndex) {
-      effectSegments[insertParentSegments.length] = (effectIndex + 1).toString();
+      relative[0] = (effectIndex + 1).toString();
     }
 
-    return PathUtils.compile(effectSegments);
+    return insertParentPath === ''
+      ? '/' + relative.join('/')
+      : insertParentPath + '/' + relative.join('/');
   }
 
-  private static applyPathTransform(userOp: PatchOperation, effect: Effect): PatchOperation {
+  /**
+   * Permutes a path when a reorder happens at an ancestor.
+   * E.g., reorder at /blocks with [2,0,1], effect path /blocks/0/text -> /blocks/2/text
+   */
+  private static permutePath(effectPath: string, reorderPath: string, permutation: number[]): string {
+    if (!PathUtils.isDescendant(effectPath, reorderPath)) {
+      throw new Error(`Effect path ${effectPath} is not descendant of reorder path ${reorderPath}`);
+    }
+
+    const relative = PathUtils.getRelativeSegments(effectPath, reorderPath);
+    const effectIndex = parseInt(relative[0], 10);
+
+    const newIndex = Permutation.mapIndex(permutation, effectIndex);
+    if (newIndex === -1) {
+      throw new Error(`Invalid permutation mapping for index ${effectIndex}`);
+    }
+
+    relative[0] = newIndex.toString();
+
+    return reorderPath === ''
+      ? '/' + relative.join('/')
+      : reorderPath + '/' + relative.join('/');
+  }
+
+  private static handleSiblingHit(
+    userOp: PatchOperation,
+    effect: ShiftUpEffect | ShiftDownEffect | PermuteEffect
+  ): { op: PatchOperation | null; effect: Effect } {
     const newOp = structuredClone(userOp);
-    if (effect.type === 'shift_up' || effect.type === 'shift_down' || effect.type === 'permute') {
-      if (PathUtils.isDescendant(userOp.path, effect.path)) {
-        const segments = PathUtils.getRelativeSegments(userOp.path, effect.path);
-        let index = parseInt(segments[0], 10);
-        if (isNaN(index)) {
-          throw new Error(`Unexpected non-numeric path segment in ${userOp.path}`);
-        }
+    const newEffect = structuredClone(effect);
 
-        let newIndex = index;
+    // reorder + shift = reorder_length_mismatch (auto-resolve)
+    // Discard user's reorder, accumulate permutation onto effect
+    if (userOp.op === 'reorder') {
+      if (!userOp.new_order) throw Error(`Invalid user patch: reorder without new_order provided.`);
+      if (newEffect.type === 'shift_up' || newEffect.type === 'shift_down') {
+        const existingPerm = newEffect.permutation ?? this.identityPermutation(userOp.new_order.length);
+        newEffect.permutation = Permutation.compose(existingPerm, userOp.new_order);
+        return { op: null, effect: newEffect };
+      }
+      throw Error(`Unexpected reorder_collision in sibling_hit.`);
+    }
 
-        // Apply accumulated permutation first (if exists on shift effects)
-        if (effect.permutation) {
-          newIndex = Permutation.mapIndex(effect.permutation, index);
-          if (newIndex === -1) throw new Error(`Invalid permutation ${effect.permutation} applied to ${index}`);
+    // Normal path transform for shift/permute effects
+    if (PathUtils.isDescendant(userOp.path, effect.path)) {
+      const segments = PathUtils.getRelativeSegments(userOp.path, effect.path);
+      let index = parseInt(segments[0], 10);
+      if (isNaN(index)) {
+        throw new Error(`Unexpected non-numeric path segment in ${userOp.path}`);
+      }
 
-        }
+      let newIndex = index;
 
-        // Then apply shift (using newIndex, not index)
-        if (effect.type === 'shift_up') {
-          if (newIndex >= effect.index) newIndex = newIndex + 1;
-        } else if (effect.type === 'shift_down') {
-          if (newIndex > effect.index) newIndex = newIndex - 1;
-        }
-
-        if (newIndex !== index) {
-          segments[0] = newIndex.toString();
-          const prefix = effect.path === '/' ? '' : effect.path;
-          newOp.path = prefix + '/' + segments.join('/');
+      // Apply accumulated permutation first (if exists on shift effects)
+      if (newEffect.permutation) {
+        newIndex = Permutation.mapIndex(newEffect.permutation, index);
+        if (newIndex === -1) {
+          throw new Error(`Invalid permutation ${newEffect.permutation} applied to ${index}`);
         }
       }
+
+      // Then apply shift (using newIndex, not index)
+      if (effect.type === 'shift_up') {
+        if (newIndex >= effect.index) newIndex = newIndex + 1;
+      } else if (effect.type === 'shift_down') {
+        if (newIndex > effect.index) newIndex = newIndex - 1;
+      }
+
+      if (newIndex !== index) {
+        segments[0] = newIndex.toString();
+        const prefix = effect.path === '/' ? '' : effect.path;
+        newOp.path = prefix + '/' + segments.join('/');
+      }
     }
-    return newOp;
+
+    return { op: newOp, effect: newEffect };
   }
 
   private static resolveConflict(
@@ -289,19 +336,10 @@ export class PatchTransformer {
   ): TransformResult {
     const userOp = userPatch.operation;
 
-    const invalidResult = (): TransformResult => ({
-      success: false,
-      conflict: {
-        reason,
-        userPatch,
-        adminPatch: { id: 'unknown', parentId: null, operation: {} as any }
-      }
-    });
-
     // --- keep_admin ---
     if (resolution === 'keep_admin') {
-      // Dead Zone: discard user's edit, effect continues
-      if (reason === 'dead_zone' && effect.type === 'shift_down') {
+      // dead_zone: discard user's edit, effect continues
+      if (reason === 'dead_zone') {
         return {
           success: true,
           op: null,
@@ -310,24 +348,28 @@ export class PatchTransformer {
         };
       }
 
-      // Reverse Dead Zone: keep user's delete, effect absorbed
+      // Reverse Dead Zone: undo user's delete, effect becomes shift_up
       if (reason === 'reverse_dead_zone') {
-        // User deleted the item, admin's content edit is lost
-        // Need to transform user's remove path and create shift_up effect
-        const newOp = this.applyPathTransform(userOp, effect);
+        const segments = PathUtils.parse(userOp.path);
+        const removeIndex = parseInt(segments.pop() || '', 10);
+        const parentPath = PathUtils.compile(segments);
+
         return {
           success: true,
-          op: newOp,
-          effect: { type: 'identity', path: '/' },
+          op: null,  // Discard user's remove
+          effect: {
+            type: 'shift_up',
+            path: parentPath,
+            index: removeIndex
+          },
           hadConflict: true
         };
       }
 
-      // Reorder Collision: discard user's reorder, accumulate A⁻¹ * U
+      // reorder_collision: discard user's reorder, accumulate A⁻¹ * U
       if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.new_order) {
-        const accumulatedPerm = Permutation.compose(effect.permutation, userOp.new_order);
         const newEffect = structuredClone(effect);
-        newEffect.permutation = accumulatedPerm;
+        newEffect.permutation = Permutation.compose(effect.permutation, userOp.new_order);
         return {
           success: true,
           op: null,
@@ -336,7 +378,7 @@ export class PatchTransformer {
         };
       }
 
-      // Content Conflict: discard user's edit, effect continues
+      // content_conflict: discard user's edit, effect continues
       if (reason === 'content_conflict') {
         return {
           success: true,
@@ -345,13 +387,11 @@ export class PatchTransformer {
           hadConflict: true
         };
       }
-
-      return invalidResult();
     }
 
     // --- keep_mine ---
     if (resolution === 'keep_mine') {
-      // Dead Zone: resurrect deleted content with user's edit applied
+      // dead_zone: resurrect deleted content with user's edit applied
       if (reason === 'dead_zone' && effect.type === 'shift_down') {
         const restoredBlock = structuredClone(effect.deletedValue);
         const deletedItemPath = `${effect.path === '/' ? '' : effect.path}/${effect.index}`;
@@ -372,26 +412,29 @@ export class PatchTransformer {
         };
       }
 
-      // Reverse Dead Zone: undo user's delete, effect becomes shift_up
-      if (reason === 'reverse_dead_zone' && effect.type === 'content') {
-        // User's delete is discarded, we need to re-add the item
-        // The shift_up effect will propagate to subsequent patches
-        const removeIndex = parseInt(PathUtils.parse(userOp.path).pop() || '', 10);
-        const parentPath = PathUtils.compile(PathUtils.parse(userOp.path).slice(0, -1));
-
+      // Reverse Dead Zone: keep user's delete, effect absorbed
+      if (reason === 'reverse_dead_zone') {
         return {
           success: true,
-          op: null,  // Discard user's remove
-          effect: {
-            type: 'shift_up',
-            path: parentPath,
-            index: removeIndex
-          },
+          op: userOp,  // Keep user's remove
+          effect: { type: 'identity', path: '/' },
           hadConflict: true
         };
       }
 
-      // Content Conflict: update old_value to admin's value
+      // reorder_collision: transform user's reorder to A⁻¹ * U, effect absorbed
+      if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.new_order) {
+        const newOp = structuredClone(userOp);
+        newOp.new_order = Permutation.compose(effect.permutation, userOp.new_order);
+        return {
+          success: true,
+          op: newOp,
+          effect: { type: 'identity', path: '/' },
+          hadConflict: true
+        };
+      }
+
+      // content_conflict: update old_value to admin's value, effect absorbed
       if (reason === 'content_conflict' && effect.type === 'content') {
         const newOp = structuredClone(userOp);
         newOp.old_value = effect.newValue;
@@ -402,24 +445,10 @@ export class PatchTransformer {
           hadConflict: true
         };
       }
-
-      // Reorder Collision: transform to A⁻¹ * U
-      if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.new_order) {
-        const newOrder = Permutation.compose(effect.permutation, userOp.new_order);
-        const newOp = structuredClone(userOp);
-        newOp.new_order = newOrder;
-        return {
-          success: true,
-          op: newOp,
-          effect: { type: 'identity', path: '/' },
-          hadConflict: true
-        };
-      }
-
-      return invalidResult();
     }
 
-    return invalidResult();
+    // Fallback — should not reach here
+    throw new Error(`Unexpected resolution: reason=${reason}, resolution=${resolution}, effect=${effect.type}`);
   }
 
   private static identityPermutation(length: number): number[] {

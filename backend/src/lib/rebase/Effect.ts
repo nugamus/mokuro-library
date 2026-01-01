@@ -46,7 +46,7 @@ export class EffectFactory {
     }
 
     // 3. Reorder -> Permute (store as A⁻¹)
-    if ((opType === 'reorder_lines' || opType === 'reorder_blocks') && new_order) {
+    if (opType === 'reorder' && new_order) {
       return {
         type: 'permute',
         path: path,

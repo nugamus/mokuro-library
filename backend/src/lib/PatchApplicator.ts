@@ -26,7 +26,7 @@ export class PatchApplicator {
       const page = data.pages[pageIndex];
 
       // Reorder Blocks (/pages/0/blocks)
-      if (parts.length === 3 && op === 'reorder_blocks') {
+      if (parts.length === 3 && op === 'reorder') {
         this.reorderArray(page.blocks, patch.new_order!);
         return;
       }
@@ -59,7 +59,7 @@ export class PatchApplicator {
         const lineIndexRaw = parts[5];
 
         // Reorder Lines
-        if (!lineIndexRaw && op === 'reorder_lines') {
+        if (!lineIndexRaw && op === 'reorder') {
           this.reorderParallel(block.lines, block.lines_coords, patch.new_order!);
           return;
         }

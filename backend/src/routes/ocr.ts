@@ -8,7 +8,7 @@ import { ApplyPatchResponse, UndoResponse, RedoResponse, PatchOperation } from '
 // --- Zod Schemas ---
 
 const patchOperationSchema = z.object({
-  op: z.enum(['replace', 'add', 'remove', 'reorder_lines', 'reorder_blocks']),
+  op: z.enum(['replace', 'add', 'remove', 'reorder']),
   path: z.string().regex(/^\/pages\/\d+\/.+/, "Path must start with /pages/{n}/ and have content"),
   value: z.any().optional(),
   old_value: z.any().optional(),
@@ -21,7 +21,7 @@ const patchOperationSchema = z.object({
   if ((data.op === 'remove' || data.op === 'replace') && data.old_value === undefined) {
     ctx.addIssue({ code: 'custom', message: "Old_value is required for remove/replace", path: ['old_value'] });
   }
-  if ((data.op === 'reorder_lines' || data.op === 'reorder_blocks') && !data.new_order) {
+  if (data.op === 'reorder' && !data.new_order) {
     ctx.addIssue({ code: 'custom', message: "New_order is required for reorder operations", path: ['new_order'] });
   }
   // Validate new_order is a valid permutation

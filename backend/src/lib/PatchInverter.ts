@@ -33,7 +33,7 @@ export class PatchInverter {
     }
 
     // 4. Invert Reorder (Lines OR Blocks)
-    if (op === 'reorder_lines' || op === 'reorder_blocks') {
+    if (op === 'reorder') {
       // Inverse Permutation: If Order[i] = j, then Inverse[j] = i
       if (!new_order) throw new Error(`Missing new_order for ${op}`);
 
