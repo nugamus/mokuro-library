@@ -4,7 +4,6 @@ import path from 'path';
 import archiver from 'archiver';
 import PDFDocument from 'pdfkit';
 import { Volume, Series, UserSeriesSettings, UserProgress } from '../generated/prisma/client';
-import { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import { FastifyInstance, FastifyReply } from 'fastify';
 import { getComputedMokuroState } from '../utils/ocrHelpers';
@@ -22,15 +21,7 @@ interface SeriesParams {
 interface ExportQuery {
   include_images?: string;
   include_metadata?: string;
-  metadata_format?: MetadataFormat;
 }
-
-type MetadataFormat = 'mokuro' | 'comicinfo';
-
-export const normalizeMetadataFormat = (value?: string): MetadataFormat => {
-  if (value === 'comicinfo') return 'comicinfo';
-  return 'mokuro';
-};
 
 const escapeXml = (value: string) =>
   value
@@ -230,7 +221,7 @@ export const runWithConcurrency = async <T, R>(
 type BatchExportBody = {
   ids: string[];
   type: 'series' | 'volume';
-  options?: { include_images?: boolean; include_metadata?: boolean; metadata_format?: MetadataFormat };
+  options?: { include_images?: boolean; include_metadata?: boolean; };
 };
 
 const exportTickets = new Map<string, BatchExportBody>();
@@ -245,7 +236,6 @@ async function executeBatchExport(
   const { ids, type, options } = body;
   const includeImages = options?.include_images ?? true;
   const includeMetadata = options?.include_metadata ?? true;
-  const metadataFormat = normalizeMetadataFormat(options?.metadata_format);
 
   if (!ids || ids.length === 0) {
     // If we haven't sent headers yet, send error
@@ -290,7 +280,6 @@ async function executeBatchExport(
           userId,
           includeImages,
           includeMetadata,
-          metadataFormat
         );
       }
     } else if (type === 'volume') {
@@ -332,41 +321,16 @@ async function executeBatchExport(
       // process in series batches
       for (const [_, group] of seriesMap) {
         const { series, volumes } = group;
-        const seriesDir = series.folderName;
 
-        if (includeMetadata) {
-          if (metadataFormat === 'comicinfo') {
-            archive.append(buildComicInfoXml(series, undefined), {
-              name: path.join(seriesDir, 'ComicInfo.xml')
-            });
-          } else {
-            const metadata = generateSeriesMetadata(series, volumes, userId);
-            archive.append(JSON.stringify(metadata, null, 2), {
-              name: path.join(seriesDir, `${seriesDir}.json`)
-            });
-          }
-        }
-
-        if (series.coverPath) {
-          const absCover = path.join(fastify.projectRoot, series.coverPath);
-          if (fs.existsSync(absCover)) {
-            archive.file(absCover, { name: path.join(seriesDir, path.basename(series.coverPath)) });
-          }
-        }
-
-        for (const vol of volumes) {
-          await addVolumeToArchive(
-            fastify,
-            archive,
-            vol,
-            seriesDir,
-            userId,
-            includeImages,
-            includeMetadata,
-            metadataFormat,
-            series
-          );
-        }
+        await addSeriesToArchive(
+          fastify,
+          archive,
+          { ...series, volumes },
+          series.folderName,
+          userId,
+          includeImages,
+          includeMetadata
+        );
       }
     }
 
@@ -427,7 +391,6 @@ async function addVolumeToArchive(
   userId: string,
   includeImages: boolean,
   includeMetadata: boolean,
-  metadataFormat: MetadataFormat,
   seriesOverride?: Series & { userSettings?: UserSeriesSettings[] }
 ) {
   // 1. Add .mokuro file (Computed State)
@@ -443,7 +406,7 @@ async function addVolumeToArchive(
     // Optional: Add a text file explaining the error in the zip?
   }
 
-  if (includeMetadata && metadataFormat === 'comicinfo' && seriesOverride) {
+  if (includeMetadata && seriesOverride) {
     const info = buildComicInfoXml(seriesOverride, volume);
     archive.append(info, { name: path.join(basePath, volume.folderName, 'ComicInfo.xml') });
   }
@@ -466,20 +429,17 @@ async function addSeriesToArchive(
   userId: string,
   includeImages: boolean,
   includeMetadata: boolean,
-  metadataFormat: MetadataFormat
 ) {
   // 1. Metadata
   if (includeMetadata) {
-    if (metadataFormat === 'comicinfo') {
-      const info = buildComicInfoXml(series, undefined);
-      archive.append(info, { name: path.join(basePath, 'ComicInfo.xml') });
-    } else {
-      const metadata = generateSeriesMetadata(series, series.volumes, userId);
-      const jsonName = `${series.folderName}.json`;
-      archive.append(JSON.stringify(metadata, null, 2), {
-        name: path.join(basePath, jsonName)
-      });
-    }
+    const info = buildComicInfoXml(series, undefined);
+    const metadata = generateSeriesMetadata(series, series.volumes, userId);
+    const jsonName = `${series.folderName}.json`;
+
+    archive.append(info, { name: path.join(basePath, 'ComicInfo.xml') });
+    archive.append(JSON.stringify(metadata, null, 2), {
+      name: path.join(basePath, jsonName)
+    });
   }
 
   // 2. Series Cover
@@ -502,7 +462,6 @@ async function addSeriesToArchive(
       userId,
       includeImages,
       includeMetadata,
-      metadataFormat,
       series
     );
   }
@@ -526,7 +485,6 @@ const exportRoutes: FastifyPluginAsync = async (
       const userId = request.user.id;
       const includeImages = request.query.include_images !== 'false';
       const includeMetadata = request.query.include_metadata !== 'false';
-      const metadataFormat = normalizeMetadataFormat(request.query.metadata_format);
 
       // 1. Fetch Volume with Shared Access Logic
       const volume = await fastify.prisma.volume.findFirst({
@@ -563,16 +521,13 @@ const exportRoutes: FastifyPluginAsync = async (
       try {
         // 1. Add Metadata (Series Context)
         if (includeMetadata) {
-          if (metadataFormat === 'comicinfo') {
-            archive.append(buildComicInfoXml(volume.series, volume), {
-              name: 'ComicInfo.xml'
-            });
-          } else {
-            const metadata = generateSeriesMetadata(volume.series, [volume], userId);
-            archive.append(JSON.stringify(metadata, null, 2), {
-              name: `${volume.series.folderName}.json`
-            });
-          }
+          const metadata = generateSeriesMetadata(volume.series, [volume], userId);
+          archive.append(buildComicInfoXml(volume.series, volume), {
+            name: 'ComicInfo.xml'
+          });
+          archive.append(JSON.stringify(metadata, null, 2), {
+            name: `${volume.series.folderName}.json`
+          });
         }
 
         // 2. Add Volume Files (At Root)
@@ -584,7 +539,6 @@ const exportRoutes: FastifyPluginAsync = async (
           userId,
           includeImages,
           includeMetadata,
-          metadataFormat,
           volume.series
         );
 
@@ -673,7 +627,6 @@ const exportRoutes: FastifyPluginAsync = async (
       const userId = request.user.id;
       const includeImages = request.query.include_images !== 'false';
       const includeMetadata = request.query.include_metadata !== 'false';
-      const metadataFormat = normalizeMetadataFormat(request.query.metadata_format);
 
       // 1. Fetch Series with Shared Access Logic
       const series = await fastify.prisma.series.findFirst({
@@ -716,7 +669,6 @@ const exportRoutes: FastifyPluginAsync = async (
           userId,
           includeImages,
           includeMetadata,
-          metadataFormat
         );
         await archive.finalize();
       } catch (error) {
@@ -812,7 +764,6 @@ const exportRoutes: FastifyPluginAsync = async (
     const userId = request.user.id;
     const includeImages = request.query.include_images !== 'false';
     const includeMetadata = request.query.include_metadata !== 'false';
-    const metadataFormat = normalizeMetadataFormat(request.query.metadata_format);
 
     try {
       const allSeries = await fastify.prisma.series.findMany({
@@ -843,43 +794,15 @@ const exportRoutes: FastifyPluginAsync = async (
       reply.send(archive);
 
       for (const series of allSeries) {
-        const seriesRoot = series.folderName;
-
-        // 1. Generate Metadata
-        if (includeMetadata) {
-          if (metadataFormat === 'comicinfo') {
-            archive.append(buildComicInfoXml(series, undefined), {
-              name: path.join(seriesRoot, 'ComicInfo.xml')
-            });
-          } else {
-            const metadata = generateSeriesMetadata(series, series.volumes, userId);
-            const jsonFilename = path.join(seriesRoot, `${series.folderName}.json`);
-            archive.append(JSON.stringify(metadata, null, 2), { name: jsonFilename });
-          }
-        }
-
-        // 2. Add Series Cover
-        if (series.coverPath) {
-          const absCoverPath = path.join(fastify.projectRoot, series.coverPath);
-          if (fs.existsSync(absCoverPath)) {
-            archive.file(absCoverPath, { name: path.join(seriesRoot, path.basename(series.coverPath)) });
-          }
-        }
-
-        // 3. Add Volumes
-        for (const vol of series.volumes) {
-          await addVolumeToArchive(
-            fastify,
-            archive,
-            vol,
-            seriesRoot,
-            userId,
-            includeImages,
-            includeMetadata,
-            metadataFormat,
-            series
-          );
-        }
+        await addSeriesToArchive(
+          fastify,
+          archive,
+          series,
+          series.folderName,
+          userId,
+          includeImages,
+          includeMetadata
+        );
       }
 
       await archive.finalize();
@@ -965,7 +888,7 @@ const exportRoutes: FastifyPluginAsync = async (
     Body: {
       ids: string[];
       type: 'series' | 'volume';
-      options?: { include_images?: boolean; include_metadata?: boolean; metadata_format?: MetadataFormat };
+      options?: { include_images?: boolean; include_metadata?: boolean; };
     }
   }>('/batch/ticket', async (request, reply) => {
     const ticket = randomUUID();
@@ -1007,7 +930,7 @@ const exportRoutes: FastifyPluginAsync = async (
     Body: {
       ids: string[];
       type: 'series' | 'volume';
-      options?: { include_images?: boolean; include_metadata?: boolean; metadata_format?: MetadataFormat };
+      options?: { include_images?: boolean; include_metadata?: boolean; };
     }
   }>('/batch', async (request, reply) => {
     return executeBatchExport(fastify, reply, request.body, request.user.id);
