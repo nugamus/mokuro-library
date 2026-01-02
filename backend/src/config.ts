@@ -13,4 +13,20 @@ const envSchema = z.object({
   AUTH_LOCKOUT_DURATION_MINUTES: z.coerce.number().optional()
 });
 
-export const config = envSchema.parse(process.env);
+// Lazy validation - only parse when config is accessed
+let _config: z.infer<typeof envSchema> | undefined;
+
+export function getConfig() {
+  if (!_config) {
+    _config = envSchema.parse(process.env);
+  }
+  return _config;
+}
+
+// For backward compatibility, export a getter that validates on first access
+export const config = new Proxy({} as z.infer<typeof envSchema>, {
+  get(target, prop) {
+    const cfg = getConfig();
+    return cfg[prop as keyof typeof cfg];
+  }
+});
