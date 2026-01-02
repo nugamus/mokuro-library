@@ -24,7 +24,7 @@ Tracks the current state of a volume for a specific user.
 
 ```prisma
 model OcrBranch {
-  id          String   @id  // ULID, generated via middleware
+  id          String   @id @default(ulid())
 
   volumeId    String
   userId      String   // Owner of this branch
@@ -68,7 +68,7 @@ A doubly-linked list of atomic operations for the admin branch, singly-linked fo
 
 ```prisma
 model Patch {
-  id          String   @id  // ULID, generated via middleware
+  id          String   @id @default(ulid())
 
   // --- The Tree ---
   parentId    String?
@@ -109,9 +109,9 @@ model Patch {
 
 **Genesis Patch Convention:**
 - `parentId = NULL` indicates genesis (root of the tree)
-- `operation = "{}"` (empty) — a "noop" indicating state should be read from the `.mokuro` file
+- `operation = { op: 'genesis', path: mokuroPath }` — stores path to original `.mokuro` file
 - No file content duplication in the database
-- Detection: `patch.parentId === null` means "this is genesis, load from file"
+- Detection: `patch.parentId === null` or `JSON.parse(patch.operation).op === 'genesis'`
 
 ### 2.3 Snapshot Strategy
 
@@ -154,7 +154,7 @@ Genesis patches and branches are created on-demand when a volume is first access
 1. Check: Does Admin Branch exist for this volume?
    
    IF NO (First Access):
-     - Create Genesis Patch: { id: ulid(), parentId: null, operation: "{}", volumeId, userId: "admin" }
+     - Create Genesis Patch: { op: 'genesis', path: volume.mokuroPath }
      - Create Admin Branch: { headPatchId: genesisPatchId, rootPatchId: null }
    
    IF YES:
@@ -203,25 +203,23 @@ try {
 - Processes volumes only when accessed
 - Backwards compatible with existing `.mokuro` files
 
-### 2.5 ID Generation (Prisma Middleware)
+### 2.5 ID Generation
 
-All IDs use ULID for chronological sortability and better index performance.
+All IDs use ULID for chronological sortability and better index performance. ULIDs are generated automatically via Prisma schema defaults.
 
-```typescript
-// prisma/middleware.ts
-import { ulid } from 'ulid';
+```prisma
+model Patch {
+  id String @id @default(ulid())
+  // ...
+}
 
-prisma.$use(async (params, next) => {
-  if (params.action === 'create') {
-    const modelsWithUlid = ['Patch', 'OcrBranch'];
-    
-    if (modelsWithUlid.includes(params.model)) {
-      params.args.data.id = params.args.data.id ?? ulid();
-    }
-  }
-  return next(params);
-});
+model OcrBranch {
+  id String @id @default(ulid())
+  // ...
+}
 ```
+
+Prisma generates ULIDs client-side when no `id` is provided in `create()` calls.
 
 ---
 
@@ -263,41 +261,89 @@ export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
 ### 3.2 The Patch Operation
 
 ```typescript
-export type OpType = 'replace' | 'add' | 'remove' | 'reorder_lines' | 'reorder_blocks';
+export type OpType = 'genesis' | 'replace' | 'add' | 'remove' | 'reorder';
 
-export interface PatchOperation {
-  id: string;           // ULID
-  op: OpType;
-  path: string;         // JSON Pointer (RFC 6901 style)
-  
-  // The new value to apply (Required for 'add'/'replace')
-  value?: PatchValue;   
-  
-  // The previous value (Required for 'remove'/'replace' to enable Undo)
-  old_value?: PatchValue; 
-  
-  // Specific to reorder operations (permutation array)
-  new_order?: number[]; 
-}
+export type PatchOperation =
+  | {
+      op: 'genesis';
+      path: string;  // mokuroPath — path to the original .mokuro file
+    }
+  | {
+      op: 'replace';
+      path: string;
+      value: PatchValue;
+      old_value: PatchValue;
+    }
+  | {
+      op: 'add';
+      path: string;
+      value: PatchValue;
+    }
+  | {
+      op: 'remove';
+      path: string;
+      old_value: PatchValue;
+    }
+  | {
+      op: 'reorder';
+      path: string;
+      new_order: number[];  // Valid permutation [0..n-1]
+    };
 ```
 
-### 3.3 Patch Validation
+**Genesis Patch:** The first patch in any history tree. Contains `op: 'genesis'` and `path` pointing to the original `.mokuro` file location. Created automatically during lazy initialization.
+```
 
-All patches must be validated at insertion time. Invalid patches are rejected (fail hard).
+### 3.3 Patch Validation (Zod Schema)
+
+All patches must be validated at the API boundary using Zod. Invalid patches are rejected.
+
+```typescript
+const patchOperationSchema = z.discriminatedUnion('op', [
+  z.object({
+    op: z.literal('genesis'),
+    path: z.string().min(1)
+  }),
+  z.object({
+    op: z.literal('replace'),
+    path: z.string().regex(/^\/pages\/\d+\/.+/),
+    value: z.any(),
+    old_value: z.any()
+  }),
+  z.object({
+    op: z.literal('add'),
+    path: z.string().regex(/^\/pages\/\d+\/.+/),
+    value: z.any()
+  }),
+  z.object({
+    op: z.literal('remove'),
+    path: z.string().regex(/^\/pages\/\d+\/.+/),
+    old_value: z.any()
+  }),
+  z.object({
+    op: z.literal('reorder'),
+    path: z.string().regex(/^\/pages\/\d+\/.+/),
+    new_order: z.array(z.number().int().nonnegative())
+  }).superRefine((data, ctx) => {
+    const sorted = [...data.new_order].sort((a, b) => a - b);
+    const isValidPermutation = sorted.every((v, i) => v === i);
+    if (!isValidPermutation) {
+      ctx.addIssue({ code: 'custom', message: "new_order must be a valid permutation" });
+    }
+  })
+]);
+```
 
 **Validation Rules:**
 
 | Check | Requirement |
 |-------|-------------|
-| Operation type | Must be one of: `replace`, `add`, `remove`, `reorder_lines`, `reorder_blocks` |
-| Path format | Must start with `/pages/{n}` and follow JSON Pointer (RFC 6901) |
+| Operation type | Must be one of: `genesis`, `replace`, `add`, `remove`, `reorder` |
+| Path format | Must start with `/pages/{n}/` for non-genesis operations |
 | `value` field | Required for `add` and `replace` operations |
 | `old_value` field | Required for `remove` and `replace` operations (enables undo) |
-| `new_order` field | Required for `reorder_*` operations; must be valid permutation |
-| Parent existence | If `parentId` specified, referenced patch must exist |
+| `new_order` field | Required for `reorder` operations; must be valid permutation [0..n-1] |
 | Value types | Must match expected type for the target path (see Section 4) |
-
-**Genesis Patch Exception:** A patch with `path: "/"` and `op: "replace"` is valid **only** when `parentId = NULL`. This is the only case where full document replacement is allowed, used for initial migration from `.mokuro` files. The `value` in this case is the complete `MokuroData` object.
 
 ---
 
@@ -524,18 +570,96 @@ Some conflicts only allow Skip (no valid transformation exists).
 | Competing Reorders | `A⁻¹` | Transform to `A⁻¹ * U` |
 | Content Conflict | Value change | Update `old_value` to admin's `value` |
 
-#### Conflict Types and Resolutions
+#### Intersection Types
 
-| Conflict Type | Incoming Effect | Resolution Options | Effect After Resolution |
-|---------------|-----------------|-------------------|------------------------|
-| **Dead Zone** (admin deleted block user edited) | Admin's delete shift (-1) | **Skip:** Delete user patch | Admin's delete shift continues (-1) |
-| | | **Resurrect:** Transform to insert with user's content | Insert cancels admin's delete (+1 cancels -1 = 0) |
-| **Double Delete** (both deleted same block) | Admin's delete shift (-1) | **Skip:** Delete user patch | Shift cancelled (user's delete was redundant, 0) |
-| **Reorder + Length Change** (admin added/removed, user reordered) | Admin's insert/delete shift | **Skip:** Delete user patch | Propagate `shift * U` (permute by user's intent, then apply shift with dead zone) |
-| **Competing Reorders** (both reordered same array) | Admin's reorder `A⁻¹` | **Keep Admin:** Delete user patch | Propagate `A⁻¹ * U` (undo admin, apply user intent) |
-| | | **Keep Mine:** Transform user patch to `A⁻¹ * U` | Identity (no further effect) |
-| **Content Conflict** (both edited same field) | Admin's content change | **Keep Admin:** Delete user patch | Propagate continues (breaks through) |
-| | | **Keep Mine:** Update user patch `old_value` to admin's `value` | Absorbed |
+When comparing user operation path against effect path, we determine the relationship:
+
+| Intersection | Meaning |
+|--------------|---------|
+| `no_hit` | No overlap, passthrough |
+| `sibling_hit` | User operates in same array as effect (path transform) |
+| `direct_hit` | User path === affected path |
+| `ancestor_hit` | User path inside affected path |
+| `descendant_hit` | Affected path inside user path |
+
+Note: For `shift_up` effects, there is no existing item at the gap, so only `sibling_hit` and `descendant_hit` are possible.
+
+#### Conflict Types
+
+| Conflict Type | Resolution | Description |
+|---------------|------------|-------------|
+| `shift_down_into_add` | Auto | User adding at exact index admin deleted, bump effect index |
+| `effect_shift` | Auto | User's add/reorder at ancestor shifts the effect path |
+| `double_delete` | Auto | Both deleted same item, effect nullified |
+| `dead_zone` | User choice | Admin deleted item, user edited inside |
+| `reverse_dead_zone` | User choice | Admin edited inside, user deleted container |
+| `reorder_collision` | User choice | Both reordered same array |
+| `content_conflict` | User choice | Both edited same field |
+
+#### Conflict Tables by Intersection Type
+
+**direct_hit** (userPath === affectedPath):
+
+| effect.type | userOp.op | Conflict | Resolution | Patch Mutation | Residual Effect |
+|-------------|-----------|----------|------------|----------------|-----------------|
+| `shift_down` | `add` | `shift_down_into_add` | Auto | Keep patch (apply permutation if present) | `shift_down[N+1]` |
+| `shift_down` | `remove` | `double_delete` | Auto | Discard patch | Identity |
+| `permute` | `reorder` | `reorder_collision` | `keep_admin` | Discard patch | `A⁻¹ * U` accumulated |
+| | | | `keep_mine` | Transform `new_order` to `A⁻¹ * U` | Identity |
+| `content` | `replace` | `content_conflict` | `keep_admin` | Discard patch | `content` continues |
+| | | | `keep_mine` | Update `old_value` | Identity |
+
+**ancestor_hit** (userPath inside affectedPath):
+
+| effect.type | userOp.op | Conflict | Resolution | Patch Mutation | Residual Effect |
+|-------------|-----------|----------|------------|----------------|-----------------|
+| `shift_down` | `add` | `dead_zone` | `keep_admin` | Discard patch | `shift_down` continues |
+| | | | `keep_mine` | Transform to `add` with restored content + edit | Identity |
+| `shift_down` | `remove` | `dead_zone` | `keep_admin` | Discard patch | `shift_down` continues |
+| | | | `keep_mine` | Transform to `add` with restored content - removed item | Identity |
+| `shift_down` | `replace` | `dead_zone` | `keep_admin` | Discard patch | `shift_down` continues |
+| | | | `keep_mine` | Transform to `add` with restored content + edit | Identity |
+| `shift_down` | `reorder` | `dead_zone` | `keep_admin` | Discard patch | `shift_down` continues |
+| | | | `keep_mine` | Transform to `add` with restored content + reorder | Identity |
+
+**descendant_hit** (affectedPath inside userPath):
+
+| effect.type | userOp.op | Conflict | Resolution | Patch Mutation | Residual Effect |
+|-------------|-----------|----------|------------|----------------|-----------------|
+| `shift_down` | `add` | `effect_shift` | Auto | Keep patch | Shift effect path |
+| `shift_up` | `add` | `effect_shift` | Auto | Keep patch | Shift effect path |
+| `permute` | `add` | `effect_shift` | Auto | Keep patch | Shift effect path |
+| `content` | `add` | `effect_shift` | Auto | Keep patch | Shift effect path |
+| `shift_down` | `remove` | `reverse_dead_zone` | `keep_admin` | Discard patch | `shift_up[N]` |
+| | | | `keep_mine` | Keep patch | Identity |
+| `shift_up` | `remove` | `reverse_dead_zone` | `keep_admin` | Discard patch | `shift_up[N]` |
+| | | | `keep_mine` | Keep patch | Identity |
+| `permute` | `remove` | `reverse_dead_zone` | `keep_admin` | Discard patch | `shift_up[N]` |
+| | | | `keep_mine` | Keep patch | Identity |
+| `content` | `remove` | `reverse_dead_zone` | `keep_admin` | Discard patch | `shift_up[N]` |
+| | | | `keep_mine` | Keep patch | Identity |
+| `shift_down` | `reorder` | `effect_shift` | Auto | Keep patch | Permute effect path |
+| `shift_up` | `reorder` | `effect_shift` | Auto | Keep patch | Permute effect path |
+| `permute` | `reorder` | `effect_shift` | Auto | Keep patch | Compose permutations |
+| `content` | `reorder` | `effect_shift` | Auto | Keep patch | Permute effect path |
+
+**sibling_hit** (user in same array, handled separately):
+
+| effect.type | userOp.op | Handling |
+|-------------|-----------|----------|
+| `shift_up` | any | Path transform: index >= effect.index gets +1 |
+| `shift_down` | any | Path transform: index > effect.index gets -1 |
+| `permute` | any | Path transform: index mapped through permutation |
+| `shift_*` | `reorder` | Discard patch, accumulate permutation onto effect |
+| `permute` | `reorder` | N/A (would be direct_hit via `/-1` trick) |
+
+#### Resolution Types
+
+| Resolution | Meaning |
+|------------|---------|
+| **Auto** | No user input needed, resolved automatically |
+| **keep_admin** | Prefer admin's change, discard or transform user's patch |
+| **keep_mine** | Prefer user's intent, transform to apply user's change |
 
 #### Permutation Math
 
@@ -549,8 +673,31 @@ For reorder conflicts, we use permutation composition.
 
 **Keep Mine:** User wants their intended final order. Transform user's patch to `U' = A_inv * U`.
 
-**Keep Admin:** Skip user's reorder. Propagate `A_inv * U` to subsequent patches so they account for the missing reorder.
+**Example:**
+```
+Base: [B0, B1, B2]
+A = [1, 2, 0]     → Admin result: [B1, B2, B0]
+U = [2, 0, 1]     → User intended: [B2, B0, B1]
 
+A_inv = [2, 0, 1]
+
+U' = A_inv * U
+   = [2, 0, 1] * [2, 0, 1]
+   
+[0]: U[A_inv[0]] = U[2] = 1
+[1]: U[A_inv[1]] = U[0] = 2
+[2]: U[A_inv[2]] = U[1] = 0
+
+U' = [1, 2, 0]
+
+Verify: Apply [1, 2, 0] to [B1, B2, B0]:
+  new[0] = [B1,B2,B0][1] = B2
+  new[1] = [B1,B2,B0][2] = B0
+  new[2] = [B1,B2,B0][0] = B1
+Result: [B2, B0, B1] ✓ (matches user's intent)
+```
+
+**Keep Admin:** Skip user's reorder. Propagate `A_inv * U` to subsequent patches so they account for the missing reorder.
 
 ### 5.6 Per-User Snapshot Strategy
 
@@ -587,11 +734,11 @@ Snapshots are regenerated **ONLY** during these events:
 
 ## 6. API Specification
 
-All volume-related endpoints are under `/api/library/volumes/`.
+All volume-related endpoints are under `/api/library/volumes/`. The same endpoints serve both admin and regular users via the **Strategy Pattern** — behavior differs based on the authenticated user.
 
 ### 6.1 Patching & Editing
 
-**POST** `/api/library/volumes/:volumeId/patch`
+**POST** `/api/library/volumes/:id/patch`
 
 * **Body:** `{ operation: PatchOperation, branchVersion: number }`
 * **Behavior:** Validates op, creates `Patch`, updates `OcrBranch` head, increments version.
@@ -607,27 +754,65 @@ All volume-related endpoints are under `/api/library/volumes/`.
 The `patch` field echoes back the operation for client-side consistency.
 * **Errors:**
   - `400`: Validation failed
+  - `404`: Volume not found
   - `409`: Version mismatch (concurrent edit)
+
+**POST** `/api/library/volumes/:id/undo`
+
+* **Body:** `{ branchVersion: number }`
+* **Behavior:** Moves HEAD to parent patch, returns inverse operation for client-side rollback.
+* **Response:**
+```json
+{
+  "success": true,
+  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "newVersion": 44,
+  "patch": { "op": "replace", "path": "...", "value": "old", "old_value": "new" }
+}
+```
+* **Errors:**
+  - `400`: Cannot undo (at genesis)
+  - `404`: Volume not found
+  - `409`: Version mismatch
+
+**POST** `/api/library/volumes/:id/redo`
+
+* **Body:** `{ branchVersion: number }`
+* **Behavior:** Moves HEAD forward to child patch (if exists).
+* **Response:**
+```json
+{
+  "success": true,
+  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+  "newVersion": 45,
+  "patch": { "op": "replace", "path": "...", "value": "new", "old_value": "old" }
+}
+```
+* **Errors:**
+  - `400`: Nothing to redo / multiple children
+  - `404`: Volume not found
+  - `405`: Not available (admin timeline is destructive)
+  - `409`: Version mismatch
 
 ### 6.2 Synchronization (Rebase)
 
 Rebase is a stateful, multi-step operation that pauses when conflicts are encountered, similar to Git.
 
-**POST** `/api/library/volumes/:volumeId/rebase/start`
+**POST** `/api/library/volumes/:id/rebase/start`
 
-* **Body:** `{ targetHeadId: string }`
+* **Body:** `{ }` (empty)
 * **Response:**
   - No conflicts: `{ status: 'complete', newHeadId: string }`
   - Conflict encountered: `{ status: 'paused', rebaseId: string, conflict: ConflictInfo }`
 
-**POST** `/api/library/volumes/:volumeId/rebase/continue`
+**POST** `/api/library/volumes/:id/rebase/continue`
 
-* **Body:** `{ rebaseId: string, resolution: 'keep_admin' | 'keep_mine' | 'resurrect' }`
+* **Body:** `{ rebaseId: string, resolution: 'keep_admin' | 'keep_mine' }`
 * **Response:**
   - More conflicts: `{ status: 'paused', conflict: ConflictInfo }`
   - Done: `{ status: 'complete', newHeadId: string }`
 
-**POST** `/api/library/volumes/:volumeId/rebase/abort`
+**POST** `/api/library/volumes/:id/rebase/abort`
 
 * **Body:** `{ rebaseId: string }`
 * **Response:** `{ status: 'aborted' }`
@@ -635,20 +820,24 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 **ConflictInfo:**
 ```
 {
-  patchId: string,
-  reason: 'dead_zone' | 'double_delete' | 'reorder_length_change' | 'competing_reorder' | 'content_conflict',
-  options: ['keep_admin', 'keep_mine'] | ['skip', 'resurrect'],
-  details: {
-    path: string,
-    userValue?: any,
-    adminValue?: any
-  }
+  reason: ConflictReason,
+  userPatch: ExtendedPatch,
+  adminPatch: ExtendedPatch
 }
 ```
 
-**Rebase State:** In-progress rebase state is stored in the floating branch. If a rebase is abandoned (no continue/abort), the floating branch is cleaned up after a timeout.
+**ConflictReason values:**
+- `shift_down_into_add` — Auto-resolved: user adding at deleted index
+- `effect_shift` — Auto-resolved: user add/reorder shifts effect path
+- `double_delete` — Auto-resolved: both deleted same item
+- `dead_zone` — User choice: admin deleted, user edited inside
+- `reverse_dead_zone` — User choice: admin edited inside, user deleted
+- `reorder_collision` — User choice: both reordered same array
+- `content_conflict` — User choice: both edited same field
 
-**POST** `/api/library/volumes/:volumeId/reset`
+**Rebase State:** In-progress rebase state is stored in memory cache with DB backup. If a rebase is abandoned (no continue/abort), the session expires after 24 hours.
+
+**POST** `/api/library/volumes/:id/reset`
 
 * **Body:** `{ }`
 * **Behavior:**
@@ -656,14 +845,17 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
   2. Set `rootPatchId = NULL`, `headPatchId = AdminHead`.
   3. Overwrite user's `.mokuro` snapshot with Admin's current state.
 * **Response:** `{ success: true }`
+* **Errors:**
+  - `404`: Volume not found or access denied
+  - `405`: Not applicable (admin cannot reset)
 
-**POST** `/api/library/volumes/:volumeId/revert` (Admin only)
+**POST** `/api/library/volumes/:id/revert` (Admin only)
 
 * **Body:** `{ patchId: string, reason?: string }`
 * **Behavior:** Creates inverse patch as child of current HEAD.
 * **Response:** `{ success: true, revertPatchId: string }`
 
-**POST** `/api/library/volumes/:volumeId/snapshot`
+**POST** `/api/library/volumes/:id/snapshot`
 
 * **Body:** `{ }`
 * **Behavior:** Reconstructs full state from DB and writes to user's snapshot file.
@@ -671,7 +863,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 ### 6.3 Status
 
-**GET** `/api/library/volumes/:volumeId/status`
+**GET** `/api/library/volumes/:id/status`
 
 * **Response:**
 ```json
@@ -692,7 +884,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 ### 6.4 History
 
-**GET** `/api/library/volumes/:volumeId/history`
+**GET** `/api/library/volumes/:id/history`
 
 * **Query:** `{ branchId?: string, limit?: number, offset?: number }`
 * **Response:**
@@ -712,7 +904,7 @@ Rebase is a stateful, multi-step operation that pauses when conflicts are encoun
 
 ### 6.5 Merge (Admin Fast-Forward)
 
-**POST** `/api/library/volumes/:volumeId/merge`
+**POST** `/api/library/volumes/:id/merge`
 
 * **Body:** `{ sourceBranchUserId: string }`
 * **Behavior:** 
@@ -738,63 +930,29 @@ Updates:
 - U2.nextPatchId = NULL (new HEAD)
 ```
 
-### 6.6 Undo/Redo
+### 6.6 Strategy Pattern (Admin vs User)
 
-Undo/redo behavior differs between users and admin.
+The same API endpoints serve both admin and regular users. Behavior differs based on authentication:
 
-**User Undo/Redo:**
-- Undo moves HEAD to parent; the undone patch remains (dangling)
-- Redo moves HEAD back to child (if exists)
-- New edit after undo deletes dangling patches (cascade), making redo impossible
-- This is standard editor behavior
+| Endpoint | User Behavior | Admin Behavior |
+|----------|---------------|----------------|
+| `patch` | Fork-on-write to private branch | Direct edit to master branch |
+| `undo` | HEAD crawl (non-destructive) | Branch drag or blocked |
+| `redo` | Follow child patch | Not available (405) |
+| `reset` | Discard private edits, sync to admin | Not applicable (405) |
+| `rebase` | Sync private branch with admin | Not applicable |
 
-**Admin Undo (No Redo):**
-- Admin undo permanently discards patches (see Section 5.3 for rules)
-- Redo is not available for admin — undone patches are either deleted or transferred to a user branch
-- This is intentional: admin's branch is the foundation, dangling admin patches could cause confusion
-
-**POST** `/api/library/volumes/:volumeId/undo`
-
-* **Body:** `{ branchVersion: number }`
-* **Behavior:** 
-  - **User:** Moves HEAD to parent patch. If new edit follows, deletes dangling patches.
-  - **User past root:** Also deletes old root (cascade), sets `rootPatchId = NULL`
-  - **Admin:** Applies branch drag rules (see Section 5.3), permanently discards or transfers patches
-* **Response:**
-```json
-{
-  "success": true,
-  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-  "newVersion": 42,
-  "patch": { "op": "replace", "path": "...", "value": "old", "old_value": "new" },
-  "draggedToUser": "user123"
-}
+**Implementation:**
+```typescript
+// Strategy factory in request lifecycle
+fastify.decorateRequest('accessStrategy', null);
+fastify.addHook('preHandler', (request) => {
+  request.accessStrategy = APIAccessStrategyFactory.getStrategy(
+    fastify, 
+    request.user.id
+  );
+});
 ```
-The `patch` field contains the **inverse** of the undone patch, so the frontend can apply it locally without re-fetching state. `draggedToUser` is only present for admin undo with branch drag.
-* **Errors:**
-  - `400`: `{ error: "Cannot undo: at genesis" }`
-  - `403`: `{ error: "Cannot undo: multiple user branches would be affected" }` (admin only)
-  - `409`: Version mismatch
-
-**POST** `/api/library/volumes/:volumeId/redo` (User only)
-
-* **Body:** `{ branchVersion: number }`
-* **Behavior:**
-  - Moves HEAD to child patch (if exactly one exists)
-  - Only valid after undo, before any new edits
-* **Response:**
-```json
-{
-  "success": true,
-  "newHeadId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-  "newVersion": 43,
-  "patch": { "op": "replace", "path": "...", "value": "new", "old_value": "old" }
-}
-```
-The `patch` field contains the re-applied patch, so the frontend can apply it locally without re-fetching state.
-* **Errors:**
-  - `400`: `{ error: "Cannot redo: no forward history" }` or `{ error: "Cannot redo: multiple children" }`
-  - `409`: Version mismatch
 
 ---
 
