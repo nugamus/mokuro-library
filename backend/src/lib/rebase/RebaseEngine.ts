@@ -1,6 +1,5 @@
 import { ulid } from 'ulid';
 import { FastifyInstance } from 'fastify';
-import { PrismaClient } from '../../generated/prisma/client';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -13,7 +12,8 @@ import {
 import { PatchOperation } from '../../types/history';
 import { PatchTransformer } from './PatchTransformer';
 import { EffectFactory } from './Effect';
-import { fetchAncestryChain } from '../../utils/ocrHelpers';
+import { fetchAncestryChain, saveSnapshot, syncSnapshot } from '../../utils/ocrHelpers';
+import { OcrBranch } from '../../generated/prisma/client';
 
 interface RebaseContext {
   sessionId: string;
@@ -61,7 +61,7 @@ export class RebaseEngine {
 
     // --- Check 1: Clean State ---
     if (!branch.rootPatchId) {
-      await this.fastForward(branch.id, adminBranch.id, adminBranch.headPatchId, adminBranch.snapshotPatchId);
+      await this.fastForward(branch, adminBranch);
       return { status: 'complete' };
     }
 
@@ -74,7 +74,7 @@ export class RebaseEngine {
     const rootPatch = await this.prisma.patch.findUnique({ where: { id: branch.rootPatchId } });
 
     if (!rootPatch || !rootPatch.parentId) {
-      await this.fastForward(branch.id, adminBranch.id, adminBranch.headPatchId, adminBranch.snapshotPatchId);
+      await this.fastForward(branch, adminBranch);
       return { status: 'complete' };
     }
 
@@ -128,15 +128,23 @@ export class RebaseEngine {
   /**
    * Continues an existing rebase with a new resolution.
    */
-  async continue(rebaseId: string, resolution: Resolution): Promise<RebaseResult> {
+  async continue(rebaseId: string, resolution: ResolutionType): Promise<RebaseResult> {
     let context = sessionCache.get(rebaseId);
     if (!context) {
       context = await this.restoreSession(rebaseId);
     }
 
+    // Get current conflict from hot state
+    const adminPatch = context.adminChain[context.currentAdminIndex];
+    const userPatch = context.currentPatches[context.currentUserIndex];
+
+    if (!adminPatch || !userPatch) {
+      throw new Error('No pending conflict to resolve');
+    }
+
     // Key: adminPatchId:userPatchId
-    const resolutionKey = `${resolution.adminPatchId}:${resolution.patchId}`;
-    context.resolutions.set(resolutionKey, resolution.resolution);
+    const resolutionKey = `${adminPatch.id}:${userPatch.id}`;
+    context.resolutions.set(resolutionKey, resolution);
 
     await this.prisma.rebaseSession.update({
       where: { id: rebaseId },
@@ -147,11 +155,22 @@ export class RebaseEngine {
     return this.runSimulation(context);
   }
 
+  /**
+   * Deletes hot and db sessions
+   */
   async abort(rebaseId: string): Promise<void> {
-    sessionCache.delete(rebaseId);
+    const deleted = sessionCache.delete(rebaseId);
+
     try {
       await this.prisma.rebaseSession.delete({ where: { id: rebaseId } });
-    } catch (e) { }
+    } catch (e) {
+      // Only throw if it wasn't in memory cache either
+      if (!deleted) {
+        throw new Error('Rebase session not found');
+      }
+      // Was in memory but not DB — possible expiry, log but don't throw
+      this.fastify.log.warn(`Rebase session ${rebaseId} not found in DB (may have expired)`);
+    }
   }
 
   // --- Internal Logic ---
@@ -237,10 +256,15 @@ export class RebaseEngine {
     const newPatchesData: any[] = [];
     let prevId = ctx.targetHeadId;
 
+
     const currentBranch = await this.prisma.ocrBranch.findUnique({ where: { id: ctx.branchId } });
     if (!currentBranch || currentBranch.headPatchId !== ctx.originalBranchHeadId) {
       throw new Error('Branch was modified during rebase. Please retry.');
     }
+    const adminBranch = await this.prisma.ocrBranch.findUnique({
+      where: { volumeId_userId: { volumeId: currentBranch.volumeId, userId: 'admin' } }
+    });
+    if (!adminBranch) throw new Error('Admin branch not found');
 
     for (const op of finalOps) {
       const newId = ulid();
@@ -274,9 +298,10 @@ export class RebaseEngine {
           headPatchId: newHeadId,
           rootPatchId: newRootId,
           version: { increment: 1 },
-          snapshotPatchId: null
+          snapshotPatchId: adminBranch.snapshotPatchId
         }
       });
+
 
       await tx.rebaseSession.delete({ where: { id: ctx.sessionId } });
 
@@ -287,29 +312,39 @@ export class RebaseEngine {
       }
     });
 
+    // Copy admin snapshot to user
+    const adminSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
+    const userSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${currentBranch.id}.json`);
+    try {
+      await fs.promises.copyFile(adminSnapPath, userSnapPath);
+    } catch (e) {
+      this.fastify.log.warn(`Admin snapshot missing for ${currentBranch.volumeId}, fixing admin and retrying...`);
+      const new_data = (await syncSnapshot(this.fastify, adminBranch)).data;
+      await saveSnapshot(this.fastify, currentBranch.id, new_data, new_data.patch_id ?? '');
+    }
     sessionCache.delete(ctx.sessionId);
   }
 
-  private async fastForward(branchId: string, adminBranchId: string, newHeadId: string, adminSnapshotPatchId: string | null) {
+  private async fastForward(branch: OcrBranch, adminBranch: OcrBranch) {
     await this.prisma.ocrBranch.update({
-      where: { id: branchId },
+      where: { id: branch.id },
       data: {
-        headPatchId: newHeadId,
+        headPatchId: adminBranch.headPatchId,
         rootPatchId: null,
-        snapshotPatchId: adminSnapshotPatchId,
+        snapshotPatchId: adminBranch.snapshotPatchId,
         version: { increment: 1 }
       }
     });
 
     // Copy admin snapshot to user
-    if (adminSnapshotPatchId) {
-      const adminSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranchId}.json`);
-      const userSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
-      try {
-        await fs.promises.copyFile(adminSnapPath, userSnapPath);
-      } catch (e) {
-        this.fastify.log.warn('Admin snapshot missing during fast-forward, will regenerate on next read.');
-      }
+    const adminSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
+    const userSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branch.id}.json`);
+    try {
+      await fs.promises.copyFile(adminSnapPath, userSnapPath);
+    } catch (e) {
+      this.fastify.log.warn(`Admin snapshot missing for ${branch.volumeId}, fixing admin and retrying...`);
+      const new_data = (await syncSnapshot(this.fastify, adminBranch)).data;
+      await saveSnapshot(this.fastify, branch.id, new_data, new_data.patch_id ?? '');
     }
   }
 

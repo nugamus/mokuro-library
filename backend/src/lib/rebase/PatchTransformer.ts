@@ -367,7 +367,7 @@ export class PatchTransformer {
       }
 
       // reorder_collision: discard user's reorder, accumulate A⁻¹ * U
-      if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.new_order) {
+      if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.op === 'reorder') {
         const newEffect = structuredClone(effect);
         newEffect.permutation = Permutation.compose(effect.permutation, userOp.new_order);
         return {
@@ -423,7 +423,7 @@ export class PatchTransformer {
       }
 
       // reorder_collision: transform user's reorder to A⁻¹ * U, effect absorbed
-      if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.new_order) {
+      if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.op === 'reorder') {
         const newOp = structuredClone(userOp);
         newOp.new_order = Permutation.compose(effect.permutation, userOp.new_order);
         return {
@@ -435,7 +435,7 @@ export class PatchTransformer {
       }
 
       // content_conflict: update old_value to admin's value, effect absorbed
-      if (reason === 'content_conflict' && effect.type === 'content') {
+      if (reason === 'content_conflict' && effect.type === 'content' && userOp.op === 'replace') {
         const newOp = structuredClone(userOp);
         newOp.old_value = effect.newValue;
         return {
@@ -487,7 +487,7 @@ export class PatchTransformer {
       } else {
         delete ptr[targetKey];
       }
-    } else if (op.op.startsWith('reorder') && op.new_order) {
+    } else if (op.op === 'reorder') {
       const arr = ptr[targetKey];
       if (Array.isArray(arr) && arr.length === op.new_order.length) {
         const newArr = new Array(arr.length);

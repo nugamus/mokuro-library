@@ -1,49 +1,40 @@
 import { PatchOperation } from '../types/history';
+import { Permutation } from './rebase/rebaseUtils';
 
 export class PatchInverter {
   static invert(patch: PatchOperation): PatchOperation {
-    if (patch.path === 'genesis') return { op: 'replace', path: 'genesis' };
-    const { op, path, value, old_value, new_order } = patch;
+    switch (patch.op) {
+      case 'genesis':
+        return structuredClone(patch);
 
-    // 1. Invert Replace (Swap values)
-    if (op === 'replace') {
-      if (old_value === undefined) throw new Error("Cannot invert replace without old_value");
-      return { ...patch, value: old_value, old_value: value };
+      case 'replace':
+        return {
+          op: 'replace',
+          path: patch.path,
+          value: patch.old_value,
+          old_value: patch.value
+        };
+
+      case 'add':
+        return {
+          op: 'remove',
+          path: patch.path,
+          old_value: patch.value
+        };
+
+      case 'remove':
+        return {
+          op: 'add',
+          path: patch.path,
+          value: patch.old_value
+        };
+
+      case 'reorder':
+        return {
+          op: 'reorder',
+          path: patch.path,
+          new_order: Permutation.invert(patch.new_order)
+        };
     }
-
-    // 2. Invert Add (Become Remove)
-    if (op === 'add') {
-      return {
-        ...patch,
-        op: 'remove',
-        old_value: value,
-        value: undefined
-      };
-    }
-
-    // 3. Invert Remove (Become Add)
-    if (op === 'remove') {
-      if (old_value === undefined) throw new Error("Cannot invert remove without old_value");
-      return {
-        ...patch,
-        op: 'add',
-        value: old_value,
-        old_value: undefined
-      };
-    }
-
-    // 4. Invert Reorder (Lines OR Blocks)
-    if (op === 'reorder') {
-      // Inverse Permutation: If Order[i] = j, then Inverse[j] = i
-      if (!new_order) throw new Error(`Missing new_order for ${op}`);
-
-      const inverseOrder = new Array(new_order.length);
-      for (let i = 0; i < new_order.length; i++) {
-        inverseOrder[new_order[i]] = i;
-      }
-      return { ...patch, new_order: inverseOrder };
-    }
-
-    throw new Error(`Unknown op ${op}`);
   }
 }

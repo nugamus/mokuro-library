@@ -13,7 +13,7 @@ export class PatchApplicator {
    */
   static apply(data: MokuroData, patch: PatchOperation): void {
     // Genesis/No-op: skip
-    if (patch.path === 'genesis') {
+    if (patch.op === 'genesis') {
       return;
     }
 

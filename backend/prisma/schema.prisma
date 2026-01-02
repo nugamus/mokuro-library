@@ -110,12 +110,12 @@ model Patch {
   // Forward pointer for admin branch only (NULL for user patches)
   // Enables O(1) forward traversal and "Redo" functionality
   nextPatchId String?  @unique
-  nextPatch   Patch?   @relation("AdminChain", fields: [nextPatchId], references: [id])
+  nextPatch   Patch?   @relation("AdminChain", fields: [nextPatchId], references: [id], onDelete: SetNull)
   prevPatch   Patch?   @relation("AdminChain")
 
   // --- Metadata ---
   volumeId    String
-  userId      String   // Attribution (User or Admin)
+  userId      String?  // Attribution (User or Admin)
   createdAt   DateTime @default(now())
 
   // --- Payload ---
@@ -124,7 +124,7 @@ model Patch {
 
   // --- Relations ---
   volume      Volume        @relation(fields: [volumeId], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
 
   // Pointers from Branch
   asHeadOf    OcrBranch[]   @relation("BranchHead")
@@ -157,10 +157,9 @@ model OcrBranch {
 
   // --- Snapshot Cache ---
   // The patch ID that the cached snapshot represents.
-  // IF NULL: No snapshot exists, reconstruct from .mokuro file + patches.
   // IF SET: Snapshot file exists at cache/snapshots/{branchId}.json
   // Stale check: snapshotPatchId !== headPatchId means snapshot is outdated.
-  snapshotPatchId String?
+  snapshotPatchId String
 
   // --- Concurrency ---
   version     Int      @default(0)     // Optimistic Locking Counter
@@ -247,7 +246,7 @@ model Submission {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetSeries    Series?  @relation("SubmissionTarget", fields: [targetSeriesId], references: [id], onDelete: SetNull)
   sourceSeries    Series?  @relation("SubmissionSource", fields: [sourceSeriesId], references: [id], onDelete: SetNull)
-  
+ 
   // Volumes in this submission (1-to-many: each volume tracks its last submission)
   volumes         Volume[]
 

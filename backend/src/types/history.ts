@@ -29,15 +29,14 @@ export interface UnifiedBlock {
 export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
 
 // --- 3. The Patch Operation ---
-export type OpType = 'replace' | 'add' | 'remove' | 'reorder';
+export type OpType = 'replace' | 'add' | 'remove' | 'reorder' | 'genesis';
 
-export interface PatchOperation {
-  op: OpType;
-  path: string; // JSON Pointer
-  value?: PatchValue;
-  old_value?: PatchValue;
-  new_order?: number[];
-}
+export type PatchOperation =
+  | { op: 'genesis'; path: string }
+  | { op: 'replace'; path: string; value: PatchValue; old_value: PatchValue }
+  | { op: 'add'; path: string; value: PatchValue }
+  | { op: 'remove'; path: string; old_value: PatchValue }
+  | { op: 'reorder'; path: string; new_order: number[] };
 
 // --- 4. Network Payload Types ---
 

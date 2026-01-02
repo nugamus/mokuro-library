@@ -1,6 +1,7 @@
 import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin'; // Import fastify-plugin
 import { AuthUser } from '../types/fastify'; // Import our new type
+import { APIAccessStrategyFactory } from '../lib/strategies/APIAccessStrategyFactory';
 
 // Define the core authentication logic
 const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -38,6 +39,10 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
     // --- SUCCESS ---
     // Attach the user to the request object
     request.user = user as AuthUser; // We know this matches our AuthUser type
+    request.accessStrategy = APIAccessStrategyFactory.getStrategy(
+      request.server,
+      user.id
+    );
   } catch (error) {
     request.server.log.error(error);
     return reply.status(500).send({

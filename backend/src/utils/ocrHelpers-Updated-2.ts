@@ -51,7 +51,7 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
 // --- Helper: Fetch Ancestry Chain (CTE) ---
 // Returns patches from startId walking up to (but not including) stopId
 export async function fetchAncestryChain(prisma: ExtendedPrismaClient, startId: string, stopId: string | null = null): Promise<Patch[]> {
-  return await prisma.$queryRaw<Patch[]>`
+  return await prisma.$queryRaw<any[]>`
     WITH RECURSIVE chain AS (
       SELECT * FROM "Patch" WHERE id = ${startId}
       UNION ALL
@@ -116,34 +116,34 @@ export async function loadSnapshot(
 // Loads snapshot, syncs if stale, regenerates if corrupt/missing.
 export async function syncSnapshot(
   fastify: FastifyInstance,
-  branch: OcrBranch,
-  targetPatchId: string = branch.headPatchId
+  branch: OcrBranch
 ): Promise<{ data: MokuroData, branch: OcrBranch }> {
   let data: MokuroData;
   try {
     data = await loadSnapshot(fastify, branch);
   } catch (e) {
     fastify.log.warn(`Load snapshot for sync failed: ${e}`);
-    return regenerateFromGenesis(fastify, targetPatchId, branch.id);
+    return regenerateFromGenesis(fastify, branch.headPatchId, branch.id);
   }
 
   const startPatchId = branch.snapshotPatchId!;
+  const endPatchId = branch.headPatchId;
 
   // Already up to date
-  if (startPatchId === targetPatchId) {
+  if (startPatchId === endPatchId) {
     return { data, branch };
   }
 
-  const isForward = targetPatchId > startPatchId;
-  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${targetPatchId} (${isForward ? 'forward' : 'backward'})`);
+  const isForward = endPatchId > startPatchId;
+  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${endPatchId} (${isForward ? 'forward' : 'backward'})`);
 
   if (isForward) {
-    const chain = await fetchAncestryChain(fastify.prisma, targetPatchId, startPatchId);
+    const chain = await fetchAncestryChain(fastify.prisma, endPatchId, startPatchId);
 
     const last = chain[chain.length - 1];
     if (!last || last.parentId !== startPatchId) {
       fastify.log.warn(`Forward chain broken, regenerating from genesis`);
-      return regenerateFromGenesis(fastify, targetPatchId, branch.id);
+      return regenerateFromGenesis(fastify, endPatchId, branch.id);
     }
 
     // Apply in chronological order (reverse of ancestry)
@@ -157,12 +157,12 @@ export async function syncSnapshot(
       }
     }
   } else {
-    const chain = await fetchAncestryChain(fastify.prisma, startPatchId, targetPatchId);
+    const chain = await fetchAncestryChain(fastify.prisma, startPatchId, endPatchId);
 
     const last = chain[chain.length - 1];
-    if (!last || last.parentId !== targetPatchId) {
+    if (!last || last.parentId !== endPatchId) {
       fastify.log.warn(`Backward chain broken, regenerating from genesis`);
-      return regenerateFromGenesis(fastify, targetPatchId, branch.id);
+      return regenerateFromGenesis(fastify, endPatchId, branch.id);
     }
 
     // Invert in reverse chronological order
@@ -177,8 +177,8 @@ export async function syncSnapshot(
     }
   }
 
-  data.patch_id = targetPatchId;
-  branch = await saveSnapshot(fastify, branch.id, data, targetPatchId);
+  data.patch_id = endPatchId;
+  branch = await saveSnapshot(fastify, branch.id, data, endPatchId);
   return { data, branch };
 }
 

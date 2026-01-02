@@ -733,6 +733,12 @@ const libraryRoutes: FastifyPluginAsync = async (
           status: userStats?.status ?? 0,
           organized: userStats?.organized ?? false,
           lastReadAt: userStats?.lastReadAt ?? new Date(0),
+
+          // Computed "Official" Indicator
+          isOfficial: series.ownerId === 'admin',
+
+          // Permissions Flag (helps frontend disable delete/edit buttons)
+          canEdit: series.ownerId === userId
         };
 
         return reply.status(200).send(response);
@@ -752,68 +758,14 @@ const libraryRoutes: FastifyPluginAsync = async (
     '/volume/:id',
     async (request, reply) => {
       const { id: volumeId } = request.params;
-      const userId = request.user.id;
-
       try {
-        const volume = await fastify.prisma.volume.findFirst({
-          where: {
-            id: volumeId,
-            series: { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
-          },
-          include: {
-            progress: { where: { userId }, select: { page: true, completed: true, timeRead: true, charsRead: true } }
-          }
-        });
-
-        if (!volume) return reply.status(404).send({ message: 'Volume not found.' });
-
-        // 1. Get Branch Metadata
-        const adminBranch = await ensureAdminBranch(fastify, volumeId, volume.mokuroPath);
-        const userBranch = await ensureUserBranch(fastify, volumeId, userId, adminBranch);
-
-        // 2. Compute Status (HasAhead / HasBehind)
-        const hasAhead = userBranch.rootPatchId !== null;
-        let hasBehind = false;
-
-        if (!hasAhead) {
-          // Clean: Behind if admin moved past user's HEAD
-          hasBehind = userBranch.headPatchId !== adminBranch.headPatchId;
-        } else {
-          // Dirty: Behind if admin moved past user's fork point
-          // We must fetch the fork point (rootPatch's parent)
-          const rootPatch = await fastify.prisma.patch.findUnique({
-            where: { id: userBranch.rootPatchId! },
-            select: { parentId: true }
-          });
-          // If parentId matches admin HEAD, we are up to date with where admin is.
-          // If mismatch, admin moved.
-          if (rootPatch) {
-            hasBehind = rootPatch.parentId !== adminBranch.headPatchId;
-          }
+        const volume = await request.accessStrategy.getVolume(volumeId);
+        return volume;
+      } catch (err: any) {
+        if (err.message.includes('not found') || err.message.includes('access denied')) {
+          return reply.code(404).send({ error: err.message });
         }
-
-        // 3. Get Computed Data
-        const mokuroData = await syncSnapshot(fastify, volume.mokuroPath, userBranch);
-
-        return reply.send({
-          id: volume.id,
-          title: volume.title ?? volume.folderName,
-          seriesId: volume.seriesId,
-          pageCount: volume.pageCount,
-          coverImageName: volume.coverImageName,
-          progress: volume.progress,
-          mokuroData: mokuroData,
-          versionInfo: {
-            branchId: userBranch.id,
-            headPatchId: userBranch.headPatchId,
-            hasAhead,
-            hasBehind,
-          }
-        });
-
-      } catch (error) {
-        fastify.log.error(error);
-        return reply.status(500).send({ message: 'Failed to load volume.' });
+        return reply.code(500).send({ error: err.message });
       }
     }
   );
