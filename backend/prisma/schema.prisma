@@ -148,13 +148,13 @@ model OcrBranch {
   // --- Pointers ---
   // The current state of this branch (Latest Edit)
   headPatchId String
-  headPatch   Patch    @relation("BranchHead", fields: [headPatchId], references: [id])
+  headPatch   Patch    @relation("BranchHead", fields: [headPatchId], references: [id], onDelete: Cascade)
 
   // The start of the private timeline.
   // IF NULL: Branch is synonymous with its parent (Clean/Synced).
   // IF SET: Branch has private edits starting at this patch (Dirty).
   rootPatchId String?
-  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id])
+  rootPatch   Patch?   @relation("BranchRoot", fields: [rootPatchId], references: [id], onDelete: SetNull)
 
   // --- Snapshot Cache ---
   // The patch ID that the cached snapshot represents.
@@ -250,7 +250,7 @@ model Submission {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetSeries    Series?  @relation("SubmissionTarget", fields: [targetSeriesId], references: [id], onDelete: SetNull)
   sourceSeries    Series?  @relation("SubmissionSource", fields: [sourceSeriesId], references: [id], onDelete: SetNull)
- 
+
   // Volumes in this submission (1-to-many: each volume tracks its last submission)
   volumes         Volume[]
 
@@ -275,7 +275,7 @@ model RebaseSession {
 
   // Store the user's decisions as a JSON array
   // Type: Array<{ patchId: string, resolution: 'keep_admin' | 'keep_mine' | 'resurrect' }>
-  resolutions     String     @default("[]") 
+  resolutions     String     @default("[]")
 
   updatedAt       DateTime   @updatedAt
   expiresAt       DateTime
