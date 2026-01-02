@@ -15,7 +15,8 @@ services:
 
     # Override the Dockerfile's CMD to run the 'dev' script
     command: npm run dev
-
+    ports:
+      - "5555:5555"
     volumes:
       # Mount 'backend' folder to '/app/backend'
       # This lets ts-node-dev see code changes in real-time.
