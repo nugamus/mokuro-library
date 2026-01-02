@@ -3,6 +3,7 @@
 	import MenuToggle from '$lib/components/menu/MenuToggle.svelte';
 	import MenuSlider from '$lib/components/menu/MenuSlider.svelte';
 	import { readerState } from '$lib/states/ReaderState.svelte';
+	import { keybindStore } from '$lib/stores/keybindStore';
 
 	let { onClose, inReader = false }: { onClose?: () => void; inReader?: boolean } = $props();
 
@@ -19,6 +20,27 @@
 
 	let showCharacterCount = $state(false);
 	let showTimer = $state(false);
+
+	const layoutOptions = $derived.by(() => [
+		{
+			value: 'single',
+			label: 'Single',
+			icon: singleIcon,
+			shortcut: ($keybindStore.layoutSingle || []).join(' / ')
+		},
+		{
+			value: 'double',
+			label: 'Double',
+			icon: doubleIcon,
+			shortcut: ($keybindStore.layoutDouble || []).join(' / ')
+		},
+		{
+			value: 'vertical',
+			label: 'Vertical',
+			icon: verticalIcon,
+			shortcut: ($keybindStore.layoutVertical || []).join(' / ')
+		}
+	]);
 </script>
 
 {#snippet singleIcon()}
@@ -80,11 +102,7 @@
       Vertical: continuous scroll"
 		bind:value={readerState.layoutMode}
 		layout={[3]}
-		options={[
-			{ value: 'single', label: 'Single', icon: singleIcon },
-			{ value: 'double', label: 'Double', icon: doubleIcon },
-			{ value: 'vertical', label: 'Vertical', icon: verticalIcon }
-		]}
+		options={layoutOptions}
 	/>
 
 	<MenuGridRadio
@@ -136,7 +154,11 @@
 	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 		<MenuToggle label="First Page Cover" bind:checked={readerState.firstPageIsCover} />
 		<MenuToggle label="Auto fullscreen" bind:checked={readerState.autoFullscreen} />
-		<MenuToggle label="Autohide HUD" bind:checked={readerState.hideHUD} />
+		<MenuToggle
+			label="Autohide HUD"
+			shortcut={($keybindStore.toggleHud || []).join(' / ')}
+			bind:checked={readerState.hideHUD}
+		/>
 		<MenuToggle
 			label="Auto-complete Volume"
 			description="Mark volume as read when reaching the last page"
@@ -152,7 +174,11 @@
 		<div class="flex items-center justify-between">
 			<h3 class="text-lg font-semibold text-theme-primary">Night Mode</h3>
 			<div class="clean-toggle">
-				<MenuToggle bind:checked={readerState.nightMode.enabled} />
+				<MenuToggle
+					label="Night Mode"
+					shortcut={($keybindStore.toggleNightMode || []).join(' / ')}
+					bind:checked={readerState.nightMode.enabled}
+				/>
 			</div>
 		</div>
 		<MenuSlider
@@ -217,7 +243,11 @@ Helps reduce eye strain during night reading."
 		<div class="flex items-center justify-between">
 			<h3 class="text-lg font-semibold text-theme-primary">Invert Colors</h3>
 			<div class="clean-toggle">
-				<MenuToggle bind:checked={readerState.invertColor.enabled} />
+				<MenuToggle
+					label="Invert Colors"
+					shortcut={($keybindStore.toggleInvertColors || []).join(' / ')}
+					bind:checked={readerState.invertColor.enabled}
+				/>
 			</div>
 		</div>
 		<MenuSlider

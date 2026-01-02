@@ -1,10 +1,26 @@
+import { toastStore } from './stores/toastStore.svelte';
+import { retryWithBackoff } from './utils/retry';
+
 /**
  * It's the same as RequestInit, but 'body' can be 'any'
  * We will convert 'body' into a valid type inside of apiFetch.
  */
 interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
   body?: any;
+  retry?: boolean;
+  showErrorToast?: boolean;
 }
+
+const getCsrfToken = () => {
+  if (typeof document === 'undefined') return null;
+  const match = document.cookie.match(/(?:^|; )csrfToken=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+};
+
+const isStateChanging = (method?: string) => {
+  const safeMethods = new Set(['GET', 'HEAD', 'OPTIONS']);
+  return !safeMethods.has((method || 'GET').toUpperCase());
+};
 
 /**
  * A simple wrapper for fetch to interact with our backend API.
@@ -12,63 +28,93 @@ interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
  * and uses relative paths that work with our Vite proxy.
  */
 export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
-  // Set default headers
-  const defaultHeaders: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  };
+  const { retry = false, showErrorToast = true, ...fetchOptions } = options;
 
-  // Stringify the body if it's an object and method is not GET
-  // GET request doesn't have a body by specification
-  let body: BodyInit | null | undefined = options.body;
-  if (
-    options.body &&
-    typeof options.body === 'object' &&
-    options.method !== 'GET' &&
-    !(options.body instanceof FormData)
-  ) {
-    body = JSON.stringify(options.body);
-  }
+  const doFetch = async () => {
+    // Set default headers
+    const defaultHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+    };
 
-  // --- Conditionally build headers ---
-  const finalHeaders: Record<string, string> = {
-    ...defaultHeaders,
-    ...(options.headers as Record<string, string>),
-  };
-
-  if (options.body instanceof FormData || options.method === 'DELETE') {
-    // If body is FormData, delete the 'Content-Type' header
-    // so the browser can set it automatically.
-    delete finalHeaders['Content-Type'];
-  }
-
-  const response = await fetch(path, {
-    ...options,
-    headers: finalHeaders,
-    body,
-  });
-
-  // If not OK, try to parse error message from backend
-  if (!response.ok) {
-    try {
-      const errorData = await response.json();
-      throw new Error(errorData.message || 'An unknown API error occurred.');
-    } catch (e) {
-      throw new Error(
-        (e as Error).message || `HTTP error! Status: ${response.status}`
-      );
+    // Stringify the body if it's an object and method is not GET
+    // GET request doesn't have a body by specification
+    let body: BodyInit | null | undefined = fetchOptions.body;
+    if (
+      fetchOptions.body &&
+      typeof fetchOptions.body === 'object' &&
+      fetchOptions.method !== 'GET' &&
+      !(fetchOptions.body instanceof FormData)
+    ) {
+      body = JSON.stringify(fetchOptions.body);
     }
-  }
 
-  // Handle successful but empty responses (e.g., 200 OK from /logout)
-  // If OK but not JSON, return the response object itself (e.g., for file streams)
-  const contentType = response.headers.get('content-type');
-  if (!contentType || !contentType.includes('application/json')) {
-    return response;
-  }
+    // --- Conditionally build headers ---
+    const finalHeaders: Record<string, string> = {
+      ...defaultHeaders,
+      ...(fetchOptions.headers as Record<string, string>),
+    };
 
-  // If we get here, it's a successful JSON response
-  return response.json();
+    if (isStateChanging(fetchOptions.method)) {
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        finalHeaders['x-csrf-token'] = csrfToken;
+      }
+    }
+
+    if (fetchOptions.body instanceof FormData || fetchOptions.method === 'DELETE') {
+      // If body is FormData, delete the 'Content-Type' header
+      // so the browser can set it automatically.
+      delete finalHeaders['Content-Type'];
+    }
+
+    const response = await fetch(path, {
+      ...fetchOptions,
+      headers: finalHeaders,
+      body,
+    });
+
+    // If not OK, try to parse error message from backend
+    if (!response.ok) {
+      try {
+        const errorData = await response.json();
+        const errorMessage = errorData.message || 'An unknown API error occurred.';
+        throw new Error(errorMessage);
+      } catch (e) {
+        const errorMessage = (e as Error).message || `HTTP error! Status: ${response.status}`;
+        throw new Error(errorMessage);
+      }
+    }
+
+    // Handle successful but empty responses (e.g., 200 OK from /logout)
+    // If OK but not JSON, return the response object itself (e.g., for file streams)
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      return response;
+    }
+
+    // If we get here, it's a successful JSON response
+    return response.json();
+  };
+
+  try {
+    if (retry) {
+      return await retryWithBackoff(doFetch, {
+        retries: 3,
+        delay: 1000,
+        onRetry: (error, attempt) => {
+          console.warn(`API request failed (attempt ${attempt}/3):`, error.message);
+        }
+      });
+    } else {
+      return await doFetch();
+    }
+  } catch (error) {
+    if (showErrorToast) {
+      toastStore.error((error as Error).message);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -115,6 +161,11 @@ export function apiUpload(
           console.log('Request started successfully');
         }
       };
+
+      const csrfToken = getCsrfToken();
+      if (csrfToken) {
+        xhr.setRequestHeader('x-csrf-token', csrfToken);
+      }
 
       if (xhr.upload) {
         xhr.upload.onprogress = (event) => {

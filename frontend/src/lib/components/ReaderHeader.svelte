@@ -4,6 +4,7 @@
 	import { uiState } from '$lib/states/uiState.svelte';
 	import FontSizeSlider from '$lib/components/FontSizeSlider.svelte';
 	import { fade } from 'svelte/transition';
+	import { keybindStore } from '$lib/stores/keybindStore';
 
 	// --- Props ---
 	let { settingsOpen = $bindable() } = $props<{
@@ -21,6 +22,10 @@
 	let headerIsVisible = $derived(
 		!readerState.hideHUD || headerForceVisible || isFontSizeOpen || readerState.isSaving
 	);
+
+	const saveShortcut = $derived.by(() => ($keybindStore.saveOcr || []).join(' / '));
+	const smartResizeShortcut = $derived.by(() => ($keybindStore.toggleSmartResize || []).join(' / '));
+	const editModeShortcut = $derived.by(() => ($keybindStore.toggleOcrMode || []).join(' / '));
 
 	// --- Handlers ---
 	const toggleFontSlider = (e: MouseEvent) => {
@@ -187,7 +192,7 @@
 				}}
 				disabled={readerState.isSaving || !headerIsVisible}
 				class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 disabled:opacity-50 transition-colors relative group"
-				title="Save OCR"
+				title={`Save OCR${saveShortcut ? ` (${saveShortcut})` : ''}`}
 			>
 				<div
 					class="absolute top-2 right-2 w-2 h-2 rounded-full bg-status-warning shadow-[0_0_8px_rgba(245,158,11,0.5)]"
@@ -220,7 +225,7 @@
 					? 'bg-amber-500 text-black shadow-lg shadow-amber-500/25'
 					: 'text-theme-secondary hover:text-white hover:bg-white/10'
 			}`}
-			title="Smart Resize Mode"
+			title={`Smart Resize Mode${smartResizeShortcut ? ` (${smartResizeShortcut})` : ''}`}
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -245,7 +250,7 @@
 					? 'bg-accent text-white shadow-lg shadow-accent/25'
 					: 'text-theme-secondary hover:text-white hover:bg-white/10'
 			}`}
-			title={readerState.ocrMode === 'READ' ? 'Enter Edit Mode' : 'Exit Edit Mode'}
+			title={`${readerState.ocrMode === 'READ' ? 'Enter Edit Mode' : 'Exit Edit Mode'}${editModeShortcut ? ` (${editModeShortcut})` : ''}`}
 		>
 			{#if readerState.ocrMode === 'BOX'}
 				<svg

@@ -190,7 +190,7 @@
 						<button
 							onclick={onSelectAll}
 							class="whitespace-nowrap flex-shrink-0 text-[10px] font-bold text-accent hover:text-accent-hover hover:underline"
-							title="Add all visible items to selection"
+							title="Add all visible items to selection (Ctrl+A)"
 						>
 							+ ALL
 						</button>

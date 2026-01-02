@@ -10,6 +10,7 @@
 	import MenuGrid from '$lib/components/menu/MenuGrid.svelte';
 	import MenuGroup from './MenuGroup.svelte';
 	import MenuGridItem from '$lib/components/menu/MenuGridItem.svelte';
+	import { contributionsStore } from '$lib/stores/contributionsStore';
 
 	let isDownloadOpen = $state(false);
 
@@ -256,13 +257,12 @@
 				>
 			{/snippet}
 			{#snippet badge()}
-				<!-- Sample badge - will show count of volumes needing rebase -->
-				{@const behindCount = 3}
-				{#if behindCount > 0}
+				<!-- Badge showing count of series with conflicts to resolve -->
+				{#if $contributionsStore.behind > 0}
 					<span
 						class="ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center"
 					>
-						{behindCount}
+						{$contributionsStore.behind}
 					</span>
 				{/if}
 			{/snippet}

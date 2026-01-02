@@ -1,7 +1,9 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { ensureAdminBranch, ensureUserBranch } from '../utils/ocrHelpers';
+import { ensureAdminBranch, ensureUserBranch, saveSnapshot, syncSnapshot } from '../utils/ocrHelpers';
 import { RebaseEngine } from '../lib/rebase/RebaseEngine';
+import { invalidateCacheByPrefix } from '../lib/cache';
+import { MokuroPage } from '../types/mokuro';
 
 // --- Zod Schemas ---
 
@@ -39,10 +41,34 @@ const patchOperationSchema = z.discriminatedUnion('op', [
   })
 ]);
 
-const patchBodySchema = z.object({
+export const patchBodySchema = z.object({
   operation: patchOperationSchema,
   branchVersion: z.number().int().nonnegative(),
 });
+
+const quadSchema = z.tuple([
+  z.tuple([z.number(), z.number()]),
+  z.tuple([z.number(), z.number()]),
+  z.tuple([z.number(), z.number()]),
+  z.tuple([z.number(), z.number()])
+]);
+
+const mokuroBlockSchema = z.object({
+  box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+  vertical: z.boolean(),
+  font_size: z.number().optional(),
+  lines: z.array(z.string()),
+  lines_coords: z.array(quadSchema)
+});
+
+const mokuroPageSchema = z.object({
+  blocks: z.array(mokuroBlockSchema),
+  img_path: z.string(),
+  img_width: z.number(),
+  img_height: z.number()
+});
+
+const saveOcrSchema = z.array(mokuroPageSchema);
 
 const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.addHook('preHandler', fastify.authenticate);
@@ -62,15 +88,17 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.applyPatch(id, operation, branchVersion);
+        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
-      } catch (err: any) {
-        if (err.message === 'Volume not found') {
-          return reply.code(404).send({ error: err.message });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unexpected error.';
+        if (message === 'Volume not found') {
+          return reply.code(404).send({ error: message });
         }
-        if (err.message.includes('Version mismatch') || err.message.includes('Conflict')) {
-          return reply.code(409).send({ error: err.message });
+        if (message.includes('Version mismatch') || message.includes('Conflict')) {
+          return reply.code(409).send({ error: message });
         }
-        return reply.code(400).send({ error: err.message });
+        return reply.code(400).send({ error: message });
       }
     }
   );
@@ -86,18 +114,20 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.undo(id, branchVersion);
+        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
-      } catch (err: any) {
-        if (err.message === 'Volume not found') {
-          return reply.code(404).send({ error: err.message });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unexpected error.';
+        if (message === 'Volume not found') {
+          return reply.code(404).send({ error: message });
         }
-        if (err.message.includes('Version mismatch')) {
-          return reply.code(409).send({ error: err.message });
+        if (message.includes('Version mismatch')) {
+          return reply.code(409).send({ error: message });
         }
-        if (err.message.includes('Cannot undo')) {
-          return reply.code(400).send({ error: err.message });
+        if (message.includes('Cannot undo')) {
+          return reply.code(400).send({ error: message });
         }
-        return reply.code(500).send({ error: err.message });
+        return reply.code(500).send({ error: message });
       }
     }
   );
@@ -113,21 +143,23 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.redo(id, branchVersion);
+        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
-      } catch (err: any) {
-        if (err.message.includes('not available')) {
-          return reply.code(405).send({ error: err.message });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unexpected error.';
+        if (message.includes('not available')) {
+          return reply.code(405).send({ error: message });
         }
-        if (err.message === 'Volume not found') {
-          return reply.code(404).send({ error: err.message });
+        if (message === 'Volume not found') {
+          return reply.code(404).send({ error: message });
         }
-        if (err.message.includes('Version mismatch')) {
-          return reply.code(409).send({ error: err.message });
+        if (message.includes('Version mismatch')) {
+          return reply.code(409).send({ error: message });
         }
-        if (err.message.includes('Cannot redo') || err.message.includes('Nothing to redo')) {
-          return reply.code(400).send({ error: err.message });
+        if (message.includes('Cannot redo') || message.includes('Nothing to redo')) {
+          return reply.code(400).send({ error: message });
         }
-        return reply.code(500).send({ error: err.message });
+        return reply.code(500).send({ error: message });
       }
     }
   );
@@ -142,19 +174,62 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         await request.accessStrategy.reset(id);
+        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return { success: true };
-      } catch (err: any) {
-        if (err.message.includes('not applicable')) {
-          return reply.code(405).send({ error: err.message });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unexpected error.';
+        if (message.includes('not applicable')) {
+          return reply.code(405).send({ error: message });
         }
-        if (err.message === 'Volume not found' || err.message.includes('access denied')) {
-          return reply.code(404).send({ error: err.message });
+        if (message === 'Volume not found' || message.includes('access denied')) {
+          return reply.code(404).send({ error: message });
         }
-        if (err.message.includes('access denied')) {
-          return reply.code(403).send({ error: err.message });
+        if (message.includes('access denied')) {
+          return reply.code(403).send({ error: message });
         }
-        return reply.code(500).send({ error: err.message });
+        return reply.code(500).send({ error: message });
       }
+    }
+  );
+
+  /**
+   * PUT /api/library/volume/:id/ocr
+   * Saves the current OCR state into the user's snapshot cache.
+   */
+  fastify.put<{ Params: { id: string }, Body: MokuroPage[] }>(
+    '/volume/:id/ocr',
+    async (request, reply) => {
+      const { id } = request.params;
+      const userId = request.user.id;
+      const parseResult = saveOcrSchema.safeParse(request.body);
+
+      if (!parseResult.success) {
+        return reply.code(400).send({ message: 'Invalid OCR payload', errors: parseResult.error });
+      }
+
+      const volume = await fastify.prisma.volume.findFirst({
+        where: {
+          id,
+          series: { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
+        },
+        select: { mokuroPath: true }
+      });
+
+      if (!volume) {
+        return reply.code(404).send({ message: 'Volume not found or access denied' });
+      }
+
+      const adminBranch = await ensureAdminBranch(fastify, id, volume.mokuroPath);
+      const userBranch = await ensureUserBranch(fastify, id, userId, adminBranch);
+      const { data, branch } = await syncSnapshot(fastify, userBranch);
+
+      data.pages = parseResult.data;
+      data.patch_id = branch.headPatchId;
+
+      await saveSnapshot(fastify, branch.id, data, branch.headPatchId);
+      invalidateCacheByPrefix(`volume:${userId}:${id}`);
+
+      return reply.send({ success: true });
     }
   );
 
@@ -181,16 +256,19 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
             where: { volumeId_userId: { volumeId: id, userId } }
           });
+          invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send({
             status: 'complete',
             newHeadId: updatedBranch?.headPatchId
           });
         } else {
+          invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send(result);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to start rebase';
         fastify.log.error(error);
-        return reply.status(500).send({ message: error.message || 'Failed to start rebase' });
+        return reply.status(500).send({ message });
       }
     }
   );
@@ -224,16 +302,19 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
             where: { volumeId_userId: { volumeId: id, userId } }
           });
+          invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send({
             status: 'complete',
             newHeadId: updatedBranch?.headPatchId
           });
         } else {
+          invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send(result);
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to continue rebase';
         fastify.log.error(error);
-        return reply.status(500).send({ message: error.message || 'Failed to continue rebase' });
+        return reply.status(500).send({ message });
       }
     }
   );
@@ -262,10 +343,12 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
         const engine = new RebaseEngine(fastify);
         await engine.abort(rebaseId);
+        invalidateCacheByPrefix(`volume:${userId}:${id}`);
         return reply.send({ status: 'aborted' });
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'Failed to abort rebase';
         fastify.log.error(error);
-        return reply.status(500).send({ message: error.message || 'Failed to abort rebase' });
+        return reply.status(500).send({ message });
       }
     }
   );

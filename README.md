@@ -48,6 +48,9 @@ For more details, read [the specification](docs/architecture/specification.md).
 *Live OCR editing in action:*
 ![Live OCR editing demonstration](docs-wiki/public/using-smart-edit-mode.webp)
 
+## Demo
+Record a short demo video and link it here for quick onboarding.
+
 ## 💻 Technology Stack
 
 This project is a monorepo containing a decoupled frontend and backend.
@@ -248,3 +251,4 @@ see [the development doc](docs/architecture/development.md).
 ## Acknowledgements
 
 The UX/UI flow in this project is heavily inspired by the original **[ZXY101/mokuro-reader](https://github.com/ZXY101/mokuro-reader)**.
+

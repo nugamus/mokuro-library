@@ -1,14 +1,17 @@
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL
-}, {
-  timestampFormat: 'iso8601'
-});
+export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
+  const adapter = new PrismaBetterSqlite3(
+    { url: databaseUrl },
+    { timestampFormat: 'iso8601' }
+  );
 
-export const prisma = new PrismaClient({ adapter });
-export type ExtendedPrismaClient = typeof prisma;
+  return new PrismaClient({ adapter });
+}
+
+export const prisma = createPrismaClient();
+export type ExtendedPrismaClient = PrismaClient;
 
 declare module 'fastify' {
   interface FastifyInstance {

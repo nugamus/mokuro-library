@@ -7,7 +7,8 @@
 		value: T;
 		label: string;
 		icon?: Snippet;
-		[key: string]: any;
+		shortcut?: string;
+		[key: string]: unknown;
 	};
 
 	let {
@@ -61,6 +62,7 @@
 	{@const isSelected = value === option.value}
 	<button
 		onclick={() => (value = option.value)}
+		title={option.shortcut ? `${option.label} (${option.shortcut})` : undefined}
 		class="{itemClass} rounded-xl border-2 transition-all duration-200 {isSelected
 			? 'bg-accent-surface border-accent text-accent shadow-lg shadow-accent/50'
 			: 'bg-black/20 border-theme-primary/20 text-gray-500 hover:border-accent/40 hover:bg-black/30 hover:text-theme-tertiary'}"

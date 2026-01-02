@@ -2,16 +2,19 @@
 	let {
 		label = '',
 		description = '',
+		shortcut,
 		checked = $bindable()
 	} = $props<{
 		label?: string;
 		description?: string;
+		shortcut?: string;
 		checked: boolean;
 	}>();
 </script>
 
 <button
 	onclick={() => (checked = !checked)}
+	title={shortcut ? `${label} (${shortcut})` : undefined}
 	class="w-full text-left rounded-2xl bg-black/0 backdrop-blur-2xl px-5 py-4 border border-theme-primary/20 shadow-theme-secondary/20 shadow-lg flex items-center justify-between hover:bg-black/40 transition-all duration-200 group"
 >
 	<div class="flex flex-col">

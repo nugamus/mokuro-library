@@ -1,12 +1,104 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs'; // We need fs to check if the file exists
+import { createHash } from 'crypto';
+import sharp from 'sharp';
 
 // Define an interface for our type-safe params
 interface FileParams {
   id: string; // This 'id' is the volumeId
   imageName: string;
 }
+
+interface ImageTransformQuery {
+  w?: string;
+  h?: string;
+  q?: string;
+  format?: string;
+}
+
+type TransformOptions = {
+  width?: number;
+  height?: number;
+  quality?: number;
+  format?: string;
+};
+
+const parsePositiveInt = (value?: string) => {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  if (Number.isNaN(parsed) || parsed <= 0) return undefined;
+  return parsed;
+};
+
+const normalizeFormat = (value?: string) => {
+  if (!value) return undefined;
+  const normalized = value.toLowerCase();
+  if (!['webp', 'jpeg', 'jpg', 'png', 'avif'].includes(normalized)) {
+    return undefined;
+  }
+  return normalized === 'jpg' ? 'jpeg' : normalized;
+};
+
+const parseTransformOptions = (query: ImageTransformQuery): TransformOptions | null => {
+  const width = parsePositiveInt(query.w);
+  const height = parsePositiveInt(query.h);
+  const quality = parsePositiveInt(query.q);
+  const format = normalizeFormat(query.format);
+
+  if (!width && !height && !quality && !format) {
+    return null;
+  }
+
+  return {
+    width,
+    height,
+    quality: quality ? Math.min(Math.max(quality, 40), 95) : 85,
+    format
+  };
+};
+
+const sendOptimizedImage = async (
+  reply: FastifyReply,
+  absolutePath: string,
+  options: TransformOptions,
+  cacheRoot: string
+) => {
+  const ext = path.extname(absolutePath).replace('.', '').toLowerCase();
+  const targetFormat = options.format || (ext === 'jpg' ? 'jpeg' : ext || 'jpeg');
+  const sizeKey = `${options.width || ''}x${options.height || ''}-${options.quality || ''}-${targetFormat}`;
+  const cacheKey = createHash('sha1').update(`${absolutePath}:${sizeKey}`).digest('hex');
+  const cacheDir = path.join(cacheRoot, 'uploads', 'cache', 'images');
+  const cachePath = path.join(cacheDir, `${cacheKey}.${targetFormat}`);
+
+  await fs.promises.mkdir(cacheDir, { recursive: true });
+
+  try {
+    const cached = await fs.promises.readFile(cachePath);
+    return reply.type(`image/${targetFormat}`).send(cached);
+  } catch {
+    // Cache miss; continue to transform.
+  }
+
+  const transformer = sharp(absolutePath);
+  if (options.width || options.height) {
+    transformer.resize({
+      width: options.width,
+      height: options.height,
+      fit: 'inside',
+      withoutEnlargement: true
+    });
+  }
+
+  const buffer = await transformer
+    .toFormat(targetFormat as keyof sharp.FormatEnum, {
+      quality: options.quality
+    })
+    .toBuffer();
+
+  await fs.promises.writeFile(cachePath, buffer);
+  return reply.type(`image/${targetFormat}`).send(buffer);
+};
 
 // Helper function
 
@@ -55,11 +147,13 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
    * GET /api/files/volume/:id/image/:imageName
    * Securely serves a specific manga page image.
    */
-  fastify.get<{ Params: FileParams }>(
+  fastify.get<{ Params: FileParams; Querystring: ImageTransformQuery }>(
     '/volume/:id/image/:imageName',
+    { config: { rateLimit: false } },
     async (request, reply) => {
       const { id: volumeId, imageName } = request.params;
       const userId = request.user.id;
+      const transformOptions = parseTransformOptions(request.query);
 
       try {
         // Find the volume and verify ownership (User OR Admin)
@@ -107,7 +201,10 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           });
         }
 
-        // Stream the file
+        if (transformOptions) {
+          return await sendOptimizedImage(reply, validPath, transformOptions, fastify.projectRoot);
+        }
+
         return reply.sendFile(validPath);
 
       } catch (error) {
@@ -125,11 +222,13 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
    * GET /api/files/series/:id/cover
    * Securely serves the series cover image.
    */
-  fastify.get<{ Params: { id: string } }>(
+  fastify.get<{ Params: { id: string }; Querystring: ImageTransformQuery }>(
     '/series/:id/cover',
+    { config: { rateLimit: false } },
     async (request, reply) => {
       const { id: seriesId } = request.params;
       const userId = request.user.id;
+      const transformOptions = parseTransformOptions(request.query);
 
       try {
         const series = await fastify.prisma.series.findFirst({
@@ -158,6 +257,10 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           return reply.status(404).send('Cover file missing from disk');
         }
 
+        if (transformOptions) {
+          return await sendOptimizedImage(reply, absolutePath, transformOptions, fastify.projectRoot);
+        }
+
         return reply.sendFile(absolutePath);
       } catch (error) {
         fastify.log.error(error);
@@ -173,6 +276,7 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
    */
   fastify.get<{ Querystring: { path: string } }>(
     '/preview',
+    { config: { rateLimit: false } },
     async (request, reply) => {
       const { path: filePath } = request.query;
       const userId = request.user.id;

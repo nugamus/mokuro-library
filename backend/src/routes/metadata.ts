@@ -2,6 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { FastifyInstance } from 'fastify/types/instance';
 import { Prisma } from '../generated/prisma/client'; // Import Prisma for types
 import { updateSeriesStatus } from '../utils/seriesStatus';
+import { invalidateCacheByPrefix } from '../lib/cache';
+import { LRUCache } from 'lru-cache';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -161,6 +163,75 @@ const compact = <T extends object>(obj: T): Partial<T> => {
   ) as Partial<T>;
 };
 
+const scrapeCache = new LRUCache<string, ScrapedManga>({
+  max: 1000,
+  ttl: 1000 * 60 * 60 * 24 // 24 hours
+});
+
+const normalizeTitle = (value?: string | null) =>
+  value ? value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : '';
+
+const levenshteinDistance = (a: string, b: string) => {
+  if (a === b) return 0;
+  if (!a) return b.length;
+  if (!b) return a.length;
+
+  const dp = new Array(b.length + 1).fill(0);
+  for (let j = 0; j <= b.length; j += 1) dp[j] = j;
+
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = i - 1;
+    dp[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+      prev = temp;
+    }
+  }
+
+  return dp[b.length];
+};
+
+const scoreCandidate = (query: string, candidate: ScrapedManga) => {
+  const normalizedQuery = normalizeTitle(query);
+  if (!normalizedQuery) return 0;
+
+  const titles = [
+    candidate.englishName,
+    candidate.romajiName,
+    candidate.japaneseName,
+    ...(candidate.synonyms || [])
+  ]
+    .map(normalizeTitle)
+    .filter(Boolean);
+
+  let bestScore = 0;
+  for (const title of titles) {
+    const distance = levenshteinDistance(normalizedQuery, title);
+    const maxLen = Math.max(normalizedQuery.length, title.length);
+    const score = maxLen > 0 ? 1 - distance / maxLen : 0;
+    if (score > bestScore) bestScore = score;
+  }
+
+  return bestScore;
+};
+
+const pickBestCandidate = (query: string, candidates: ScrapedManga[]) => {
+  let best = candidates[0] || {};
+  let bestScore = 0;
+
+  for (const candidate of candidates) {
+    const score = scoreCandidate(query, candidate);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  return best;
+};
+
 /**
  * Helper function to fix common Mojibake encoding errors
  * Detects and fixes cases where UTF-8 was decoded as Latin-1
@@ -203,6 +274,10 @@ async function scrapeFromProvider(
   provider: 'anilist' | 'mal' | 'kitsu',
   seriesName: string
 ): Promise<ScrapedManga> {
+  const cacheKey = `${provider}:${seriesName.trim().toLowerCase()}`;
+  const cached = scrapeCache.get(cacheKey);
+  if (cached) return cached;
+
   // Use a controller to prevent hanging requests
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 5000);
@@ -211,19 +286,21 @@ async function scrapeFromProvider(
     switch (provider) {
       case 'anilist': {
         const query = `
-          query ($search: String) {
-            Media (search: $search, type: MANGA) {
-              title { english native romaji }
-              synonyms
-              description
-              coverImage { extraLarge large medium }
+          query ($search: String, $perPage: Int) {
+            Page(perPage: $perPage) {
+              media(search: $search, type: MANGA) {
+                title { english native romaji }
+                synonyms
+                description
+                coverImage { extraLarge large medium }
+              }
             }
           }
         `;
         const resp = await fetch('https://graphql.anilist.co', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, variables: { search: seriesName } }),
+          body: JSON.stringify({ query, variables: { search: seriesName, perPage: 5 } }),
           signal: controller.signal
         });
 
@@ -232,23 +309,34 @@ async function scrapeFromProvider(
           return {};
         }
 
-        const result = await resp.json() as AniListResponse;
-        const media = result.data?.Media;
-        if (!media) return {};
+        const result = await resp.json() as {
+          data?: { Page?: { media?: Array<{
+            title?: { english?: string | null; native?: string | null; romaji?: string | null };
+            synonyms?: string[];
+            description?: string | null;
+            coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null };
+          }> } };
+        };
+        const mediaList = result.data?.Page?.media || [];
+        if (!mediaList.length) return {};
 
-        return {
+        const candidates = mediaList.map((media) => ({
           englishName: fixMojibake(media.title?.english),
           romajiName: fixMojibake(media.title?.romaji),
           japaneseName: fixMojibake(media.title?.native),
           synonyms: (media.synonyms || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
           description: fixMojibake(media.description),
           coverUrl: media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium || undefined
-        };
+        }));
+
+        const best = pickBestCandidate(seriesName, candidates);
+        scrapeCache.set(cacheKey, best);
+        return best;
       }
 
       case 'mal': {
         const resp = await fetch(
-          `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesName)}&limit=1`,
+          `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesName)}&limit=5`,
           { signal: controller.signal }
         );
 
@@ -258,22 +346,24 @@ async function scrapeFromProvider(
         }
 
         const { data } = await resp.json() as MALResponse;
-        const manga = data?.[0];
-        if (!manga) return {};
-
-        return {
+        const candidates = (data || []).map((manga) => ({
           englishName: fixMojibake(manga.title_english),
           romajiName: fixMojibake(manga.title),
           japaneseName: fixMojibake(manga.title_japanese),
           synonyms: (manga.title_synonyms || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
           description: fixMojibake(manga.synopsis),
           coverUrl: manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url || undefined
-        };
+        }));
+
+        if (!candidates.length) return {};
+        const best = pickBestCandidate(seriesName, candidates);
+        scrapeCache.set(cacheKey, best);
+        return best;
       }
 
       case 'kitsu': {
         const resp = await fetch(
-          `https://kitsu.io/api/edge/manga?filter[text]=${encodeURIComponent(seriesName)}&page[limit]=1`,
+          `https://kitsu.io/api/edge/manga?filter[text]=${encodeURIComponent(seriesName)}&page[limit]=5`,
           { signal: controller.signal }
         );
 
@@ -283,17 +373,22 @@ async function scrapeFromProvider(
         }
 
         const { data } = await resp.json() as KitsuResponse;
-        const manga = data?.[0]?.attributes;
-        if (!manga) return {};
+        const candidates = (data || []).map((entry) => {
+          const manga = entry.attributes;
+          return {
+            englishName: fixMojibake(manga.titles?.en || manga.titles?.en_jp),
+            romajiName: fixMojibake(manga.canonicalTitle),
+            japaneseName: fixMojibake(manga.titles?.ja_jp),
+            synonyms: (manga.abbreviatedTitles || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
+            description: fixMojibake(manga.synopsis),
+            coverUrl: manga.posterImage?.large || manga.posterImage?.medium || manga.posterImage?.small || undefined
+          };
+        });
 
-        return {
-          englishName: fixMojibake(manga.titles?.en || manga.titles?.en_jp),
-          romajiName: fixMojibake(manga.canonicalTitle),
-          japaneseName: fixMojibake(manga.titles?.ja_jp),
-          synonyms: (manga.abbreviatedTitles || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
-          description: fixMojibake(manga.synopsis),
-          coverUrl: manga.posterImage?.large || manga.posterImage?.medium || manga.posterImage?.small || undefined
-        };
+        if (!candidates.length) return {};
+        const best = pickBestCandidate(seriesName, candidates);
+        scrapeCache.set(cacheKey, best);
+        return best;
       }
     }
   } catch (err) {
@@ -436,8 +531,12 @@ const metadataRoutes: FastifyPluginAsync = async (
           }
         }
 
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}`);
+        invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
+
         return reply.status(200).send(upsertedProgress);
-      } catch (error) {
+      } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
           return reply.status(404).send({ message: 'Volume not found.' });
         }
@@ -468,8 +567,12 @@ const metadataRoutes: FastifyPluginAsync = async (
         });
         if (volume) await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
 
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}`);
+        invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
+
         return reply.send({ message: 'Progress reset successfully.' });
-      } catch (error) {
+      } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
           return reply.send({ message: 'Progress was already empty.' });
         }
@@ -559,16 +662,29 @@ const metadataRoutes: FastifyPluginAsync = async (
 
         // 3. Handle PRIVATE Data Update (Settings)
         if (bookmarked !== undefined || organized !== undefined) {
-          const settingsUpdate: any = {};
-          if (bookmarked !== undefined) settingsUpdate.bookmarked = bookmarked;
-          if (organized !== undefined) settingsUpdate.organized = organized;
+          const settingsUpdate: Prisma.UserSeriesSettingsUpdateInput = {};
+          const settingsCreate: Prisma.UserSeriesSettingsUncheckedCreateInput = {
+            userId,
+            seriesId: id
+          };
+          if (bookmarked !== undefined) {
+            settingsUpdate.bookmarked = bookmarked;
+            settingsCreate.bookmarked = bookmarked;
+          }
+          if (organized !== undefined) {
+            settingsUpdate.organized = organized;
+            settingsCreate.organized = organized;
+          }
 
           await fastify.prisma.userSeriesSettings.upsert({
             where: { userId_seriesId: { userId, seriesId: id } },
-            create: { userId, seriesId: id, ...settingsUpdate },
+            create: settingsCreate,
             update: settingsUpdate
           });
         }
+
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}:${id}`);
 
         return reply.send({ message: 'Series updated successfully.' });
       } catch (error) {
@@ -604,6 +720,10 @@ const metadataRoutes: FastifyPluginAsync = async (
           data: { title, sortTitle: title ?? vol.folderName },
         });
 
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}`);
+        invalidateCacheByPrefix(`volume:${userId}:${id}`);
+
         return reply.send({ message: 'Volume title updated.' });
       } catch (error) {
         fastify.log.error(error);
@@ -635,6 +755,9 @@ const metadataRoutes: FastifyPluginAsync = async (
             })
           )
         );
+
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}`);
 
         return reply.send({ message: 'Batch update successful.', count: ids.length });
       } catch (error) {

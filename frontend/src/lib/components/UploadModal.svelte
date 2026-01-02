@@ -3,6 +3,7 @@
 	import { fade, scale } from 'svelte/transition';
 	import { createJobsFromFiles, type UploadJob } from '$lib/utils/uploadHelpers';
 	import MenuGridRadio from '$lib/components/menu/MenuGridRadio.svelte';
+	import AriaLiveRegion from '$lib/components/AriaLiveRegion.svelte';
 
 	let { isOpen, onClose, onUploadSuccess } = $props<{
 		isOpen: boolean;
@@ -19,6 +20,43 @@
 	let totalJobs = $derived(jobs.length);
 	let completedJobs = $derived(jobs.filter((j) => j.status === 'done').length);
 	let hasJobs = $derived(jobs.length > 0);
+	let uploadAnnouncement = $derived.by(() => {
+		const activeJob = jobs.find((job) => job.status === 'uploading' || job.status === 'processing');
+		if (!activeJob) return '';
+		if (activeJob.status === 'uploading') {
+			return `Uploading ${activeJob.name}: ${Math.round(activeJob.progress)}%`;
+		}
+		return `Processing ${activeJob.name}`;
+	});
+
+	const pollUploadStatus = async (job: UploadJob, jobId: string) => {
+		const start = Date.now();
+		const maxWaitMs = 10 * 60 * 1000;
+
+		while (Date.now() - start < maxWaitMs) {
+			const status = await apiFetch(`/api/library/upload/status/${jobId}`, {
+				method: 'GET',
+				showErrorToast: false
+			});
+
+			if (status.status === 'completed') {
+				job.status = 'done';
+				job.resultMsg = status.message || 'OK';
+				return;
+			}
+
+			if (status.status === 'failed') {
+				job.status = 'error';
+				job.resultMsg = status.message || 'Upload failed';
+				return;
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, 1000));
+		}
+
+		job.status = 'error';
+		job.resultMsg = 'Upload timed out';
+	};
 
 	// --- Actions ---
 	const resetState = () => {
@@ -93,14 +131,18 @@
 					formData.append('files', file, file.webkitRelativePath);
 				}
 
-				await apiUpload('/api/library/upload', formData, (percent) => {
+				const response = await apiUpload('/api/library/upload?async=true', formData, (percent) => {
 					job.progress = percent;
 					if (percent === 100) job.status = 'processing';
 				});
-
-				job.status = 'done';
-				job.resultMsg = `OK`;
-				hasUpdates = true;
+				if (response?.jobId) {
+					job.status = 'processing';
+					await pollUploadStatus(job, response.jobId);
+				} else {
+					job.status = 'done';
+					job.resultMsg = `OK`;
+				}
+				hasUpdates = job.status === 'done';
 			} catch (e) {
 				console.error(`Failed to upload ${job.name}`, e);
 				job.status = 'error';
@@ -133,6 +175,7 @@
 			class="relative w-full max-w-2xl max-h-[90vh] transform overflow-hidden rounded-2xl border border-theme-border bg-theme-surface shadow-2xl transition-all sm:my-8 flex flex-col"
 			transition:scale={{ duration: 200, start: 0.95 }}
 		>
+			<AriaLiveRegion message={uploadAnnouncement} />
 			<div
 				class="flex items-center justify-between px-6 py-4 bg-theme-main border-b border-theme-border"
 			>

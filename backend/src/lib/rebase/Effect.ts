@@ -8,7 +8,7 @@ export class EffectFactory {
    * For permutations, stores A⁻¹ so transformers can accumulate without extra inversion.
    */
   static fromOperation(op: PatchOperation): Effect {
-    const { op: opType, path, value, old_value, new_order } = op;
+    const { op: opType, path } = op;
 
     // 1. Add -> Shift Up
     if (opType === 'add') {
@@ -40,17 +40,17 @@ export class EffectFactory {
           type: 'shift_down',
           path: parentPath,
           index: index,
-          deletedValue: old_value // Critical for resurrection
+          deletedValue: op.old_value // Critical for resurrection
         };
       }
     }
 
     // 3. Reorder -> Permute (store as A⁻¹)
-    if (opType === 'reorder' && new_order) {
+    if (opType === 'reorder') {
       return {
         type: 'permute',
         path: path,
-        permutation: Permutation.invert(new_order)  // Store A⁻¹
+        permutation: Permutation.invert(op.new_order)  // Store A⁻¹
       };
     }
 
@@ -59,7 +59,7 @@ export class EffectFactory {
       return {
         type: 'content',
         path: path,
-        newValue: value
+        newValue: op.value
       };
     }
 

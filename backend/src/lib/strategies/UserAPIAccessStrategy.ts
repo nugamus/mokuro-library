@@ -45,7 +45,16 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       include: {
         progress: {
           where: { userId: this.userId },
-          select: { page: true, completed: true, timeRead: true, charsRead: true }
+          select: {
+            id: true,
+            page: true,
+            completed: true,
+            timeRead: true,
+            charsRead: true,
+            lastReadAt: true,
+            userId: true,
+            volumeId: true
+          }
         }
       }
     });
@@ -115,7 +124,19 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
         series: { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
       },
       include: {
-        progress: { where: { userId }, select: { page: true, completed: true, timeRead: true, charsRead: true } }
+        progress: {
+          where: { userId },
+          select: {
+            id: true,
+            page: true,
+            completed: true,
+            timeRead: true,
+            charsRead: true,
+            lastReadAt: true,
+            userId: true,
+            volumeId: true
+          }
+        }
       }
     });
     if (!volume) throw new Error('Volume not found');
@@ -141,7 +162,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     }
 
     // 4. Transactional Write
-    const result = await this.fastify.prisma.$transaction(async (tx) => {
+    const result = await this.fastify.prisma.$transaction(async (tx: any) => {
       // CASE 1: Root is NULL (Clean state -> Fork)
       // No deletion needed
 
@@ -371,7 +392,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     if (userBranch.rootPatchId === null) return;
 
     // 1. Database State Transition
-    await this.fastify.prisma.$transaction(async (tx) => {
+    await this.fastify.prisma.$transaction(async (tx: any) => {
       // Cascade delete the private patch tree
       await tx.patch.delete({ where: { id: userBranch.rootPatchId! } });
 

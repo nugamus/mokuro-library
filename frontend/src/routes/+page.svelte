@@ -50,6 +50,10 @@
 
 	let isEditModalOpen = $state(false);
 	let editModalTarget: Series | null = $state(null);
+	let pullDistance = $state(0);
+	let touchStartY = $state(0);
+	let isRefreshing = $state(false);
+	let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// --- Auth Functions ---
 	function toggleMode() {
@@ -329,8 +333,11 @@
 				goto(`?${queryString}`, { replaceState: true, keepFocus: true, noScroll: true });
 			}
 
-			// D. Trigger Fetch
-			fetchLibrary(`?${queryString}`);
+			// D. Trigger Fetch (Debounced for filters/search)
+			if (filterDebounceTimer) clearTimeout(filterDebounceTimer);
+			filterDebounceTimer = setTimeout(() => {
+				fetchLibrary(`?${queryString}`);
+			}, 250);
 		}
 	});
 
@@ -388,6 +395,32 @@
 	const handleRefresh = () => {
 		const params = new URLSearchParams(page.url.searchParams);
 		fetchLibrary(`?${params.toString()}`, true);
+	};
+
+	const handleTouchStart = (event: TouchEvent) => {
+		if (!browser || window.scrollY > 0 || isRefreshing) return;
+		touchStartY = event.touches[0].clientY;
+	};
+
+	const handleTouchMove = (event: TouchEvent) => {
+		if (!touchStartY || isRefreshing) return;
+		const delta = event.touches[0].clientY - touchStartY;
+		if (delta > 0) {
+			event.preventDefault();
+		}
+		pullDistance = Math.max(0, Math.min(delta, 120));
+	};
+
+	const handleTouchEnd = () => {
+		if (pullDistance > 80 && !isRefreshing) {
+			isRefreshing = true;
+			handleRefresh();
+			setTimeout(() => {
+				isRefreshing = false;
+			}, 800);
+		}
+		pullDistance = 0;
+		touchStartY = 0;
 	};
 </script>
 
@@ -850,7 +883,20 @@
 	<div
 		class="flex flex-col min-h-[calc(100vh-5rem)] mx-auto px-4 sm:px-6 pt-1 sm:pt-2 pb-6"
 		style="max-width: 1400px;"
+		ontouchstart={handleTouchStart}
+		ontouchmove={handleTouchMove}
+		ontouchend={handleTouchEnd}
 	>
+		{#if pullDistance > 0}
+			<div class="flex justify-center">
+				<div
+					class="px-4 py-2 rounded-full bg-theme-surface text-theme-secondary text-xs shadow-lg"
+					style={`transform: translateY(${pullDistance / 2}px);`}
+				>
+					{pullDistance > 80 ? 'Release to refresh' : 'Pull to refresh'}
+				</div>
+			</div>
+		{/if}
 		{#if isLoadingLibrary && library.length === 0}
 			<div class="flex-grow flex items-center justify-center">
 				<div

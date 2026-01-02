@@ -29,6 +29,8 @@
 	// handle header visibility on mobile
 	let headerTimer: ReturnType<typeof setTimeout> | null = null;
 	let headerIsVisible = $state(false);
+	let showTouchZones = $state(false);
+	let touchHintTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// --- Initialization ---
 	$effect(() => {
@@ -64,17 +66,6 @@
 			);
 		}
 	});
-
-	// --- Event Handlers ---
-	const handleKeydown = (e: KeyboardEvent) => {
-		if (readerState.layoutMode === 'vertical') return;
-		if (e.key === 'ArrowRight') {
-			readerState.readingDirection === 'rtl' ? readerState.prevPage() : readerState.nextPage();
-		}
-		if (e.key === 'ArrowLeft') {
-			readerState.readingDirection === 'rtl' ? readerState.nextPage() : readerState.prevPage();
-		}
-	};
 
 	// Font Slider Helpers
 	const focusedBlockFontSize = $derived(readerState.focusedBlock?.font_size ?? 16);
@@ -118,19 +109,35 @@
 	let hasHover = $state(true);
 	onMount(() => {
 		if (browser) {
-			window.addEventListener('keydown', handleKeydown);
 			const mq = window.matchMedia('(hover: none)');
 			hasHover = !mq.matches;
+			showTouchZones = mq.matches;
+			if (mq.matches) {
+				touchHintTimer = setTimeout(() => {
+					showTouchZones = false;
+				}, 3000);
+			}
 			const listener = (e: MediaQueryListEvent) => (hasHover = !e.matches);
+			const hintListener = (e: MediaQueryListEvent) => {
+				if (e.matches) {
+					showTouchZones = true;
+					if (touchHintTimer) clearTimeout(touchHintTimer);
+					touchHintTimer = setTimeout(() => {
+						showTouchZones = false;
+					}, 3000);
+				}
+			};
 
 			mq.addEventListener('change', listener);
+			mq.addEventListener('change', hintListener);
 
 			// Set Context for header
 			uiState.setContext('reader', 'Reader', []);
 
 			return () => {
-				window.removeEventListener('keydown', handleKeydown);
 				mq.removeEventListener('change', listener);
+				mq.removeEventListener('change', hintListener);
+				if (touchHintTimer) clearTimeout(touchHintTimer);
 			};
 		}
 	});
@@ -147,10 +154,13 @@
 	</title>
 </svelte:head>
 
-<div class="flex h-screen w-full flex-col bg-gray-800 dark:bg-black overflow-hidden">
+<div class="relative flex h-screen w-full flex-col bg-gray-800 dark:bg-black overflow-hidden">
 	{#if readerState.isLoading}
 		<div class="flex flex-1 items-center justify-center">
-			<p class="text-white">Loading volume...</p>
+			<div class="w-full max-w-3xl px-6 py-10 animate-pulse space-y-4">
+				<div class="h-4 w-32 rounded-full bg-white/20"></div>
+				<div class="h-[60vh] rounded-2xl border border-white/10 bg-white/5"></div>
+			</div>
 		</div>
 	{:else if readerState.error}
 		<div class="flex flex-1 items-center justify-center">
@@ -188,6 +198,14 @@
 				/>
 			{/if}
 		</main>
+
+		{#if showTouchZones}
+			<div class="pointer-events-none absolute inset-0 z-40 flex text-[11px] text-white/80">
+				<div class="flex-1 flex items-center justify-start pl-4">Prev</div>
+				<div class="flex-1 flex items-center justify-center">Menu</div>
+				<div class="flex-1 flex items-center justify-end pr-4">Next</div>
+			</div>
+		{/if}
 
 		{#if settingsOpen}
 			<button

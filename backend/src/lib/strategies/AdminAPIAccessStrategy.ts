@@ -37,7 +37,16 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
         // Here we just fetch admin's personal progress for consistency.
         progress: {
           where: { userId: 'admin' },
-          select: { page: true, completed: true, timeRead: true, charsRead: true }
+          select: {
+            id: true,
+            page: true,
+            completed: true,
+            timeRead: true,
+            charsRead: true,
+            lastReadAt: true,
+            userId: true,
+            volumeId: true
+          }
         }
       }
     });
@@ -113,7 +122,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     }
 
     // 4. Transactional Write
-    const result = await this.fastify.prisma.$transaction(async (tx) => {
+    const result = await this.fastify.prisma.$transaction(async (tx: any) => {
 
       // Cascade delete will remove all subsequent history
       // We delete nextPatch, not children
@@ -198,7 +207,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
 
     // 3. Dependency Check ("In the Way")
     // Check for direct Head dependents or Root dependents (forks)
-    const rootDependents = currentPatch.children.map(p => p.asRootOf[0]);
+    const rootDependents = currentPatch.children.map((p: any) => p.asRootOf[0]);
     const headDependents = await this.fastify.prisma.ocrBranch.findMany({
       where: { headPatchId: currentHeadId, rootPatchId: null, userId: { not: 'admin' } },
       select: { id: true }
@@ -218,7 +227,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     await syncSnapshot(this.fastify, adminBranch, parentId);
 
     // 4. Transactional Updates (Database Only)
-    await this.fastify.prisma.$transaction(async (tx) => {
+    await this.fastify.prisma.$transaction(async (tx: any) => {
       // Move Admin Pointer Back
       await tx.ocrBranch.update({
         where: { id: adminBranch.id },

@@ -282,6 +282,7 @@
 	// Extract filter counts (already calculated during series processing)
 	const filterCounts = $derived.by(() => seriesContributions.filterCounts);
 
+
 	// Persist expanded state to sessionStorage
 	$effect(() => {
 		if (browser && expandedSeries.size > 0) {
@@ -1125,6 +1126,7 @@
 				<button
 					onclick={() => showActivityTimeline = false}
 					class="p-1 rounded-lg hover:bg-theme-surface transition-colors text-theme-secondary hover:text-theme-primary"
+					aria-label="Close recent activity"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 				</button>
@@ -1192,9 +1194,16 @@
 
 	<!-- Loading State -->
 	{#if isLoading}
-		<div class="rounded-xl bg-theme-main border border-theme-border p-12 text-center">
-			<div class="text-4xl mb-2 animate-bounce">⏳</div>
-			<div class="text-sm text-theme-secondary">Loading contributions...</div>
+		<div class="rounded-xl bg-theme-main border border-theme-border p-6">
+			<div class="animate-pulse space-y-4">
+				<div class="h-5 w-40 rounded bg-theme-surface"></div>
+				<div class="h-3 w-3/4 rounded bg-theme-surface"></div>
+				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+					<div class="h-24 rounded-xl bg-theme-surface"></div>
+					<div class="h-24 rounded-xl bg-theme-surface"></div>
+				</div>
+				<div class="h-3 w-2/3 rounded bg-theme-surface"></div>
+			</div>
 		</div>
 	{:else if error}
 		<div class="rounded-xl bg-theme-main border border-theme-border p-12 text-center">
@@ -1467,8 +1476,7 @@
 													title="View differences"
 												>
 													<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sm:w-3.5 sm:h-3.5"><path d="M12 3v18"/><path d="m8 9-3 3 3 3"/><path d="m16 15 3-3-3-3"/></svg>
-													<span class="hidden xs:inline md:hidden">Diff</span>
-													<span class="hidden md:inline">Differences</span>
+													<span class="hidden lg:inline">Differences</span>
 												</button>
 											{/if}
 
@@ -1508,7 +1516,7 @@
 												title="Open volume"
 											>
 												<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="sm:w-3.5 sm:h-3.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-												View
+												<span class="hidden md:inline">View</span>
 											</button>
 										</div>
 									</div>
@@ -1527,10 +1535,14 @@
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
 		onclick={() => (resetModal.isOpen = false)}
+		onkeydown={(e) => e.key === 'Escape' && (resetModal.isOpen = false)}
+		role="button"
+		tabindex="0"
 	>
 		<div
 			class="bg-theme-main border-2 border-status-danger/50 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden"
 			onclick={(e) => e.stopPropagation()}
+			role="presentation"
 		>
 			<!-- Header -->
 			<div class="bg-gradient-to-r from-status-danger/20 to-status-danger/10 p-6 border-b border-status-danger/30">
@@ -1597,10 +1609,14 @@
 	<div
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-2 sm:p-4"
 		onclick={abortRebase}
+		onkeydown={(e) => e.key === 'Escape' && abortRebase()}
+		role="button"
+		tabindex="0"
 	>
 		<div
 			class="bg-theme-main border border-accent/50 sm:border-2 rounded-xl sm:rounded-2xl shadow-2xl max-w-5xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
 			onclick={(e) => e.stopPropagation()}
+			role="presentation"
 		>
 			<!-- Header -->
 			<div class="bg-gradient-to-r from-accent/20 to-accent/10 p-3 sm:p-6 border-b border-accent/30 flex-shrink-0">
@@ -1790,10 +1806,14 @@
 	<div
 		class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
 		onclick={() => showDiffViewer = false}
+		onkeydown={(e) => e.key === 'Escape' && (showDiffViewer = false)}
+		role="button"
+		tabindex="0"
 	>
 		<div
 			class="bg-theme-main rounded-2xl border-2 border-theme-primary/30 shadow-2xl max-w-5xl w-full max-h-[90vh] flex flex-col"
 			onclick={(e) => e.stopPropagation()}
+			role="presentation"
 		>
 			<!-- Header -->
 			<div class="bg-gradient-to-r from-theme-primary/20 to-theme-primary/10 p-6 border-b border-theme-primary/30 flex-shrink-0">
@@ -1810,6 +1830,7 @@
 					<button
 						onclick={() => showDiffViewer = false}
 						class="p-2 rounded-lg hover:bg-theme-surface transition-colors text-theme-secondary hover:text-theme-primary"
+						aria-label="Close diff viewer"
 					>
 						<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 					</button>
@@ -1925,3 +1946,4 @@
 		}
 	}
 </style>
+

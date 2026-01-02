@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
 	import { longpress } from '$lib/actions/longPress';
+	import { vibrate, HAPTIC_PATTERNS } from '$lib/utils/haptics';
 
 	// --- Types ---
 	interface EntryData {
@@ -64,7 +65,10 @@
 {#if viewMode === 'grid'}
 	<div
 		use:longpress
-		onlongpress={onLongPress}
+		onlongpress={() => {
+			vibrate(HAPTIC_PATTERNS.medium);
+			onLongPress?.();
+		}}
 		class={`group relative backdrop-blur-2xl rounded-2xl border-2 border-theme-primary flex flex-col transition-all duration-300 overflow-hidden 
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
@@ -184,7 +188,10 @@
 {:else}
 	<div
 		use:longpress
-		onlongpress={onLongPress}
+		onlongpress={() => {
+			vibrate(HAPTIC_PATTERNS.medium);
+			onLongPress?.();
+		}}
 		class={`group relative backdrop-blur-2xl rounded-2xl border-2 flex items-center 
     transition-all duration-300 overflow-hidden h-32
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]

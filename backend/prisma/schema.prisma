@@ -136,6 +136,7 @@ model Patch {
 
   @@index([volumeId])
   @@index([parentId])
+  @@index([volumeId, userId, createdAt])
 }
 
 model OcrBranch {
@@ -174,6 +175,7 @@ model OcrBranch {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([volumeId, userId]) // Enforces 1 active branch per user
+  @@index([headPatchId])
 }
 
 model UserSeriesSettings {
@@ -217,6 +219,8 @@ model UserProgress {
   volumeId   String
 
   @@unique([userId, volumeId]) // A user can only have one progress entry per volume
+  @@index([userId, lastReadAt])
+  @@index([volumeId])
 }
 
 // Tracks volume submissions from users to the shared library

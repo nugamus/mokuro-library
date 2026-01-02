@@ -17,9 +17,11 @@ export async function deleteBranchSnapshots(fastify: FastifyInstance, branchIds:
     const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
     try {
       await fs.promises.unlink(snapshotPath);
-    } catch (e: any) {
-      if (e.code !== 'ENOENT') {
-        fastify.log.warn(`Failed to delete snapshot ${snapshotPath}: ${e.message}`);
+    } catch (e: unknown) {
+      const error = e as { code?: string; message?: string };
+      if (error.code !== 'ENOENT') {
+        const message = error.message || 'Unknown error';
+        fastify.log.warn(`Failed to delete snapshot ${snapshotPath}: ${message}`);
       }
     }
   }
@@ -190,7 +192,7 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
   if (adminBranch) return adminBranch;
 
   const data = await loadOriginalMokuro(fastify, mokuroPath);
-  adminBranch = await fastify.prisma.$transaction(async (tx) => {
+  adminBranch = await fastify.prisma.$transaction(async (tx: any) => {
     const genesisPatch = await tx.patch.create({
       data: {
         volumeId,
@@ -213,8 +215,8 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
     return newBranch
   });
 
-  data.patch_id = adminBranch.snapshotPatchId ?? undefined;
-  return await saveSnapshot(fastify, adminBranch.id, data, adminBranch.snapshotPatchId ?? '');
+  data.patch_id = adminBranch!.snapshotPatchId ?? undefined;
+  return await saveSnapshot(fastify, adminBranch!.id, data, adminBranch!.snapshotPatchId ?? '');
 }
 
 // --- Helper: Ensure User Branch ---

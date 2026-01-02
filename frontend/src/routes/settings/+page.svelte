@@ -11,11 +11,15 @@
 	import AnkiSettings from '$lib/components/settings/AnkiSettings.svelte';
 	import LibraryOverview from '$lib/components/settings/LibraryOverview.svelte';
 	import ScrapeSettings from '$lib/components/settings/ScrapeSettings.svelte';
+	import KeybindSettings from '$lib/components/settings/KeybindSettings.svelte';
+	import TestRunnerSettings from '$lib/components/settings/TestRunnerSettings.svelte';
 
 	// Define available categories
 	const categories = [
 		{ id: 'reader', label: 'Reader Settings', icon: 'book', component: ReaderSettings },
-		{ id: 'scrape', label: 'Scrape Settings', icon: 'download', component: ScrapeSettings }
+		{ id: 'scrape', label: 'Scrape Settings', icon: 'download', component: ScrapeSettings },
+		{ id: 'keybinds', label: 'Keybinds', icon: 'keyboard', component: KeybindSettings },
+		{ id: 'tests', label: 'Test Runner', icon: 'flask', component: TestRunnerSettings }
 	];
 
 	const categories_WIP = [
@@ -70,6 +74,8 @@
 			library: 'M22 12h-4l-3 9L9 3l-3 9H2',
 			clock: 'M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10zM12 6v6l4 2',
 			download: 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3',
+			keyboard: 'M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z',
+			flask: 'M10 2h4v2h-1v4.6l5.7 9.9a2 2 0 0 1-1.7 3H7a2 2 0 0 1-1.7-3L11 8.6V4h-1V2z',
 			settings:
 				'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z'
 		};
@@ -139,6 +145,12 @@
 								<circle cx="12" cy="12" r="10" />
 								<polyline points="12 6 12 12 16 14" />
 							{:else if category.icon === 'download'}
+								<path d={getIconPath(category.icon)} />
+							{:else if category.icon === 'keyboard'}
+								<path d={getIconPath(category.icon)} />
+								<path d="M7 10h1M10 10h1M13 10h1M16 10h1" />
+								<path d="M7 14h10" />
+							{:else if category.icon === 'flask'}
 								<path d={getIconPath(category.icon)} />
 							{:else}
 								<path d={getIconPath(category.icon)} />

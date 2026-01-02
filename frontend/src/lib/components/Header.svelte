@@ -5,6 +5,7 @@
 	import { goto } from '$app/navigation';
 	import { contextMenu } from '$lib/contextMenuStore';
 	import { fade, scale } from 'svelte/transition';
+	import { contributionsStore } from '$lib/stores/contributionsStore';
 
 	// Import your new Menu Components
 	import FilterMenu from '$lib/components/menu/FilterMenu.svelte';
@@ -449,7 +450,7 @@
 
 			<button
 				onclick={toggleAppMenu}
-				class="w-12 h-12 flex items-center justify-center rounded-2xl border-2 border-theme-border-light transition-all duration-200 text-theme-secondary hover:text-white hover:border-theme-primary/50"
+				class="w-12 h-12 flex items-center justify-center rounded-2xl border-2 border-theme-border-light transition-all duration-200 text-theme-secondary hover:text-white hover:border-theme-primary/50 relative"
 				title="Menu"
 				aria-label="Main Menu"
 			>
@@ -470,6 +471,14 @@
 						y2="18"
 					/></svg
 				>
+				{#if $contributionsStore.behind > 0}
+					<span
+						class="absolute -top-1 -right-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center shadow-lg"
+						in:scale={{ duration: 200, start: 0.5 }}
+					>
+						{$contributionsStore.behind}
+					</span>
+				{/if}
 			</button>
 		</div>
 	</div>

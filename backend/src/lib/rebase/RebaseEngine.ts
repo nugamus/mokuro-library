@@ -13,7 +13,7 @@ import { PatchOperation } from '../../types/history';
 import { PatchTransformer } from './PatchTransformer';
 import { EffectFactory } from './Effect';
 import { fetchAncestryChain, saveSnapshot, syncSnapshot } from '../../utils/ocrHelpers';
-import { OcrBranch } from '../../generated/prisma/client';
+import { OcrBranch, Prisma } from '../../generated/prisma/client';
 
 interface RebaseContext {
   sessionId: string;
@@ -253,7 +253,7 @@ export class RebaseEngine {
   }
 
   private async commit(ctx: RebaseContext, finalOps: PatchOperation[]) {
-    const newPatchesData: any[] = [];
+    const newPatchesData: Prisma.PatchCreateManyInput[] = [];
     let prevId = ctx.targetHeadId;
 
 
@@ -279,7 +279,7 @@ export class RebaseEngine {
       prevId = newId;
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx: any) => {
       if (newPatchesData.length > 0) {
         await tx.patch.createMany({ data: newPatchesData });
       }

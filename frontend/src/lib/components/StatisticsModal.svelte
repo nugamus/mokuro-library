@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { apiFetch } from '$lib/api';
 	import { browser } from '$app/environment';
+	import LineChart from '$lib/components/LineChart.svelte';
 
 	let { isOpen, onClose } = $props<{ isOpen: boolean; onClose: () => void }>();
 
@@ -94,6 +95,11 @@
 	let completedVolumes = $state<CompletedVolume[]>([]);
 	let selectedTimeFilter = $state<'week' | 'month' | '3months' | '6months' | 'year'>('month');
 
+	function getTimeRangeDays() {
+		const ranges = { week: 7, month: 30, '3months': 90, '6months': 180, year: 365 };
+		return ranges[selectedTimeFilter];
+	}
+
 	// Mock reading speed history data
 	const generateMockHistory = () => {
 		const data = [];
@@ -115,9 +121,44 @@
 		try {
 			isLoading = true;
 
-			// Fetch all series with volumes and progress
-			const libraryData = await apiFetch('/api/library?limit=10000');
-			const series = (libraryData.data || []) as Series[];
+			// Fetch stats from new API endpoints
+			const [summaryData, historyData, seriesData, completedData] = await Promise.all([
+				apiFetch('/api/stats/summary'),
+				apiFetch(`/api/stats/reading-history?timeRange=${getTimeRangeDays()}`),
+				apiFetch('/api/stats/by-series'),
+				apiFetch('/api/stats/completed-volumes')
+			]);
+
+			// Update stats
+			stats = {
+				recentSpeed: summaryData.recentSpeed || 0,
+				charactersRead: summaryData.charactersRead || 0,
+				volumesCompleted: summaryData.volumesCompleted || 0,
+				totalTime: summaryData.totalTime || 0
+			};
+
+			// Update speed history for chart
+			speedHistory = (historyData.history || []).map((h: any) => ({
+				date: h.date,
+				speed: h.speed || 0
+			}));
+
+			// Update series stats
+			speedBySeries = (seriesData.seriesStats || []).map((s: any) => ({
+				seriesName: s.seriesName,
+				volumes: s.volumes,
+				avgSpeed: s.avgSpeed,
+				improvement: 0 // Can calculate if we track historical data
+			}));
+
+			// Update completed volumes
+			completedVolumes = (completedData.completedVolumes || []).map((v: any) => ({
+				...v,
+				vsAvg: 0 // Can calculate with average speed
+			}));
+
+			// Fallback to old method if new API fails
+			const series = [] as Series[];
 
 			// Calculate statistics from real data
 			let totalCharsRead = 0;
@@ -295,6 +336,13 @@
 		}
 	});
 
+	// Refetch when time filter changes
+	$effect(() => {
+		if (isOpen && selectedTimeFilter) {
+			fetchStatistics();
+		}
+	});
+
 	const formatTime = (minutes: number): string => {
 		if (minutes < 60) return `${Math.round(minutes)} min`;
 		const hours = Math.floor(minutes / 60);
@@ -361,26 +409,40 @@
 					</svg>
 					<h2 class="text-2xl font-bold theme-primary">Reading Statistics</h2>
 				</div>
-				<button
-					onclick={onClose}
-					class="p-2 rounded-lg text-theme-secondary hover:theme-primary hover:bg-theme-surface-hover transition-colors"
-					aria-label="Close"
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="20"
-						height="20"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2"
-						stroke-linecap="round"
-						stroke-linejoin="round"
+				<div class="flex items-center gap-2">
+					<a
+						href="/api/stats/export"
+						download="reading-stats.csv"
+						class="px-4 py-2 rounded-lg bg-theme-main text-theme-secondary hover:theme-primary hover:bg-theme-surface-hover transition-colors text-sm font-medium flex items-center gap-2"
 					>
-						<line x1="18" y1="6" x2="6" y2="18" />
-						<line x1="6" y1="6" x2="18" y2="18" />
-					</svg>
-				</button>
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+							<polyline points="7 10 12 15 17 10"></polyline>
+							<line x1="12" y1="15" x2="12" y2="3"></line>
+						</svg>
+						Export CSV
+					</a>
+					<button
+						onclick={onClose}
+						class="p-2 rounded-lg text-theme-secondary hover:theme-primary hover:bg-theme-surface-hover transition-colors"
+						aria-label="Close"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="20"
+							height="20"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<line x1="18" y1="6" x2="6" y2="18" />
+							<line x1="6" y1="6" x2="18" y2="18" />
+						</svg>
+					</button>
+				</div>
 			</div>
 
 			<!-- Content (Scrollable) -->
@@ -404,7 +466,6 @@
 
 						<!-- Stats Cards -->
 						<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-							<!-- Recent Speed -->
 							<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 								<div class="flex items-center justify-between mb-4">
 									<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
@@ -430,7 +491,6 @@
 								</div>
 							</div>
 
-							<!-- Characters Read -->
 							<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 								<div class="flex items-center justify-between mb-4">
 									<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
@@ -459,7 +519,6 @@
 								</div>
 							</div>
 
-							<!-- Volumes Completed -->
 							<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 								<div class="flex items-center justify-between mb-4">
 									<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
@@ -488,7 +547,6 @@
 								</div>
 							</div>
 
-							<!-- Total Time -->
 							<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 								<div class="flex items-center justify-between mb-4">
 									<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
@@ -651,28 +709,12 @@
 							{/if}
 							<!-- Chart -->
 							<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
-								<div class="h-48 flex items-end gap-1">
-									{#each speedHistory as data, index}
-										{@const height = (data.speed / maxSpeed) * 100}
-										<div class="flex-1 flex flex-col items-center gap-1 group">
-											<div
-												class="w-full bg-gradient-to-t from-accent to-accent/60 rounded-t transition-all hover:from-accent-hover hover:to-accent"
-												style="height: {height}%"
-												title="{data.speed.toFixed(0)} chars/min"
-											></div>
-											{#if index % 7 === 0}
-												<span
-													class="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity"
-												>
-													{new Date(data.date).toLocaleDateString('en-US', {
-														month: 'short',
-														day: 'numeric'
-													})}
-												</span>
-											{/if}
-										</div>
-									{/each}
-								</div>
+								<LineChart
+									data={speedHistory.map(h => ({ date: h.date, value: h.speed }))}
+									label="Reading Speed (chars/min)"
+									color="#6366f1"
+									height={200}
+								/>
 							</div>
 						</div>
 
@@ -801,9 +843,9 @@
 									</div>
 								</div>
 							</div>
-						</div>
-					</div>
-				{/if}
+								</div>
+							</div>
+						{/if}
 			</div>
 		</div>
 	</div>

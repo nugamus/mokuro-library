@@ -45,7 +45,7 @@ function runMigrations() {
 
     // B. Check history
     const applied = new Set(
-      db.prepare('SELECT name FROM _app_migrations').all().map((row: any) => row.name)
+      db.prepare('SELECT name FROM _app_migrations').all().map((row: { name: string }) => row.name)
     );
 
     // C. Read folder

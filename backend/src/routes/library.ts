@@ -4,7 +4,9 @@ import util from 'util';
 import fs from 'fs';
 import path from 'path';
 import { updateSeriesStatus } from '../utils/seriesStatus';
-import { Prisma } from '../generated/prisma/client';
+import { cachedQuery, invalidateCacheByPrefix } from '../lib/cache';
+import { enqueueUploadJob, getUploadJob } from '../lib/uploadQueue';
+import { Prisma, UserSeriesSettings } from '../generated/prisma/client';
 import { FastifyInstance } from 'fastify/types/instance';
 import {
   deleteBranchSnapshots,
@@ -12,18 +14,32 @@ import {
   ensureUserBranch,
   syncSnapshot
 } from '../utils/ocrHelpers';
+import { safeFilename } from '../utils/safeFilename';
 
 // Promisify pipeline for async/await
 const pump = util.promisify(pipeline);
 
 // --- Helpers ---
+type SeriesWithVolumes = Prisma.SeriesGetPayload<{
+  include: {
+    volumes: {
+      select: {
+        pageCount: true;
+        progress: {
+          select: {
+            completed: true;
+            page: true;
+            timeRead: true;
+            charsRead: true;
+            lastReadAt: true;
+          };
+        };
+      };
+    };
+  };
+}>;
 
-// Safe Filename (Security)
-// Prevents directory traversal (../../) and illegal chars
-function safeFilename(str: string): string {
-  // Replace illegal chars with underscore, trim whitespace
-  return str.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').trim();
-}
+type SeriesWithOptionalSettings = SeriesWithVolumes & { userSettings?: UserSeriesSettings[] };
 
 // Cleanup Helper (Rollback)
 async function deleteFolder(pathStr: string) {
@@ -53,13 +69,19 @@ async function deleteSeriesById(fastify: FastifyInstance, seriesId: string, user
       where: { id: seriesId, ownerId: 'admin' }
     });
     if (adminSeries) {
-      throw new Error('Cannot delete official content. Only the owner can delete this series.');
+      const err = new Error('Cannot delete official content. Only the owner can delete this series.');
+      (err as Error & { statusCode?: number }).statusCode = 403;
+      throw err;
     }
-    throw new Error('Series not found or access denied');
+    const err = new Error('Series not found or access denied');
+    (err as Error & { statusCode?: number }).statusCode = 404;
+    throw err;
   }
 
   // 2. Cleanup Snapshots (Disk)
-  const allBranchIds = series.volumes.flatMap((v: any) => v.branches.map((b: any) => b.id));
+  const allBranchIds = series.volumes.flatMap((volume: any) =>
+    volume.branches.map((branch: any) => branch.id)
+  );
   await deleteBranchSnapshots(fastify, allBranchIds);
 
   // 3. Delete Series Directory (Disk)
@@ -87,7 +109,7 @@ async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, user
 
   if (adminVolume) {
     const err = new Error('Cannot delete official content. Only the admin can delete this volume.');
-    (err as any).statusCode = 403;
+    (err as Error & { statusCode?: number }).statusCode = 403;
     throw err;
   }
 
@@ -109,11 +131,13 @@ async function deleteVolumeById(fastify: FastifyInstance, volumeId: string, user
   });
 
   if (!volume) {
-    throw new Error('Volume not found or access denied');
+    const err = new Error('Volume not found or access denied');
+    (err as Error & { statusCode?: number }).statusCode = 404;
+    throw err;
   }
 
   // 3. Cleanup Snapshots (Disk)
-  const branchIds = volume.branches.map((b: any) => b.id);
+  const branchIds = volume.branches.map((branch: any) => branch.id);
   await deleteBranchSnapshots(fastify, branchIds);
 
   // 4. Delete Volume Files (Disk)
@@ -186,6 +210,14 @@ interface LibraryQuery {
 
 interface MokuroPage { }
 
+interface UploadQuery {
+  async?: 'true' | 'false';
+}
+
+interface UploadStatusParams {
+  jobId: string;
+}
+
 const libraryRoutes: FastifyPluginAsync = async (
   fastify,
   opts
@@ -215,10 +247,10 @@ const libraryRoutes: FastifyPluginAsync = async (
     // --- HELPER: Flatten Series + Settings ---
     // Merges the separate "Settings" object back into the "Series" object
     // so the frontend receives the flat structure it expects.
-    const transformSeries = (series: any, settings?: any) => {
+    const transformSeries = (series: SeriesWithOptionalSettings, settings?: UserSeriesSettings) => {
       // If we came from the 'recent' sort, settings are passed directly.
       // If we came from standard sort, settings are in series.userSettings[0].
-      const userStats = settings || (series.userSettings && series.userSettings[0]);
+      const userStats = settings || series.userSettings?.[0];
 
       // Remove internal relations we don't want to send raw
       const { userSettings, ...cleanSeries } = series;
@@ -289,45 +321,57 @@ const libraryRoutes: FastifyPluginAsync = async (
       });
     }
 
+    const cacheKey = `library:${userId}:${JSON.stringify({
+      page,
+      limit,
+      q,
+      sort,
+      order,
+      status,
+      bookmarked,
+      filter_missing,
+      is_organized
+    })}`;
+
     try {
-      // BRANCH A: "Recently Read" (Query UserSeriesSettings)
-      if (sort === 'recent') {
-        const [total, settings] = await fastify.prisma.$transaction([
-          fastify.prisma.userSeriesSettings.count({
-            where: { userId, series: seriesWhere }
-          }),
-          fastify.prisma.userSeriesSettings.findMany({
-            where: { userId, series: seriesWhere },
-            orderBy: { lastReadAt: order },
-            take: limit,
-            skip: (page - 1) * limit,
-            include: {
-              series: {
-                include: {
-                  volumes: {
-                    orderBy: { sortTitle: 'asc' },
-                    select: {
-                      pageCount: true,
-                      progress: { where: { userId }, select: { completed: true, page: true } }
+      const response = await cachedQuery(cacheKey, async () => {
+        // BRANCH A: "Recently Read" (Query UserSeriesSettings)
+        if (sort === 'recent') {
+          const [total, settings] = await fastify.prisma.$transaction([
+            fastify.prisma.userSeriesSettings.count({
+              where: { userId, series: seriesWhere }
+            }),
+            fastify.prisma.userSeriesSettings.findMany({
+              where: { userId, series: seriesWhere },
+              orderBy: { lastReadAt: order },
+              take: limit,
+              skip: (page - 1) * limit,
+              include: {
+                series: {
+                  include: {
+                    volumes: {
+                      orderBy: { sortTitle: 'asc' },
+                      select: {
+                        pageCount: true,
+                        progress: { where: { userId }, select: { completed: true, page: true } }
+                      }
                     }
                   }
                 }
               }
-            }
-          })
-        ]);
+            })
+          ]);
 
-        const data = settings.map((s: any) => transformSeries(s.series, s));
+          const data = settings.map((s: any) => transformSeries(s.series, s));
 
-        return reply.send({
-          data,
-          meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
-        });
-      }
+          return {
+            data,
+            meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+          };
+        }
 
-      // BRANCH B: Standard Sort (Query Series)
-      else {
-        let orderBy: any;
+        // BRANCH B: Standard Sort (Query Series)
+        let orderBy: Prisma.SeriesOrderByWithRelationInput;
         if (sort === 'created') orderBy = { createdAt: order };
         else if (sort === 'updated') orderBy = { updatedAt: order };
         else orderBy = { sortTitle: order };
@@ -355,11 +399,13 @@ const libraryRoutes: FastifyPluginAsync = async (
 
         const data = seriesList.map((s: any) => transformSeries(s));
 
-        return reply.send({
+        return {
           data,
           meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
-        });
-      }
+        };
+      });
+
+      return reply.send(response);
 
     } catch (error) {
       fastify.log.error(error);
@@ -402,7 +448,7 @@ const libraryRoutes: FastifyPluginAsync = async (
    * Smart Pipeline Upload: Receives one volume at a time.
    * STRICT ORDER: Fields (Identifiers) MUST come before Files.
    */
-  fastify.post('/upload', async (request, reply) => {
+  fastify.post<{ Querystring: UploadQuery }>('/upload', async (request, reply) => {
     const userId = request.user.id;
 
     // Context State
@@ -510,94 +556,121 @@ const libraryRoutes: FastifyPluginAsync = async (
       if (pageCount === 0) throw new Error('No files received.');
       if (!mokuroPathRelative) throw new Error('Mokuro file missing.');
 
-      // 1. Upsert Series (SHARED METADATA ONLY)
-      let series = await fastify.prisma.series.findFirst({
-        where: { folderName: seriesFolder, ownerId: userId }
-      });
+      const finalizeUpload = async () => {
+        // 1. Upsert Series (SHARED METADATA ONLY)
+        let series = await fastify.prisma.series.findFirst({
+          where: { folderName: seriesFolder, ownerId: userId }
+        });
 
-      if (!series) {
-        series = await fastify.prisma.series.create({
-          data: {
-            ownerId: userId,
-            folderName: seriesFolder,
-            title: metadata.series_title || null,
-            description: metadata.series_description || null,
-            sortTitle: metadata.series_title || seriesFolder,
-            // If we found a file matching "SeriesName.jpg", use it as cover
-            coverPath: potentialSeriesCoverPath
+        if (!series) {
+          series = await fastify.prisma.series.create({
+            data: {
+              ownerId: userId,
+              folderName: seriesFolder,
+              title: metadata.series_title || null,
+              description: metadata.series_description || null,
+              sortTitle: metadata.series_title || seriesFolder,
+              // If we found a file matching "SeriesName.jpg", use it as cover
+              coverPath: potentialSeriesCoverPath
+            }
+          });
+        } else {
+          // Prepare partial update
+          let updateData: Prisma.SeriesUpdateInput = { updatedAt: new Date() };
+          if (metadata.series_title && !series.title) {
+            updateData.title = metadata.series_title;
+            updateData.sortTitle = metadata.series_title;
           }
-        });
-      } else {
-        // Prepare partial update
-        let updateData: Prisma.SeriesUpdateInput = { updatedAt: new Date() };
-        if (metadata.series_title && !series.title) {
-          updateData.title = metadata.series_title;
-          updateData.sortTitle = metadata.series_title;
-        }
-        if (metadata.series_description && !series.description) {
-          updateData.description = metadata.series_description;
-        }
-        if (potentialSeriesCoverPath && !series.coverPath) {
-          updateData.coverPath = potentialSeriesCoverPath;
+          if (metadata.series_description && !series.description) {
+            updateData.description = metadata.series_description;
+          }
+          if (potentialSeriesCoverPath && !series.coverPath) {
+            updateData.coverPath = potentialSeriesCoverPath;
+          }
+
+          await fastify.prisma.series.update({
+            where: { id: series.id },
+            data: updateData
+          });
         }
 
-        await fastify.prisma.series.update({
-          where: { id: series.id },
-          data: updateData
-        });
-      }
-
-      // 2. Handle User Settings (PRIVATE METADATA)
-      // We must explicitly upsert the settings to save the bookmark
-      await fastify.prisma.userSeriesSettings.upsert({
-        where: { userId_seriesId: { userId, seriesId: series.id } },
-        update: {
-          // If metadata specifically sends true/false, update it.
-          // If undefined, keep existing state.
-          bookmarked: metadata.series_bookmarked !== undefined ? metadata.series_bookmarked : undefined
-        },
-        create: {
-          userId,
-          seriesId: series.id,
-          bookmarked: metadata.series_bookmarked ?? false,
-          // Default status is 0 (Unread)
-        }
-      });
-
-      // 3. Create Volume
-      const volumePathRelative = path.join('uploads', userId, seriesFolder, volumeFolder).replace(/\\/g, '/');
-      const volume = await fastify.prisma.volume.create({
-        data: {
-          seriesId: series.id,
-          folderName: volumeFolder,
-          title: metadata.volume_title || null,
-          sortTitle: metadata.volume_title || volumeFolder,
-          pageCount: pageCount,
-          filePath: volumePathRelative,
-          mokuroPath: mokuroPathRelative || '',
-          coverImageName: coverImageName
-        }
-      });
-
-      // 4. Update Progress (if provided)
-      if (metadata.volume_progress) {
-        await fastify.prisma.userProgress.upsert({
-          where: { userId_volumeId: { userId, volumeId: volume.id } },
+        // 2. Handle User Settings (PRIVATE METADATA)
+        // We must explicitly upsert the settings to save the bookmark
+        await fastify.prisma.userSeriesSettings.upsert({
+          where: { userId_seriesId: { userId, seriesId: series.id } },
           update: {
-            page: metadata.volume_progress.page,
-            completed: metadata.volume_progress.isCompleted
+            // If metadata specifically sends true/false, update it.
+            // If undefined, keep existing state.
+            bookmarked: metadata.series_bookmarked !== undefined ? metadata.series_bookmarked : undefined
           },
           create: {
-            userId: userId,
-            volumeId: volume.id,
-            page: metadata.volume_progress.page,
-            completed: metadata.volume_progress.isCompleted
+            userId,
+            seriesId: series.id,
+            bookmarked: metadata.series_bookmarked ?? false,
+            // Default status is 0 (Unread)
           }
         });
 
-        // Recalculate Series Status via Settings (Helper handles the redirection)
-        await updateSeriesStatus(fastify.prisma, userId, series.id);
+        // 3. Create Volume
+        const volumePathRelative = path.join('uploads', userId, seriesFolder, volumeFolder).replace(/\\/g, '/');
+        const volume = await fastify.prisma.volume.create({
+          data: {
+            seriesId: series.id,
+            folderName: volumeFolder,
+            title: metadata.volume_title || null,
+            sortTitle: metadata.volume_title || volumeFolder,
+            pageCount: pageCount,
+            filePath: volumePathRelative,
+            mokuroPath: mokuroPathRelative || '',
+            coverImageName: coverImageName
+          }
+        });
+
+        // 4. Update Progress (if provided)
+        if (metadata.volume_progress) {
+          await fastify.prisma.userProgress.upsert({
+            where: { userId_volumeId: { userId, volumeId: volume.id } },
+            update: {
+              page: metadata.volume_progress.page,
+              completed: metadata.volume_progress.isCompleted
+            },
+            create: {
+              userId: userId,
+              volumeId: volume.id,
+              page: metadata.volume_progress.page,
+              completed: metadata.volume_progress.isCompleted
+            }
+          });
+
+          // Recalculate Series Status via Settings (Helper handles the redirection)
+          await updateSeriesStatus(fastify.prisma, userId, series.id);
+        }
+
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}`);
+        invalidateCacheByPrefix(`volume:${userId}`);
+
+        return volume;
+      };
+
+      if (request.query.async === 'true') {
+        const job = enqueueUploadJob(async () => {
+          try {
+            const volume = await finalizeUpload();
+            return { volumeId: volume.id, message: 'Upload processed.' };
+          } catch (error) {
+            if (targetDir) await deleteFolder(targetDir);
+            throw error;
+          }
+        });
+
+        return reply.status(202).send({
+          message: 'Upload queued.',
+          jobId: job.id
+        });
       }
+
+      const volume = await finalizeUpload();
 
       return reply.status(200).send({
         message: 'Upload processed.',
@@ -609,12 +682,33 @@ const libraryRoutes: FastifyPluginAsync = async (
       // ROLLBACK
       if (targetDir) await deleteFolder(targetDir);
 
+      const message = err instanceof Error ? err.message : 'Upload failed.';
+      const statusCodeFromError = (err as Error & { statusCode?: number }).statusCode;
+      const isClientError = message.startsWith('Missing folder identifiers')
+        || message === 'No files received.'
+        || message === 'Mokuro file missing.';
+
       fastify.log.error(err);
-      return reply.status(500).send({
-        message: (err as Error).message || 'Upload failed.'
+      return reply.status(statusCodeFromError ?? (isClientError ? 400 : 500)).send({
+        message
       });
     }
   });
+
+  /**
+   * GET /api/library/upload/status/:jobId
+   * Polls an async upload job status.
+   */
+  fastify.get<{ Params: UploadStatusParams }>(
+    '/upload/status/:jobId',
+    async (request, reply) => {
+      const job = getUploadJob(request.params.jobId);
+      if (!job) {
+        return reply.status(404).send({ message: 'Upload job not found.' });
+      }
+      return reply.send(job);
+    }
+  );
 
   /**
    * POST /api/library/series/:id/cover
@@ -671,6 +765,9 @@ const libraryRoutes: FastifyPluginAsync = async (
           data: { coverPath: filePathRelative.replace(/\\/g, '/') }
         });
 
+        invalidateCacheByPrefix(`library:${userId}`);
+        invalidateCacheByPrefix(`series:${userId}:${seriesId}`);
+
         return reply.status(200).send({ message: 'Cover updated successfully.' });
       } catch (error) {
         fastify.log.error(error);
@@ -691,55 +788,58 @@ const libraryRoutes: FastifyPluginAsync = async (
       const userId = request.user.id;
 
       try {
-        const series = await fastify.prisma.series.findFirst({
-          where: {
-            id: seriesId,
-            OR: [{ ownerId: userId }, { ownerId: 'admin' }]
-          },
-          include: {
-            userSettings: { where: { userId } },
-            volumes: {
-              orderBy: { sortTitle: 'asc' },
-              include: {
-                progress: {
-                  where: { userId: userId },
-                  select: {
-                    page: true,
-                    completed: true,
-                    timeRead: true,
-                    charsRead: true,
-                    lastReadAt: true
+        const cacheKey = `series:${userId}:${seriesId}`;
+        const response = await cachedQuery(cacheKey, async () => {
+          const series = await fastify.prisma.series.findFirst({
+            where: {
+              id: seriesId,
+              OR: [{ ownerId: userId }, { ownerId: 'admin' }]
+            },
+            include: {
+              userSettings: { where: { userId } },
+              volumes: {
+                orderBy: { sortTitle: 'asc' },
+                include: {
+                  progress: {
+                    where: { userId: userId },
+                    select: {
+                      page: true,
+                      completed: true,
+                      timeRead: true,
+                      charsRead: true,
+                      lastReadAt: true
+                    }
                   }
                 }
-              }
+              },
             },
-          },
+          });
+
+          if (!series) {
+            return null;
+          }
+
+          const userStats = series.userSettings[0];
+          const { userSettings, ...cleanSeries } = series;
+
+          return {
+            ...cleanSeries,
+            bookmarked: userStats?.bookmarked ?? false,
+            status: userStats?.status ?? 0,
+            organized: userStats?.organized ?? false,
+            lastReadAt: userStats?.lastReadAt ?? new Date(0),
+            isOfficial: series.ownerId === 'admin',
+            canEdit: series.ownerId === userId
+          };
         });
 
-        if (!series) {
+        if (!response) {
           return reply.status(404).send({
             statusCode: 404,
             error: 'Not Found',
             message: 'Series not found or you do not have permission to access it.',
           });
         }
-
-        const userStats = series.userSettings[0];
-        const { userSettings, ...cleanSeries } = series;
-
-        const response = {
-          ...cleanSeries,
-          bookmarked: userStats?.bookmarked ?? false,
-          status: userStats?.status ?? 0,
-          organized: userStats?.organized ?? false,
-          lastReadAt: userStats?.lastReadAt ?? new Date(0),
-
-          // Computed "Official" Indicator
-          isOfficial: series.ownerId === 'admin',
-
-          // Permissions Flag (helps frontend disable delete/edit buttons)
-          canEdit: series.ownerId === userId
-        };
 
         return reply.status(200).send(response);
 
@@ -759,13 +859,19 @@ const libraryRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       const { id: volumeId } = request.params;
       try {
-        const volume = await request.accessStrategy.getVolume(volumeId);
+        const cacheKey = `volume:${request.user.id}:${volumeId}`;
+        const volume = await cachedQuery(
+          cacheKey,
+          () => request.accessStrategy.getVolume(volumeId),
+          1000 * 30
+        );
         return volume;
-      } catch (err: any) {
-        if (err.message.includes('not found') || err.message.includes('access denied')) {
-          return reply.code(404).send({ error: err.message });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Unexpected error.';
+        if (message.includes('not found') || message.includes('access denied')) {
+          return reply.code(404).send({ error: message });
         }
-        return reply.code(500).send({ error: err.message });
+        return reply.code(500).send({ error: message });
       }
     }
   );
@@ -779,8 +885,20 @@ const libraryRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       try {
         await deleteSeriesById(fastify, request.params.id, request.user.id);
+        invalidateCacheByPrefix(`library:${request.user.id}`);
+        invalidateCacheByPrefix(`series:${request.user.id}:${request.params.id}`);
+        invalidateCacheByPrefix(`volume:${request.user.id}`);
         return reply.status(200).send({ message: 'Series deleted successfully.' });
       } catch (error) {
+        const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
+        const message = error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred while deleting the series.';
+
+        if (statusCode !== 500) {
+          return reply.status(statusCode).send({ message });
+        }
+
         fastify.log.error(
           { err: error },
           'Error deleting series'
@@ -788,7 +906,7 @@ const libraryRoutes: FastifyPluginAsync = async (
         return reply.status(500).send({
           statusCode: 500,
           error: 'Internal Server Error',
-          message: 'An unexpected error occurred while deleting the series.'
+          message
         });
       }
     }
@@ -803,8 +921,20 @@ const libraryRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       try {
         await deleteVolumeById(fastify, request.params.id, request.user.id);
+        invalidateCacheByPrefix(`library:${request.user.id}`);
+        invalidateCacheByPrefix(`series:${request.user.id}`);
+        invalidateCacheByPrefix(`volume:${request.user.id}:${request.params.id}`);
         return reply.status(200).send({ message: 'Volume deleted successfully.' });
       } catch (error) {
+        const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
+        const message = error instanceof Error
+          ? error.message
+          : 'An unexpected error occurred while deleting the volume.';
+
+        if (statusCode !== 500) {
+          return reply.status(statusCode).send({ message });
+        }
+
         fastify.log.error(
           { err: error },
           'Error deleting volume'
@@ -812,7 +942,7 @@ const libraryRoutes: FastifyPluginAsync = async (
         return reply.status(500).send({
           statusCode: 500,
           error: 'Internal Server Error',
-          message: 'An unexpected error occurred while deleting the volume.'
+          message
         });
       }
     }
@@ -852,6 +982,10 @@ const libraryRoutes: FastifyPluginAsync = async (
           results.errors.push({ id, error: (e as Error).message });
         }
       }
+
+      invalidateCacheByPrefix(`library:${userId}`);
+      invalidateCacheByPrefix(`series:${userId}`);
+      invalidateCacheByPrefix(`volume:${userId}`);
 
       return reply.send({
         message: `Deleted ${results.success.length} items. Failed: ${results.errors.length}`,

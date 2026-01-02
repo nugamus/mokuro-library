@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { apiFetch } from './api';
+import type { KeybindsConfig } from '$lib/keybinds';
 
 // Define the shape of user settings
 export interface ReaderSettingsData {
@@ -26,7 +27,8 @@ export interface ReaderSettingsData {
     intensity: number;
     startHour: number;
     endHour: number;
-  }
+  };
+  keybinds?: KeybindsConfig;
 }
 
 // Define the type for our user object

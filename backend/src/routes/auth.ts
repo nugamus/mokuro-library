@@ -1,6 +1,8 @@
-import { FastifyPluginAsync } from 'fastify';
+import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { Prisma } from '../generated/prisma/client';
 import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import { randomBytes } from 'crypto';
 
 // Schemas for request bodies for validation and safty
 const registerBodySchema = {
@@ -21,11 +23,85 @@ const loginBodySchema = {
   required: ['username', 'password'],
 };
 
+const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
+if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'change-me-in-production') {
+  console.warn('WARNING: Using default JWT_SECRET in production. Set JWT_SECRET environment variable.');
+}
+
+const LOCKOUT_MAX_ATTEMPTS = parseInt(process.env.AUTH_LOCKOUT_MAX_ATTEMPTS || '5', 10);
+const LOCKOUT_WINDOW_MINUTES = parseInt(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || '15', 10);
+const LOCKOUT_DURATION_MINUTES = parseInt(process.env.AUTH_LOCKOUT_DURATION_MINUTES || '15', 10);
+
+type LockoutEntry = {
+  attempts: number;
+  firstAttemptAt: number;
+  lockedUntil?: number;
+};
+
+const loginAttempts = new Map<string, LockoutEntry>();
+
+const nowMs = () => Date.now();
+const lockoutWindowMs = () => LOCKOUT_WINDOW_MINUTES * 60 * 1000;
+const lockoutDurationMs = () => LOCKOUT_DURATION_MINUTES * 60 * 1000;
+
+const getLockoutKey = (username: string) => username.trim().toLowerCase();
+
+const isLockedOut = (entry: LockoutEntry | undefined) => {
+  if (!entry?.lockedUntil) return false;
+  return entry.lockedUntil > nowMs();
+};
+
+const recordFailedAttempt = (key: string) => {
+  const current = loginAttempts.get(key);
+  const now = nowMs();
+
+  if (!current || now - current.firstAttemptAt > lockoutWindowMs()) {
+    loginAttempts.set(key, { attempts: 1, firstAttemptAt: now });
+    return loginAttempts.get(key)!;
+  }
+
+  current.attempts += 1;
+  if (current.attempts >= LOCKOUT_MAX_ATTEMPTS) {
+    current.lockedUntil = now + lockoutDurationMs();
+  }
+
+  return current;
+};
+
+const clearLockout = (key: string) => {
+  loginAttempts.delete(key);
+};
+
+const setCsrfCookie = (reply: FastifyReply) => {
+  const token = randomBytes(32).toString('hex');
+  reply.setCookie('csrfToken', token, {
+    path: '/',
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+  });
+  return token;
+};
+
 const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
+  // Rate limiting for auth routes
+  const authRateLimit = {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '15 minutes',
+      },
+    },
+  };
+
   // POST /api/auth/register
   fastify.post(
     '/register',
-    { schema: { body: registerBodySchema } },
+    {
+      schema: { body: registerBodySchema },
+      ...authRateLimit,
+    },
     async (request, reply) => {
       // Type assertion for the validated request body
       const { username, password } = request.body as {
@@ -53,7 +129,7 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           username: user.username,
         });
 
-      } catch (error) {
+      } catch (error: unknown) {
         // Handle potential errors
         if (
           error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -80,7 +156,10 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   // POST /api/auth/login
   fastify.post(
     '/login',
-    { schema: { body: loginBodySchema } },
+    {
+      schema: { body: loginBodySchema },
+      ...authRateLimit,
+    },
     async (request, reply) => {
       const { username, password } = request.body as {
         username: string;
@@ -88,6 +167,16 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       };
 
       try {
+        const lockoutKey = getLockoutKey(username);
+        const existingLockout = loginAttempts.get(lockoutKey);
+        if (isLockedOut(existingLockout)) {
+          return reply.status(429).send({
+            statusCode: 429,
+            error: 'Too Many Requests',
+            message: 'Account temporarily locked. Please try again later.',
+          });
+        }
+
         // Find the user by their unique username
         const user = await fastify.prisma.user.findUnique({
           where: { username },
@@ -96,6 +185,14 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
         // Case 1: User not found
         if (!user) {
+          const entry = recordFailedAttempt(lockoutKey);
+          if (isLockedOut(entry)) {
+            return reply.status(429).send({
+              statusCode: 429,
+              error: 'Too Many Requests',
+              message: 'Account temporarily locked. Please try again later.',
+            });
+          }
           return reply.status(401).send({
             statusCode: 401,
             error: 'Unauthorized',
@@ -108,6 +205,14 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
         // Case 3: Password does not match
         if (!isPasswordValid) {
+          const entry = recordFailedAttempt(lockoutKey);
+          if (isLockedOut(entry)) {
+            return reply.status(429).send({
+              statusCode: 429,
+              error: 'Too Many Requests',
+              message: 'Account temporarily locked. Please try again later.',
+            });
+          }
           return reply.status(401).send({
             statusCode: 401,
             error: 'Unauthorized',
@@ -115,16 +220,26 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           });
         }
 
-        // Case 4: Success
-        // We will use the user's ID as the session token
-        // This is a simple session strategy.
-        // TODO: make more secure
-        reply.setCookie('sessionId', user.id, {
-          path: '/',          // Available to the entire site
-          httpOnly: true,     // Not accessible via client-side JS
-          secure: false,      // Allow over HTTP (for LAN/VPN)
-          // maxAge: 60 * 60 * 24 * 7 // Optional: 1 week expiry
+        // Case 4: Success - Create JWT token
+        clearLockout(lockoutKey);
+        const token = jwt.sign(
+          {
+            userId: user.id,
+            username: user.username,
+          },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+
+        reply.setCookie('sessionId', token, {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 60 * 60 * 24 * 7, // 7 days
+          signed: true,
         });
+        setCsrfCookie(reply);
         // only send back non-sensitive fields
         const user_response = {
           id: user.id,
@@ -152,7 +267,14 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       reply.clearCookie('sessionId', {
         path: '/',
         httpOnly: true,
-        secure: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+      });
+      reply.clearCookie('csrfToken', {
+        path: '/',
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
       });
 
       return reply.status(200).send({ message: 'Logged out successfully.' });
@@ -170,11 +292,11 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   // GET /api/auth/me ---
   fastify.get('/me', async (request, reply) => {
     try {
-      // Get the sessionId from the cookie
-      const sessionId = request.cookies.sessionId;
+      // Get the signed sessionId from the cookie
+      const token = request.unsignCookie(request.cookies.sessionId || '').value;
 
-      // Case 1: No session cookie
-      if (!sessionId) {
+      // Case 1: No session cookie or invalid signature
+      if (!token) {
         return reply.status(401).send({
           statusCode: 401,
           error: 'Unauthorized',
@@ -182,10 +304,28 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         });
       }
 
-      // Case 2: Find user by the ID stored in the cookie
+      // Case 2: Verify JWT token
+      let decoded;
+      try {
+        decoded = jwt.verify(token, JWT_SECRET) as { userId: string; username: string };
+      } catch (err) {
+        // Clear the bad cookie
+        reply.clearCookie('sessionId', {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+        });
+        return reply.status(401).send({
+          statusCode: 401,
+          error: 'Unauthorized',
+          message: 'Invalid or expired session token.',
+        });
+      }
+
+      // Case 3: Find user by the ID from JWT
       const user = await fastify.prisma.user.findUnique({
-        where: { id: sessionId },
-        // Select only the fields we want to send back
+        where: { id: decoded.userId },
         select: {
           id: true,
           username: true,
@@ -193,18 +333,26 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         },
       });
 
-      // Case 3: User not found (invalid or expired token)
+      // Case 4: User not found
       if (!user) {
-        // Clear the bad cookie
-        reply.clearCookie('sessionId', { path: '/' });
+        reply.clearCookie('sessionId', {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+        });
         return reply.status(401).send({
           statusCode: 401,
           error: 'Unauthorized',
-          message: 'Invalid session token.',
+          message: 'User not found.',
         });
       }
 
-      // Case 4: Success
+      if (!request.cookies.csrfToken) {
+        setCsrfCookie(reply);
+      }
+
+      // Case 5: Success
       return reply.status(200).send(user);
 
     } catch (error) {

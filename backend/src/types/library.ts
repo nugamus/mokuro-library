@@ -1,4 +1,5 @@
 import { MokuroData } from './mokuro';
+import { UserProgress } from '../generated/prisma/client';
 
 export interface LibraryQuery {
   page?: number;
@@ -54,7 +55,7 @@ export interface VolumeResponse {
   seriesId: string;
   pageCount: number;
   coverImageName: string | null;
-  progress: any[]; // UserProgress details
+  progress: UserProgress[]; // UserProgress details
   mokuroData: MokuroData;
   versionInfo: {
     branchId: string;
