@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { user } from '$lib/authStore';
+	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { page } from '$app/state';
-	import { uiState } from '$lib/states/uiState.svelte';
+	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { onMount } from 'svelte';
 
 	// Import setting panels
@@ -195,3 +195,7 @@
 		{/each}
 	</main>
 </div>
+
+
+
+

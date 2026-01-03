@@ -4,23 +4,23 @@
 
 	import { onMount } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
-	import { checkAuth, user } from '$lib/authStore';
-	import { uiState } from '$lib/states/uiState.svelte';
-	import { toastStore } from '$lib/stores/toastStore.svelte';
+	import { checkAuth, user } from '$lib/stores/authStore';
+	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
 	import { keybindStore } from '$lib/stores/keybindStore';
-	import { handleGlobalKeydown } from '$lib/keybindsRuntime';
+	import { handleGlobalKeydown } from '$lib/keybinds/runtime';
 
 	// Components
-	import Header from '$lib/components/Header.svelte';
-	import ContextMenu from '$lib/components/ContextMenu.svelte';
-	import ConfirmationModal from '$lib/components/ConfirmationModal.svelte';
-	import UploadModal from '$lib/components/UploadModal.svelte';
-	import StatisticsModal from '$lib/components/StatisticsModal.svelte';
-	import AboutModal from '$lib/components/AboutModal.svelte';
-	import AppearanceModal from '$lib/components/AppearanceModal.svelte';
-	import ToastContainer from '$lib/components/ToastContainer.svelte';
-	import KeyboardShortcutsModal from '$lib/components/KeyboardShortcutsModal.svelte';
+	import Header from '$lib/components/layout/Header.svelte';
+	import ContextMenu from '$lib/components/menu/ContextMenu.svelte';
+	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
+	import UploadModal from '$lib/components/modals/UploadModal.svelte';
+	import StatisticsModal from '$lib/components/modals/StatisticsModal.svelte';
+	import AboutModal from '$lib/components/modals/AboutModal.svelte';
+	import AppearanceModal from '$lib/components/modals/AppearanceModal.svelte';
+	import ToastContainer from '$lib/components/feedback/ToastContainer.svelte';
+	import KeyboardShortcutsModal from '$lib/components/modals/KeyboardShortcutsModal.svelte';
 
 	let { children } = $props();
 
@@ -146,3 +146,7 @@
 		outline-offset: 2px;
 	}
 </style>
+
+
+
+

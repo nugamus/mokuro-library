@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { uiState } from '$lib/states/uiState.svelte';
-	import { user } from '$lib/authStore';
-	import { apiFetch, triggerDownload } from '$lib/api';
-	import { contextMenu } from '$lib/contextMenuStore';
+	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+	import { user } from '$lib/stores/authStore';
+	import { apiFetch, triggerDownload } from '$lib/services/api';
+	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import { goto } from '$app/navigation';
 	import MenuWrapper from '$lib/components/menu/MenuWrapper.svelte';
 	import MenuItem from '$lib/components/menu/MenuItem.svelte';
@@ -383,3 +383,7 @@
 		</MenuItem>
 	</MenuGroup>
 </MenuWrapper>
+
+
+
+

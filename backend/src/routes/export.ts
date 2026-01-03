@@ -7,6 +7,10 @@ import { Volume, Series, UserSeriesSettings, UserProgress } from '../generated/p
 import { randomUUID } from 'crypto';
 import { FastifyInstance, FastifyReply } from 'fastify';
 import { getComputedMokuroState } from '../utils/ocrHelpers';
+import {
+  buildComicInfoXml,
+  generateSeriesMetadata
+} from '../services/export/metadata';
 
 
 // an interface for the route parameters
@@ -21,58 +25,6 @@ interface SeriesParams {
 interface ExportQuery {
   include_images?: string;
   include_metadata?: string;
-}
-
-const escapeXml = (value: string) =>
-  value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-
-const extractVolumeNumber = (value: string) => {
-  const match = value.match(/(\d+(\.\d+)?)/);
-  return match ? match[1] : '';
-};
-
-export const buildComicInfoXml = (
-  series: Series,
-  volume?: Volume
-) => {
-  const seriesTitle = series.title || series.folderName;
-  const volumeTitle = volume?.title || volume?.folderName || seriesTitle;
-  const number = volume ? extractVolumeNumber(volume.folderName) : '';
-  const summary = series.description || '';
-
-  return `<?xml version="1.0" encoding="utf-8"?>\n<ComicInfo>\n` +
-    `  <Series>${escapeXml(seriesTitle)}</Series>\n` +
-    `  <Title>${escapeXml(volumeTitle)}</Title>\n` +
-    (number ? `  <Number>${escapeXml(number)}</Number>\n` : '') +
-    (summary ? `  <Summary>${escapeXml(summary)}</Summary>\n` : '') +
-    `</ComicInfo>\n`;
-};
-
-// Shared Interface for the Metadata JSON
-interface MokuroSeriesMetadata {
-  version: string;
-  series: {
-    title: string | null;
-    description: string | null;
-    originalFolderName: string;
-    bookmarked: boolean;
-  };
-  volumes: {
-    [fileName: string]: {
-      displayTitle: string | null;
-      progress?: {
-        page: number;
-        isCompleted: boolean;
-        timeRead: number;
-        charsRead: number;
-      };
-    }
-  };
 }
 
 /**
@@ -221,7 +173,7 @@ export const runWithConcurrency = async <T, R>(
 type BatchExportBody = {
   ids: string[];
   type: 'series' | 'volume';
-  options?: { include_images?: boolean; include_metadata?: boolean; };
+  options?: { include_images?: boolean; include_metadata?: boolean };
 };
 
 const exportTickets = new Map<string, BatchExportBody>();
@@ -279,7 +231,7 @@ async function executeBatchExport(
           series.folderName,
           userId,
           includeImages,
-          includeMetadata,
+          includeMetadata
         );
       }
     } else if (type === 'volume') {
@@ -343,44 +295,6 @@ async function executeBatchExport(
   }
 }
 
-// --- Helper: Generate Metadata Object ---
-const generateSeriesMetadata = (
-  series: Series & { userSettings: UserSeriesSettings[] },
-  volumes: (Volume & { progress: UserProgress[] })[],
-  userId: string
-): MokuroSeriesMetadata => {
-  const volumeMap: MokuroSeriesMetadata['volumes'] = {};
-
-  for (const vol of volumes) {
-    const fileName = `${vol.folderName}`;
-    // Find progress for this specific user
-    const userProgress = vol.progress.find((p: any) => p.userId === userId);
-
-    volumeMap[fileName] = {
-      displayTitle: vol.title,
-      progress: userProgress ? {
-        page: userProgress.page,
-        isCompleted: userProgress.completed,
-        timeRead: userProgress.timeRead,
-        charsRead: userProgress.charsRead
-      } : undefined
-    };
-  }
-
-  // We expect userSettings to be included in the prisma query
-  const isBookmarked = series.userSettings?.[0]?.bookmarked ?? false;
-
-  return {
-    version: "0.2.0",
-    series: {
-      title: series.title,
-      description: series.description,
-      bookmarked: isBookmarked,
-      originalFolderName: series.folderName
-    },
-    volumes: volumeMap
-  };
-};
 // --- Helper for adding Volume to Archive ---
 
 async function addVolumeToArchive(
@@ -428,7 +342,7 @@ async function addSeriesToArchive(
   basePath: string,
   userId: string,
   includeImages: boolean,
-  includeMetadata: boolean,
+  includeMetadata: boolean
 ) {
   // 1. Metadata
   if (includeMetadata) {
@@ -668,7 +582,7 @@ const exportRoutes: FastifyPluginAsync = async (
           '',
           userId,
           includeImages,
-          includeMetadata,
+          includeMetadata
         );
         await archive.finalize();
       } catch (error) {
@@ -794,15 +708,40 @@ const exportRoutes: FastifyPluginAsync = async (
       reply.send(archive);
 
       for (const series of allSeries) {
-        await addSeriesToArchive(
-          fastify,
-          archive,
-          series,
-          series.folderName,
-          userId,
-          includeImages,
-          includeMetadata
-        );
+        const seriesRoot = series.folderName;
+
+        // 1. Generate Metadata
+        if (includeMetadata) {
+          const metadata = generateSeriesMetadata(series, series.volumes, userId);
+          const jsonFilename = path.join(seriesRoot, `${series.folderName}.json`);
+
+          archive.append(buildComicInfoXml(series, undefined), {
+            name: path.join(seriesRoot, 'ComicInfo.xml')
+          });
+          archive.append(JSON.stringify(metadata, null, 2), { name: jsonFilename });
+        }
+
+        // 2. Add Series Cover
+        if (series.coverPath) {
+          const absCoverPath = path.join(fastify.projectRoot, series.coverPath);
+          if (fs.existsSync(absCoverPath)) {
+            archive.file(absCoverPath, { name: path.join(seriesRoot, path.basename(series.coverPath)) });
+          }
+        }
+
+        // 3. Add Volumes
+        for (const vol of series.volumes) {
+          await addVolumeToArchive(
+            fastify,
+            archive,
+            vol,
+            seriesRoot,
+            userId,
+            includeImages,
+            includeMetadata,
+            series
+          );
+        }
       }
 
       await archive.finalize();
@@ -888,7 +827,7 @@ const exportRoutes: FastifyPluginAsync = async (
     Body: {
       ids: string[];
       type: 'series' | 'volume';
-      options?: { include_images?: boolean; include_metadata?: boolean; };
+      options?: { include_images?: boolean; include_metadata?: boolean };
     }
   }>('/batch/ticket', async (request, reply) => {
     const ticket = randomUUID();
@@ -930,7 +869,7 @@ const exportRoutes: FastifyPluginAsync = async (
     Body: {
       ids: string[];
       type: 'series' | 'volume';
-      options?: { include_images?: boolean; include_metadata?: boolean; };
+      options?: { include_images?: boolean; include_metadata?: boolean };
     }
   }>('/batch', async (request, reply) => {
     return executeBatchExport(fastify, reply, request.body, request.user.id);

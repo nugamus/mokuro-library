@@ -42,11 +42,11 @@ const statsRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
 		const days = Math.max(1, Math.min(365, Number.parseInt(timeRange, 10) || 30));
 
 		// Get reading history grouped by day
-		const history = await fastify.prisma.$queryRaw<Array<{
+		const rawHistory = await fastify.prisma.$queryRaw<Array<{
 			date: string;
-			totalChars: number;
-			totalTime: number;
-			speed: number;
+			totalChars: bigint | number;
+			totalTime: bigint | number;
+			speed: bigint | number | null;
 		}>>`
 			SELECT
 				DATE(lastReadAt) as date,
@@ -60,6 +60,14 @@ const statsRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
 			GROUP BY DATE(lastReadAt)
 			ORDER BY date ASC
 		`;
+
+		// Convert BigInt to Number for JSON serialization
+		const history = rawHistory.map(row => ({
+			date: row.date,
+			totalChars: Number(row.totalChars),
+			totalTime: Number(row.totalTime),
+			speed: row.speed !== null ? Number(row.speed) : 0
+		}));
 
 		return { history };
 	});

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { contextMenu } from '$lib/contextMenuStore';
+	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import MenuWrapper from '$lib/components/menu/MenuWrapper.svelte';
 
 	let { onEdit, onScrape } = $props<{

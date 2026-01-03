@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { apiFetch } from '$lib/api';
+import { apiFetch } from '$lib/services/api';
 
 export interface ContributionCounts {
 	behind: number;

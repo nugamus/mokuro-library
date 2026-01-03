@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { user } from '$lib/authStore';
+	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
 
 	let { children } = $props();

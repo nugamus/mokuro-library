@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { fade } from 'svelte/transition';
-	import { scrapingState } from '$lib/states/ScrapingState.svelte';
+	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 	import { lockScroll } from '$lib/actions/lockScroll';
 	import MetadataComparisonCard from './MetadataComparisonCard.svelte';
 
@@ -263,3 +263,7 @@
 		</div>
 	</div>
 </div>
+
+
+
+

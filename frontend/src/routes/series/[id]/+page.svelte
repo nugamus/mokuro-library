@@ -1,19 +1,19 @@
 <script lang="ts">
 	import type { Series, Volume } from '$lib/types';
-	import { apiFetch, triggerDownload } from '$lib/api';
-	import { user } from '$lib/authStore';
+	import { apiFetch, triggerDownload } from '$lib/services/api';
+	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
-	import { uiState } from '$lib/states/uiState.svelte';
-	import { metadataOps } from '$lib/states/metadataOperations.svelte';
-	import { formatLastReadDate } from '$lib/utils/dateHelpers';
+	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+	import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
+	import { formatLastReadDate } from '$lib/utils/date/helpers';
 
-	import EditSeriesModal from '$lib/components/EditSeriesModal.svelte';
-	import EditVolumeModal from '$lib/components/EditVolumeModal.svelte';
-	import LibraryEntry from '$lib/components/LibraryEntry.svelte';
-	import LibraryActionBar from '$lib/components/LibraryActionBar.svelte';
-	import LibraryListWrapper from '$lib/components/LibraryListWrapper.svelte';
-	import SeriesHero from '$lib/components/SeriesHero.svelte';
+	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
+	import EditVolumeModal from '$lib/components/modals/EditVolumeModal.svelte';
+	import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
+	import LibraryActionBar from '$lib/components/library/LibraryActionBar.svelte';
+	import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
+	import SeriesHero from '$lib/components/library/SeriesHero.svelte';
 
 	// --- Type Definitions ---
 
@@ -405,3 +405,7 @@
 		onRefresh={handleRefresh}
 	/>
 </div>
+
+
+
+

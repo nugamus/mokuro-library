@@ -2,7 +2,7 @@
 	import MenuGridRadio from '$lib/components/menu/MenuGridRadio.svelte';
 	import MenuToggle from '$lib/components/menu/MenuToggle.svelte';
 	import MenuSlider from '$lib/components/menu/MenuSlider.svelte';
-	import { readerState } from '$lib/states/ReaderState.svelte';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import { keybindStore } from '$lib/stores/keybindStore';
 
 	let { onClose, inReader = false }: { onClose?: () => void; inReader?: boolean } = $props();
@@ -410,3 +410,7 @@ Helps reduce eye strain during night reading."
 			sepia(var(--reader-red-shift, 0%)) hue-rotate(-20deg) saturate(120%);
 	}
 </style>
+
+
+
+

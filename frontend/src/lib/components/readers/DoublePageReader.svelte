@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { readerState } from '$lib/states/ReaderState.svelte';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
-	import CachedImage from '$lib/components/CachedImage.svelte';
+import CachedImage from '$lib/components/media/CachedImage.svelte';
 	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
@@ -106,3 +106,7 @@
 			sepia(var(--reader-red-shift, 0%)) hue-rotate(-20deg) saturate(120%);
 	}
 </style>
+
+
+
+

@@ -4,19 +4,19 @@
 	import { browser } from '$app/environment';
 
 	// Stores & State
-	import { user } from '$lib/authStore';
-	import { imageStore } from '$lib/cachedImageStore';
-	import { confirmation } from '$lib/confirmationStore';
-	import { readerState } from '$lib/states/ReaderState.svelte';
-	import { uiState } from '$lib/states/uiState.svelte';
+	import { user } from '$lib/stores/authStore';
+	import { imageStore } from '$lib/stores/cachedImageStore';
+	import { confirmation } from '$lib/stores/confirmationStore';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
+	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 
 	// Components
 	import ReaderSettings from '$lib/components/settings/ReaderSettings.svelte';
 	import SinglePageReader from '$lib/components/readers/SinglePageReader.svelte';
 	import DoublePageReader from '$lib/components/readers/DoublePageReader.svelte';
 	import VerticalReader from '$lib/components/readers/VerticalReader.svelte';
-	import LineOrderModal from '$lib/components/LineOrderModal.svelte';
-	import ReaderHeader from '$lib/components/ReaderHeader.svelte';
+	import LineOrderModal from '$lib/components/modals/LineOrderModal.svelte';
+	import ReaderHeader from '$lib/components/layout/ReaderHeader.svelte';
 	import type { PanzoomObject } from '@panzoom/panzoom';
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 
@@ -226,3 +226,7 @@
 		<LineOrderModal />
 	{/if}
 </div>
+
+
+
+

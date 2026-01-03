@@ -248,8 +248,6 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           return reply.status(404).send('Cover not found');
         }
 
-        const absolutePath = path.join(fastify.projectRoot, series.coverPath.normalize('NFC'));
-
         // Ensure file exists before trying to send it
         const validPath = await resolveNormalizedPath(fastify.projectRoot, series.coverPath);
 
@@ -258,10 +256,10 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
         }
 
         if (transformOptions) {
-          return await sendOptimizedImage(reply, absolutePath, transformOptions, fastify.projectRoot);
+          return await sendOptimizedImage(reply, validPath, transformOptions, fastify.projectRoot);
         }
 
-        return reply.sendFile(absolutePath);
+        return reply.sendFile(validPath);
       } catch (error) {
         fastify.log.error(error);
         return reply.status(500).send('Error serving cover');

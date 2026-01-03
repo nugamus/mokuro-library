@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
-	import { getImageDeltas, ligaturize } from '$lib/utils/ocrMath';
+	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
+	import { getImageDeltas, ligaturize } from '$lib/utils/ocr/math';
 	import ResizeHandles from './ResizeHandles.svelte';
-	import type { OcrState } from '$lib/states/OcrState.svelte';
+	import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 	import { stopPropagation } from 'svelte/legacy';
 
 	// --- Props ---
@@ -631,3 +631,7 @@
 		line-height: 1;
 	}
 </style>
+
+
+
+

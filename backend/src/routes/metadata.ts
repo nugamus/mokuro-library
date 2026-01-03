@@ -1,25 +1,17 @@
 import { FastifyPluginAsync } from 'fastify';
-import { FastifyInstance } from 'fastify/types/instance';
 import { Prisma } from '../generated/prisma/client'; // Import Prisma for types
-import { updateSeriesStatus } from '../utils/seriesStatus';
 import { invalidateCacheByPrefix } from '../lib/cache';
-import { LRUCache } from 'lru-cache';
+import { scrapeFromProvider } from '../services/metadata/scrape';
+import {
+  getVolumeProgress,
+  progressBodySchema,
+  resetVolumeProgress,
+  updateVolumeProgress,
+  type ProgressBody
+} from '../services/metadata/progress';
 import * as path from 'path';
 import * as fs from 'fs';
 
-
-// Define a schema for the request body on PUT
-// This ensures we only accept valid, partial data for an update
-const progressBodySchema = {
-  type: 'object',
-  properties: {
-    page: { type: 'integer', minimum: 1 },
-    timeRead: { type: 'integer', minimum: 0 },
-    charsRead: { type: 'integer', minimum: 0 },
-    completed: { type: 'boolean' },
-  },
-  // No required fields, as this is a partial update
-};
 
 const seriesUpdateSchema = {
   type: 'object',
@@ -48,13 +40,6 @@ interface ProgressParams {
 }
 
 // Define an interface for our type-safe body
-interface ProgressBody {
-  page?: number;
-  timeRead?: number;
-  charsRead?: number;
-  completed?: boolean;
-}
-
 // For Volume or Series id
 interface IdParams {
   id: string;
@@ -72,334 +57,12 @@ interface SeriesUpdateBody {
   tempCoverPath?: string;
 }
 
-// For anime/manga database scrape response
-interface ScrapedManga {
-  englishName?: string;
-  japaneseName?: string;
-  romajiName?: string;
-  synonyms?: string[];
-  description?: string;
-  coverUrl?: string;
-}
-
-interface AniListResponse {
-  data: {
-    Media: {
-      title: {
-        english: string | null;
-        native: string | null;
-        romaji: string | null;
-      };
-      synonyms: string[];
-      description: string | null;
-      coverImage: {
-        extraLarge: string | null;
-        large: string | null;
-        medium: string | null;
-      };
-    } | null;
-  };
-}
-interface KitsuResponse {
-  data: Array<{
-    attributes: {
-      canonicalTitle: string;
-      titles: {
-        en?: string;
-        en_jp?: string;
-        ja_jp?: string;
-      };
-      abbreviatedTitles: string[];
-      synopsis: string | null;
-      posterImage: {
-        large: string | null;
-        medium: string | null;
-        small: string | null;
-      };
-    };
-  }>;
-}
-
-interface MALResponse {
-  data: Array<{
-    title: string; // This is the default (usually romaji)
-    title_english: string | null;
-    title_japanese: string | null;
-    title_synonyms: string[];
-    synopsis: string | null;
-    images: {
-      jpg: {
-        image_url: string;
-        large_image_url: string | null;
-      };
-    };
-  }>;
-}
-
-interface KitsuResponse {
-  data: Array<{
-    attributes: {
-      canonicalTitle: string;
-      titles: {
-        en?: string;
-        en_jp?: string;
-        ja_jp?: string;
-      };
-      abbreviatedTitles: string[];
-      synopsis: string | null;
-      posterImage: {
-        large: string | null;
-        medium: string | null;
-        small: string | null;
-      };
-    };
-  }>;
-}
-
 // Helper utility to remove undefined keys
 const compact = <T extends object>(obj: T): Partial<T> => {
   return Object.fromEntries(
     Object.entries(obj).filter(([_, v]) => v !== undefined)
   ) as Partial<T>;
 };
-
-const scrapeCache = new LRUCache<string, ScrapedManga>({
-  max: 1000,
-  ttl: 1000 * 60 * 60 * 24 // 24 hours
-});
-
-const normalizeTitle = (value?: string | null) =>
-  value ? value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim() : '';
-
-const levenshteinDistance = (a: string, b: string) => {
-  if (a === b) return 0;
-  if (!a) return b.length;
-  if (!b) return a.length;
-
-  const dp = new Array(b.length + 1).fill(0);
-  for (let j = 0; j <= b.length; j += 1) dp[j] = j;
-
-  for (let i = 1; i <= a.length; i += 1) {
-    let prev = i - 1;
-    dp[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const temp = dp[j];
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
-      prev = temp;
-    }
-  }
-
-  return dp[b.length];
-};
-
-const scoreCandidate = (query: string, candidate: ScrapedManga) => {
-  const normalizedQuery = normalizeTitle(query);
-  if (!normalizedQuery) return 0;
-
-  const titles = [
-    candidate.englishName,
-    candidate.romajiName,
-    candidate.japaneseName,
-    ...(candidate.synonyms || [])
-  ]
-    .map(normalizeTitle)
-    .filter(Boolean);
-
-  let bestScore = 0;
-  for (const title of titles) {
-    const distance = levenshteinDistance(normalizedQuery, title);
-    const maxLen = Math.max(normalizedQuery.length, title.length);
-    const score = maxLen > 0 ? 1 - distance / maxLen : 0;
-    if (score > bestScore) bestScore = score;
-  }
-
-  return bestScore;
-};
-
-const pickBestCandidate = (query: string, candidates: ScrapedManga[]) => {
-  let best = candidates[0] || {};
-  let bestScore = 0;
-
-  for (const candidate of candidates) {
-    const score = scoreCandidate(query, candidate);
-    if (score > bestScore) {
-      best = candidate;
-      bestScore = score;
-    }
-  }
-
-  return best;
-};
-
-/**
- * Helper function to fix common Mojibake encoding errors
- * Detects and fixes cases where UTF-8 was decoded as Latin-1
- */
-function fixMojibake(text: string | undefined | null): string | undefined {
-  if (!text) return text ?? undefined;
-
-  // Common Mojibake patterns (UTF-8 bytes misinterpreted as Latin-1)
-  const mojibakePatterns: [RegExp, string][] = [
-    [/Ã©/g, 'é'],  // e with acute
-    [/Ã¨/g, 'è'],  // e with grave
-    [/Ã«/g, 'ë'],  // e with diaeresis
-    [/Ã¢/g, 'â'],  // a with circumflex
-    [/Ã /g, 'à'],  // a with grave
-    [/Ã¤/g, 'ä'],  // a with diaeresis
-    [/Ã§/g, 'ç'],  // c with cedilla
-    [/Ã´/g, 'ô'],  // o with circumflex
-    [/Ã¹/g, 'ù'],  // u with grave
-    [/Ã»/g, 'û'],  // u with circumflex
-    [/Ã¼/g, 'ü'],  // u with diaeresis
-    [/Ã®/g, 'î'],  // i with circumflex
-    [/Ã¯/g, 'ï'],  // i with diaeresis
-    [/Å\u0093/g, 'œ'], // oe ligature
-    [/Ã\u0089/g, 'É'], // E with acute
-  ];
-
-  let fixed = text;
-  for (const [pattern, replacement] of mojibakePatterns) {
-    fixed = fixed.replace(pattern, replacement);
-  }
-
-  return fixed;
-}
-
-/*
- * Helper function to scrape from a specific provider
- */
-async function scrapeFromProvider(
-  fastify: FastifyInstance,
-  provider: 'anilist' | 'mal' | 'kitsu',
-  seriesName: string
-): Promise<ScrapedManga> {
-  const cacheKey = `${provider}:${seriesName.trim().toLowerCase()}`;
-  const cached = scrapeCache.get(cacheKey);
-  if (cached) return cached;
-
-  // Use a controller to prevent hanging requests
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-  try {
-    switch (provider) {
-      case 'anilist': {
-        const query = `
-          query ($search: String, $perPage: Int) {
-            Page(perPage: $perPage) {
-              media(search: $search, type: MANGA) {
-                title { english native romaji }
-                synonyms
-                description
-                coverImage { extraLarge large medium }
-              }
-            }
-          }
-        `;
-        const resp = await fetch('https://graphql.anilist.co', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, variables: { search: seriesName, perPage: 5 } }),
-          signal: controller.signal
-        });
-
-        if (!resp.ok) {
-          fastify.log.error(`AniList API returned ${resp.status}: ${resp.statusText}`);
-          return {};
-        }
-
-        const result = await resp.json() as {
-          data?: { Page?: { media?: Array<{
-            title?: { english?: string | null; native?: string | null; romaji?: string | null };
-            synonyms?: string[];
-            description?: string | null;
-            coverImage?: { extraLarge?: string | null; large?: string | null; medium?: string | null };
-          }> } };
-        };
-        const mediaList = result.data?.Page?.media || [];
-        if (!mediaList.length) return {};
-
-        const candidates = mediaList.map((media) => ({
-          englishName: fixMojibake(media.title?.english),
-          romajiName: fixMojibake(media.title?.romaji),
-          japaneseName: fixMojibake(media.title?.native),
-          synonyms: (media.synonyms || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
-          description: fixMojibake(media.description),
-          coverUrl: media.coverImage?.extraLarge || media.coverImage?.large || media.coverImage?.medium || undefined
-        }));
-
-        const best = pickBestCandidate(seriesName, candidates);
-        scrapeCache.set(cacheKey, best);
-        return best;
-      }
-
-      case 'mal': {
-        const resp = await fetch(
-          `https://api.jikan.moe/v4/manga?q=${encodeURIComponent(seriesName)}&limit=5`,
-          { signal: controller.signal }
-        );
-
-        if (!resp.ok) {
-          fastify.log.error(`MAL API returned ${resp.status}: ${resp.statusText}`);
-          return {};
-        }
-
-        const { data } = await resp.json() as MALResponse;
-        const candidates = (data || []).map((manga) => ({
-          englishName: fixMojibake(manga.title_english),
-          romajiName: fixMojibake(manga.title),
-          japaneseName: fixMojibake(manga.title_japanese),
-          synonyms: (manga.title_synonyms || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
-          description: fixMojibake(manga.synopsis),
-          coverUrl: manga.images?.jpg?.large_image_url || manga.images?.jpg?.image_url || undefined
-        }));
-
-        if (!candidates.length) return {};
-        const best = pickBestCandidate(seriesName, candidates);
-        scrapeCache.set(cacheKey, best);
-        return best;
-      }
-
-      case 'kitsu': {
-        const resp = await fetch(
-          `https://kitsu.io/api/edge/manga?filter[text]=${encodeURIComponent(seriesName)}&page[limit]=5`,
-          { signal: controller.signal }
-        );
-
-        if (!resp.ok) {
-          fastify.log.error(`Kitsu API returned ${resp.status}: ${resp.statusText}`);
-          return {};
-        }
-
-        const { data } = await resp.json() as KitsuResponse;
-        const candidates = (data || []).map((entry) => {
-          const manga = entry.attributes;
-          return {
-            englishName: fixMojibake(manga.titles?.en || manga.titles?.en_jp),
-            romajiName: fixMojibake(manga.canonicalTitle),
-            japaneseName: fixMojibake(manga.titles?.ja_jp),
-            synonyms: (manga.abbreviatedTitles || []).map((s: string) => fixMojibake(s) || s).filter(Boolean),
-            description: fixMojibake(manga.synopsis),
-            coverUrl: manga.posterImage?.large || manga.posterImage?.medium || manga.posterImage?.small || undefined
-          };
-        });
-
-        if (!candidates.length) return {};
-        const best = pickBestCandidate(seriesName, candidates);
-        scrapeCache.set(cacheKey, best);
-        return best;
-      }
-    }
-  } catch (err) {
-    fastify.log.error(`Failed to scrape from ${provider}: ${err}`);
-    return {};
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-
 const metadataRoutes: FastifyPluginAsync = async (
   fastify,
   opts
@@ -423,33 +86,7 @@ const metadataRoutes: FastifyPluginAsync = async (
       const userId = request.user.id; // we know request has user thanks to the auth hook
 
       try {
-        const progress = await fastify.prisma.userProgress.findUnique({
-          where: {
-            // Use the @@unique([userId, volumeId]) index
-            userId_volumeId: {
-              userId,
-              volumeId,
-            },
-          },
-          // Select ONLY the fields the client needs
-          select: {
-            page: true,
-            timeRead: true,
-            charsRead: true,
-            completed: true,
-          },
-        });
-
-        // If no progress found, return default values
-        if (!progress) {
-          return reply.status(200).send({
-            page: 1,      // From schema default
-            timeRead: 0,  // From schema default
-            charsRead: 0, // From schema default
-            completed: false, // From schema default
-          });
-        }
-
+        const progress = await getVolumeProgress(fastify, volumeId, userId);
         return reply.status(200).send(progress);
       } catch (error) {
         fastify.log.error(error);
@@ -475,66 +112,7 @@ const metadataRoutes: FastifyPluginAsync = async (
       const data = request.body;
 
       try {
-        // 1. Upsert UserProgress
-        const upsertedProgress = await fastify.prisma.userProgress.upsert({
-          where: { userId_volumeId: { userId, volumeId } },
-          update: { ...data },
-          create: { userId, volumeId, ...data },
-        });
-
-        // 2. Series Status Update
-        const volume = await fastify.prisma.volume.findUnique({
-          where: { id: volumeId },
-          select: { seriesId: true }
-        });
-
-        if (volume) {
-          const seriesId = volume.seriesId;
-
-          // Case A: Completion Status Changed -> Must Recalculate Full Status
-          if (data.completed !== undefined) {
-            await updateSeriesStatus(fastify.prisma, userId, seriesId);
-
-            // Also update 'lastReadAt'
-            await fastify.prisma.userSeriesSettings.upsert({
-              where: { userId_seriesId: { userId, seriesId } },
-              create: { userId, seriesId, lastReadAt: new Date(), status: data.completed ? 1 : 0 },
-              update: { lastReadAt: new Date() }
-            });
-          }
-          // Case B: Simple Page Update -> Lightweight Update
-          else if (data.page !== undefined) {
-            // 1. Check current status to decide if we need to bump it to 'Reading'
-            const currentSettings = await fastify.prisma.userSeriesSettings.findUnique({
-              where: { userId_seriesId: { userId, seriesId } },
-              select: { status: true }
-            });
-
-            // If missing or Unread(0), bump to Reading(1). 
-            // If already Reading(1) or Completed(2), leave status alone.
-            const shouldBumpStatus = !currentSettings || currentSettings.status === 0;
-
-            await fastify.prisma.userSeriesSettings.upsert({
-              where: { userId_seriesId: { userId, seriesId } },
-              create: {
-                userId,
-                seriesId,
-                lastReadAt: new Date(),
-                status: 1
-              },
-              update: {
-                lastReadAt: new Date(),
-                // Conditionally update status only if needed
-                ...(shouldBumpStatus ? { status: 1 } : {})
-              }
-            });
-          }
-        }
-
-        invalidateCacheByPrefix(`library:${userId}`);
-        invalidateCacheByPrefix(`series:${userId}`);
-        invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
-
+        const upsertedProgress = await updateVolumeProgress(fastify, volumeId, userId, data);
         return reply.status(200).send(upsertedProgress);
       } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
@@ -557,21 +135,8 @@ const metadataRoutes: FastifyPluginAsync = async (
       const userId = request.user.id;
 
       try {
-        await fastify.prisma.userProgress.delete({
-          where: { userId_volumeId: { userId, volumeId } },
-        });
-
-        const volume = await fastify.prisma.volume.findUnique({
-          where: { id: volumeId },
-          select: { seriesId: true }
-        });
-        if (volume) await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
-
-        invalidateCacheByPrefix(`library:${userId}`);
-        invalidateCacheByPrefix(`series:${userId}`);
-        invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
-
-        return reply.send({ message: 'Progress reset successfully.' });
+        const response = await resetVolumeProgress(fastify, volumeId, userId);
+        return reply.send(response);
       } catch (error: unknown) {
         if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
           return reply.send({ message: 'Progress was already empty.' });
@@ -904,3 +469,6 @@ const metadataRoutes: FastifyPluginAsync = async (
 };
 
 export default metadataRoutes;
+
+
+

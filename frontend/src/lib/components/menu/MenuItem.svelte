@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { type Snippet } from 'svelte';
-	import { contextMenu } from '$lib/contextMenuStore';
+	import { contextMenu } from '$lib/stores/contextMenuStore';
 
 	let {
 		label,

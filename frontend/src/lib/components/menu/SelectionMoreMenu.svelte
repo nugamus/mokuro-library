@@ -1,8 +1,8 @@
 <script lang="ts">
-	import { contextMenu } from '$lib/contextMenuStore';
-	import { uiState } from '$lib/states/uiState.svelte';
-	import { apiFetch } from '$lib/api';
-	import { type MenuOption } from '$lib/contextMenuStore';
+	import { contextMenu } from '$lib/stores/contextMenuStore';
+	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+	import { apiFetch } from '$lib/services/api';
+	import { type MenuOption } from '$lib/stores/contextMenuStore';
 
 	let {
 		selectionCount,
@@ -72,3 +72,7 @@
 		<circle cx="12" cy="19" r="1" />
 	</svg>
 </button>
+
+
+
+

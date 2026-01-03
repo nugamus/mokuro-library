@@ -1,5 +1,5 @@
 import { writable, get } from 'svelte/store';
-import { updateSettings, type ReaderSettingsData } from '$lib/authStore';
+import { updateSettings, type ReaderSettingsData } from '$lib/stores/authStore';
 import {
   defaultKeybinds,
   mergeKeybinds,

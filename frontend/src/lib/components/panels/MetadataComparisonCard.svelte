@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { scrapingState } from '$lib/states/ScrapingState.svelte';
-	import type { ScrapedPreview } from '$lib/states/ReviewSession.svelte';
+	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
+	import type { ScrapedPreview } from '$lib/states/review/ReviewSession.svelte.ts';
 
 	let {
 		preview = $bindable(),
@@ -208,3 +208,7 @@
 		{/if}
 	</div>
 </div>
+
+
+
+

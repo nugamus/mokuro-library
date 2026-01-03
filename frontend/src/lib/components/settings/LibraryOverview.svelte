@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { apiFetch } from '$lib/api';
+	import { apiFetch } from '$lib/services/api';
 	import { browser } from '$app/environment';
 
 	let { inReader = false }: { inReader?: boolean } = $props();

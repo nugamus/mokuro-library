@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { fade, scale } from 'svelte/transition';
 	import MetadataComparisonCard from './MetadataComparisonCard.svelte';
-	import type { ScrapedPreview } from '$lib/states/ReviewSession.svelte';
-	import { scrapingState } from '$lib/states/ScrapingState.svelte';
+	import type { ScrapedPreview } from '$lib/states/review/ReviewSession.svelte.ts';
+	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 	import { lockScroll } from '$lib/actions/lockScroll';
 
 	let {
@@ -139,3 +139,7 @@
 		</div>
 	</div>
 {/if}
+
+
+
+

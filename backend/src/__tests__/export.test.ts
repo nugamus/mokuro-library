@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { buildComicInfoXml, runWithConcurrency } from '../routes/export';
+import { runWithConcurrency } from '../routes/export';
+import { buildComicInfoXml, normalizeMetadataFormat } from '../services/export/metadata';
 import type { Series, Volume } from '../generated/prisma/client';
 
 const buildSeries = (): Series =>
@@ -35,6 +36,12 @@ const buildVolume = (seriesId: string): Volume =>
   }) as Volume;
 
 describe('export helpers', () => {
+  it('normalizes metadata format', () => {
+    expect(normalizeMetadataFormat('comicinfo')).toBe('comicinfo');
+    expect(normalizeMetadataFormat('something-else')).toBe('mokuro');
+    expect(normalizeMetadataFormat()).toBe('mokuro');
+  });
+
   it('builds ComicInfo XML with series and volume data', () => {
     const series = buildSeries();
     const volume = buildVolume(series.id);

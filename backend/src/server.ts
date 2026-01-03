@@ -1,8 +1,8 @@
 import 'dotenv/config'; // important to make environment variables available to the server
-import './config';
+import './core/config';
 import { ensureAdminUser } from './utils/bootstrap';
 import { prisma } from './lib/prisma';
-import { buildServer } from './app';
+import { buildServer } from './core/app';
 
 const fastify = buildServer();
 

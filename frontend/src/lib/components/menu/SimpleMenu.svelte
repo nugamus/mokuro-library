@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
+	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
 	import MenuWrapper from '$lib/components/menu/MenuWrapper.svelte';
 	import MenuSeparator from '$lib/components/menu/MenuSeparator.svelte';
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { scrapingState } from '$lib/states/ScrapingState.svelte';
+	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 
 	let newFilterText = $state('');
 	let newFilterIsRegex = $state(false);
@@ -113,3 +113,7 @@
 		</div>
 	{/if}
 </div>
+
+
+
+

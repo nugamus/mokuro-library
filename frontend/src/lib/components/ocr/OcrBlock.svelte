@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import type { MokuroBlock } from '$lib/types';
-	import { contextMenu, type MenuOption } from '$lib/contextMenuStore';
-	import { lineOrderStore } from '$lib/lineOrderStore';
-	import { getImageDeltas, smartResizeFont, getRelativeCoords } from '$lib/utils/ocrMath';
-	import { readerState } from '$lib/states/ReaderState.svelte';
-	import type { OcrState } from '$lib/states/OcrState.svelte';
+	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
+	import { lineOrderStore } from '$lib/stores/lineOrderStore';
+	import { getImageDeltas, smartResizeFont, getRelativeCoords } from '$lib/utils/ocr/math';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
+	import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 
 	import OcrLine from './OcrLine.svelte';
 	import ResizeHandles from './ResizeHandles.svelte';
@@ -522,3 +522,7 @@
 			'locl' 1;
 	}
 </style>
+
+
+
+
