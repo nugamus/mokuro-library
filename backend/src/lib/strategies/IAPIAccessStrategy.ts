@@ -7,6 +7,8 @@ import {
   RedoResponse,
   PatchOperation
 } from '../../types/history';
+import { MokuroData } from '../../types/mokuro';
+import { OcrBranch } from '../../generated/prisma/client';
 
 export interface IAPIAccessStrategy {
   // --- Volume State ---
@@ -30,6 +32,11 @@ export interface IAPIAccessStrategy {
    */
   reset(volumeId: string): Promise<void>;
 
+  /**
+   * Manual trigger to regenerate the .mokuro cache file.
+   */
+  createSnapshot(volumeId: string): Promise<{ data: MokuroData, branch: OcrBranch }>;
+
   // --- Submission Lifecycle ---
   /**
    * User: Submits private volumes to Admin.
@@ -44,4 +51,17 @@ export interface IAPIAccessStrategy {
   acceptSubmission(submissionId: string): Promise<void>;
 
   rejectSubmission(submissionId: string, reason?: string): Promise<void>;
+
+  // --- Admin Advanced Features ---
+  /**
+   * Admin: Fast-forward merge a user's branch into master.
+   * User: Throws 403.
+   */
+  merge(volumeId: string, sourceUserId: string): Promise<void>;
+
+  /**
+   * Admin: Non-destructive undo (inverse patch).
+   * User: Throws 403.
+   */
+  revert(volumeId: string, patchId: string): Promise<void>;
 }

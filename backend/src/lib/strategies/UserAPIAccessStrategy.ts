@@ -16,6 +16,10 @@ import {
 import { PatchInverter } from '../PatchInverter';
 import fs from 'fs';
 import path from 'path';
+import { MokuroData } from '../../types/mokuro';
+import { OcrBranch } from '../../generated/prisma/client';
+import { validateAndPlanSubmission } from '../../utils/submissionHelper';
+import { HttpError } from '../../types/error';
 
 /**
  * Strategy for standard users.
@@ -23,7 +27,7 @@ import path from 'path';
  */
 export class UserAPIAccessStrategy implements IAPIAccessStrategy {
   /**
-   * Storing the FastifyInstance as a field allows the strategy to access 
+   * Storing the FastifyInstance as a field allows the strategy to access
    * prisma, logging, and the project root consistently.
    */
   constructor(
@@ -60,7 +64,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     });
 
     if (!volume) {
-      throw new Error('Volume not found or access denied');
+      throw new HttpError(404, 'Volume not found or access denied');
     }
 
     // 2. Ensure both branches exist
@@ -139,14 +143,14 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
         }
       }
     });
-    if (!volume) throw new Error('Volume not found');
+    if (!volume) throw new HttpError(404, 'Volume not found');
 
     const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
     const userBranch = await ensureUserBranch(this.fastify, volumeId, userId, adminBranch);
 
     // 2. Optimistic Lock
     if (userBranch.version !== version) {
-      throw new Error('Version mismatch. Please refresh.');
+      throw new HttpError(409, 'Version mismatch. Please refresh.');
     }
 
     const headPatchId = userBranch.headPatchId;
@@ -236,14 +240,14 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       },
       select: { mokuroPath: true }
     });
-    if (!volume) throw new Error('Volume not found');
+    if (!volume) throw new HttpError(404, 'Volume not found');
 
     const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
     const userBranch = await ensureUserBranch(this.fastify, volumeId, userId, adminBranch);
 
     // 2. Optimistic Lock Check
     if (userBranch.version !== version) {
-      throw new Error('Version mismatch. Please refresh.');
+      throw new HttpError(409, 'Version mismatch. Please refresh.');
     }
 
     // 3. Retrieve Current Patch for Inversion
@@ -254,8 +258,8 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
     // 4. Boundary Check
     // If no parent exists, the user is at the Genesis patch or the branch start.
-    if (!currentPatch) throw Error(`HEAD patch not found.`);
-    if (!currentPatch.parentId) throw new Error('Cannot undo: Reached start of history.');
+    if (!currentPatch) throw new HttpError(500, 'HEAD patch not found.');
+    if (!currentPatch.parentId) throw new HttpError(400, 'Cannot undo: Reached start of history.');
 
 
     // 5. Invert the Operation
@@ -296,14 +300,14 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       },
       select: { mokuroPath: true }
     });
-    if (!volume) throw new Error('Volume not found');
+    if (!volume) throw new HttpError(404, 'Volume not found');
 
     const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
     const userBranch = await ensureUserBranch(this.fastify, volumeId, userId, adminBranch);
 
     // 2. Optimistic Lock Check
     if (userBranch.version !== version) {
-      throw new Error('Version mismatch. Please refresh.');
+      throw new HttpError(409, 'Version mismatch. Please refresh.');
     }
 
     const currentHeadId = userBranch.headPatchId;
@@ -329,7 +333,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
         select: { id: true, operation: true }
       })
     ]);
-    if (!currentPatch) throw Error(`HEAD patch not found.`);
+    if (!currentPatch) throw new HttpError(500, 'HEAD patch not found.');
 
     // 4. Selection Logic (Prioritized)
     let nextPatch = null;
@@ -339,18 +343,18 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       nextPatch = rootPatch;
     } else if (currentPatch.nextPatch) {
       // Follow the explicit doubly-linked list (Official history)
-      if (rootPatch && rootPatch.id <= currentHeadId) throw Error(`Brand HEAD in invalid location.`);
+      if (rootPatch && rootPatch.id <= currentHeadId) throw new HttpError(500, 'Branch HEAD in invalid location.');
       nextPatch = currentPatch.nextPatch;
     } else if (children.length === 1) {
       // Follow the only available child path
       nextPatch = children[0];
     } else if (children.length > 1) {
       // Block redo if the history has branched significantly
-      throw new Error('Cannot redo: multiple children paths available.');
+      throw new HttpError(500, 'Cannot redo: multiple children paths available.');
     }
 
     if (!nextPatch) {
-      throw new Error('Nothing to redo');
+      throw new HttpError(400, 'Nothing to redo');
     }
 
     // 5. Update Branch Pointer
@@ -384,7 +388,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       },
       select: { mokuroPath: true }
     });
-    if (!volume) throw new Error('Volume not found or access denied');
+    if (!volume) throw new HttpError(404, 'Volume not found or access denied');
 
     const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
     const userBranch = await ensureUserBranch(this.fastify, volumeId, this.userId, adminBranch);
@@ -421,7 +425,93 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     }
   }
 
-  async submitVolumes(volumeIds: string[], targetSeriesId?: string): Promise<void> { throw new Error('Pending'); }
-  async acceptSubmission(submissionId: string): Promise<void> { throw new Error('Pending'); }
-  async rejectSubmission(submissionId: string, reason?: string): Promise<void> { throw new Error('Pending'); }
+  /**
+     * Force regenerate snapshot for the user's branch.
+     */
+  async createSnapshot(volumeId: string): Promise<{ data: MokuroData, branch: OcrBranch }> {
+    const volume = await this.fastify.prisma.volume.findFirst({
+      where: {
+        id: volumeId,
+        series: { OR: [{ ownerId: this.userId }, { ownerId: 'admin' }] }
+      },
+      select: { mokuroPath: true }
+    });
+    if (!volume) throw new HttpError(404, 'Volume not found');
+
+    const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
+    const userBranch = await ensureUserBranch(this.fastify, volumeId, this.userId, adminBranch);
+
+    return await syncSnapshot(this.fastify, userBranch);
+  }
+
+  /**
+   * Submits volumes to the shared library.
+   */
+  async submitVolumes(volumeIds: string[], targetSeriesId?: string): Promise<void> {
+    const userId = this.userId;
+
+    // 1. Validation: Ensure user owns all volumes
+    const volumes = await this.fastify.prisma.volume.findMany({
+      where: {
+        id: { in: volumeIds },
+        series: { ownerId: userId }
+      },
+      include: { series: true }
+    });
+
+    if (volumes.length !== volumeIds.length) {
+      throw new HttpError(400, 'One or more volumes not found or not owned by you.');
+    }
+
+    // 2. Validation: Ensure they belong to the same source series
+    const sourceSeries = volumes[0].series;
+    const allSameSeries = volumes.every(v => v.seriesId === sourceSeries.id);
+    if (!allSameSeries) {
+      throw new HttpError(400, 'All volumes in a submission must come from the same series.');
+    }
+
+    // 3. COLLISION CHECK (Dry Run)
+    // We run the planner to check for conflicts, but discard the plan for now.
+    await validateAndPlanSubmission(
+      this.fastify,
+      targetSeriesId,
+      sourceSeries,
+      volumes
+    );
+
+    // 4. Create Submission (Safe to proceed)
+    await this.fastify.prisma.$transaction(async (tx) => {
+      const submission = await tx.submission.create({
+        data: {
+          userId,
+          status: 'pending',
+          targetSeriesId: targetSeriesId || null,
+          sourceSeriesId: targetSeriesId ? null : sourceSeries.id,
+          submittedAt: new Date()
+        }
+      });
+
+      await tx.volume.updateMany({
+        where: { id: { in: volumeIds } },
+        data: { submissionId: submission.id }
+      });
+    });
+  }
+
+  // --- Forbidden Actions ---
+  async acceptSubmission(submissionId: string): Promise<void> {
+    throw new HttpError(403, 'Forbidden: Only admins can accept submissions.');
+  }
+
+  async rejectSubmission(submissionId: string, reason?: string): Promise<void> {
+    throw new HttpError(403, 'Forbidden: Only admins can reject submissions.');
+  }
+
+  async merge(volumeId: string, sourceUserId: string): Promise<void> {
+    throw new HttpError(403, 'Forbidden: Only admins can merge branches.');
+  }
+
+  async revert(volumeId: string, patchId: string): Promise<void> {
+    throw new HttpError(403, 'Forbidden: Only admins can revert changes.');
+  }
 }

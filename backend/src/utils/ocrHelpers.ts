@@ -6,6 +6,7 @@ import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
 import { OcrBranch, Patch, PrismaClient } from '../generated/prisma/client';
 import { ExtendedPrismaClient } from '../lib/prisma';
+import { HttpError } from '../types/error';
 
 // ============================================================================
 // LOW-LEVEL HELPERS
@@ -98,7 +99,8 @@ export async function regenerateFromGenesis(
 // Returns snapshot data if valid, otherwise throw
 export async function loadSnapshot(
   fastify: FastifyInstance,
-  branch: OcrBranch
+  branch: OcrBranch,
+  force: boolean = false // ignore validation
 ): Promise<MokuroData> {
   const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branch.id}.json`);
 
@@ -106,7 +108,7 @@ export async function loadSnapshot(
   const data: MokuroData = JSON.parse(content);
 
   // Validate: snapshot patchId must match DB
-  if (data.patch_id === branch.snapshotPatchId) {
+  if (force || data.patch_id === branch.snapshotPatchId) {
     return data;
   }
 
@@ -121,6 +123,9 @@ export async function syncSnapshot(
   branch: OcrBranch,
   targetPatchId: string = branch.headPatchId
 ): Promise<{ data: MokuroData, branch: OcrBranch }> {
+
+  if (targetPatchId > branch.headPatchId) throw Error("Cannot sync to target that is in the future of HEAD");
+
   let data: MokuroData;
   try {
     data = await loadSnapshot(fastify, branch);
@@ -151,11 +156,11 @@ export async function syncSnapshot(
     // Apply in chronological order (reverse of ancestry)
     for (let i = chain.length - 1; i >= 0; i--) {
       const p = chain[i];
-      if (p.operation && p.operation !== '{}') {
+      if (p.operation) {
         const op = JSON.parse(p.operation);
-        if (op.op !== 'genesis') {
-          PatchApplicator.apply(data, op);
-        }
+        if (op.op === 'genesis') continue;
+        PatchApplicator.apply(data, op);
+
       }
     }
   } else {
@@ -169,19 +174,41 @@ export async function syncSnapshot(
 
     // Invert in reverse chronological order
     for (const p of chain) {
-      if (p.operation && p.operation !== '{}') {
+      if (p.operation) {
         const op = JSON.parse(p.operation);
-        if (op.op !== 'genesis') {
-          const inv = PatchInverter.invert(op);
-          PatchApplicator.apply(data, inv);
-        }
+        if (op.op === 'genesis') continue;
+        const inv = PatchInverter.invert(op);
+        PatchApplicator.apply(data, inv);
       }
     }
   }
 
   data.patch_id = targetPatchId;
   branch = await saveSnapshot(fastify, branch.id, data, targetPatchId);
+
+  // if the branch is admin, that means any dangling patches should not have any more dependencies
+  // this is lazy clean up for undo operations
+  if (branch.userId === 'admin') {
+    const headPatch = await fastify.prisma.patch.findUnique({
+      where: { id: branch.headPatchId },
+      select: { nextPatchId: true }
+    })
+    if (!headPatch) throw new HttpError(500, `CRITICAL: Admin HEAD patch doesn't exists`);
+    if (headPatch.nextPatchId) {
+      await fastify.prisma.patch.delete({ where: { id: headPatch.nextPatchId } });
+    }
+  }
+
   return { data, branch };
+}
+
+export async function inheritAdminSnapshot(fastify: FastifyInstance, userBranch: OcrBranch, adminBranch: OcrBranch) {
+  if (userBranch.volumeId !== adminBranch.volumeId) throw new HttpError(400, `Failed to inherit admin snapshot: branch volume mismatch.`);
+  if (userBranch.rootPatchId && userBranch.rootPatchId <= adminBranch.headPatchId) throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`)
+  if (userBranch.headPatchId < adminBranch.headPatchId) throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`)
+
+  const { data: new_data } = await syncSnapshot(fastify, adminBranch);
+  return await saveSnapshot(fastify, userBranch.id, new_data, new_data.patch_id ?? '');
 }
 
 // --- Helper: Ensure Admin Branch ---
@@ -241,16 +268,7 @@ export async function ensureUserBranch(
     }
   });
 
-  const adminSnapPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
-  const userSnapPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
-  try {
-    await fs.promises.copyFile(adminSnapPath, userSnapPath);
-  } catch (e) {
-    fastify.log.warn(`Admin snapshot missing for ${userBranch.volumeId}, fixing admin and retrying...`);
-    const new_data = (await syncSnapshot(fastify, adminBranch)).data;
-    await saveSnapshot(fastify, userBranch.id, new_data, new_data.patch_id ?? '');
-  }
-  return userBranch;
+  return inheritAdminSnapshot(fastify, userBranch, adminBranch);
 }
 
 // ============================================================================
