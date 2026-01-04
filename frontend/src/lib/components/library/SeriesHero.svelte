@@ -6,10 +6,10 @@
 	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 
 	// Local Components
-import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
-	import SingleScrapePanel from '$lib/components/panels/SingleScrapePanel.svelte';
+	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
+	import SingleScrapePanel from '$lib/components/modals/scraping/SingleScrapePanel.svelte';
 	import SeriesActionsMenu from '$lib/components/menu/SeriesActionsMenu.svelte';
-	import type { ScrapedPreview } from '$lib/states/review/ReviewSession.svelte.ts';
+	import type { ScrapedPreview } from '$lib/states/scraping/ReviewSession.svelte.ts';
 
 	// --- Types ---
 	interface Series {
@@ -426,7 +426,3 @@ import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 		animation: bookmark-pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
 </style>
-
-
-
-

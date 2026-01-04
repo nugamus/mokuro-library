@@ -17,7 +17,7 @@
 		FilterMissing,
 		FilterOrganization
 	} from '$lib/states/ui/uiState.svelte.ts';
-	import { formatLastReadDate } from '$lib/utils/date/helpers';
+	import { formatLastReadDate } from '$lib/utils/helpers/date';
 
 	interface UserProgress {
 		page: number;
@@ -471,7 +471,10 @@
 		<EditSeriesModal
 			series={editModalTarget}
 			isOpen={isEditModalOpen}
-			onClose={() => (isEditModalOpen = false)}
+			onClose={() => {
+				isEditModalOpen = false;
+				uiState.exitSelectionMode();
+			}}
 			onRefresh={handleRefresh}
 		/>
 	{/if}

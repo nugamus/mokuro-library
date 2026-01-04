@@ -6,7 +6,7 @@
 	import { browser } from '$app/environment';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
-	import { formatLastReadDate } from '$lib/utils/date/helpers';
+	import { formatLastReadDate } from '$lib/utils/helpers/date';
 
 	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 	import EditVolumeModal from '$lib/components/modals/EditVolumeModal.svelte';
@@ -405,7 +405,10 @@
 	<EditSeriesModal
 		{series}
 		isOpen={isEditSeriesOpen}
-		onClose={() => (isEditSeriesOpen = false)}
+		onClose={() => {
+			isEditSeriesOpen = false;
+			uiState.exitSelectionMode();
+		}}
 		onRefresh={handleRefresh}
 	/>
 

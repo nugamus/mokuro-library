@@ -9,8 +9,8 @@
 	import { contributionsStore } from '$lib/stores/contributionsStore';
 	import { keybindStore } from '$lib/stores/keybindStore';
 	import { handleGlobalKeydown } from '$lib/keybinds/runtime';
-	import { prefetchAppData } from '$lib/utils/eagercache';
-	import { prefetchCommonRoutes } from '$lib/utils/prefetch';
+	import { prefetchAppData } from '$lib/utils/caching/eagercache';
+	import { prefetchCommonRoutes } from '$lib/utils/caching/prefetch';
 
 	// Components - Critical components loaded immediately
 	import Header from '$lib/components/layout/Header.svelte';
@@ -18,6 +18,7 @@
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
 	import ToastContainer from '$lib/components/feedback/ToastContainer.svelte';
 	import KeyboardShortcutsModal from '$lib/components/modals/KeyboardShortcutsModal.svelte';
+	import { apiCache } from '$lib/utils/caching/apiCache';
 
 	// Lazy load modals that are less frequently used
 	const loadUploadModal = () => import('$lib/components/modals/UploadModal.svelte');
@@ -152,16 +153,15 @@
 				isOpen={uiState.isUploadOpen}
 				onClose={() => (uiState.isUploadOpen = false)}
 				onUploadSuccess={() => {
+					apiCache.invalidateSeriesCache();
+					apiCache.invalidateLibraryCache();
 					uiState.refreshLibrary();
 				}}
 			/>
 		{/if}
 
 		{#if uiState.isStatsOpen && StatisticsModal}
-			<StatisticsModal
-				isOpen={uiState.isStatsOpen}
-				onClose={() => (uiState.isStatsOpen = false)}
-			/>
+			<StatisticsModal isOpen={uiState.isStatsOpen} onClose={() => (uiState.isStatsOpen = false)} />
 		{/if}
 
 		{#if uiState.isAboutOpen && AboutModal}
@@ -203,7 +203,3 @@
 		outline-offset: 2px;
 	}
 </style>
-
-
-
-

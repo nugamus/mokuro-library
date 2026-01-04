@@ -275,7 +275,7 @@ const metadataRoutes: FastifyPluginAsync = async (
         // Only owner can rename volume titles
         const vol = await fastify.prisma.volume.findFirst({
           where: { id, series: { ownerId: userId } },
-          select: { folderName: true },
+          select: { folderName: true, series: { select: { id: true } } },
         });
 
         if (!vol) return reply.status(403).send({ message: 'Access denied or volume not found.' });
@@ -289,7 +289,7 @@ const metadataRoutes: FastifyPluginAsync = async (
         libraryCache.invalidateCacheByPrefix(`series:${userId}`);
         libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
 
-        return reply.send({ message: 'Volume title updated.' });
+        return reply.send({ message: 'Volume title updated.', seriesId: vol.series.id });
       } catch (error) {
         fastify.log.error(error);
         return reply.status(500).send({ message: 'Update failed.' });

@@ -34,7 +34,7 @@ async function fetchAndCreateBlob(src: string): Promise<string> {
 // Snap to 2 discrete height values for optimal cache efficiency
 const SMALL_HEIGHT = 1800;
 const LARGE_HEIGHT = 2400;
-const HEIGHT_THRESHOLD = 2100; // Switch to large if target exceeds this
+const HEIGHT_THRESHOLD = 1200; // Switch to large if target exceeds this
 
 export const optimizeSrc = (src: string, browser: boolean) => {
   if (!browser) return src;

@@ -1,5 +1,6 @@
 import { apiFetch } from '$lib/services/api';
 import { toastStore } from '$lib/stores/toastStore.svelte';
+import { apiCache } from '$lib/utils/caching/apiCache';
 
 type RevertCallback = () => void;
 type SeriesMetadata = {
@@ -9,6 +10,8 @@ type SeriesMetadata = {
   synonyms?: string | null;
   description?: string | null;
   bookmarked?: boolean;
+  organized?: boolean;
+  tempCoverPath?: string;
 }
 type VolumeMetaData = {
   title?: string | null;
@@ -86,6 +89,8 @@ class MetadataOperations {
         method: 'PATCH',
         body
       });
+      apiCache.invalidateSeriesCache(id);
+      apiCache.invalidateLibraryCache();
     } catch (e: any) {
       throw e;
     }
@@ -93,10 +98,12 @@ class MetadataOperations {
 
   saveVolumeMetadata = async (id: string, body: VolumeMetaData) => {
     try {
-      await apiFetch(`/api/metadata/volume/${id}`, {
+      const { seriesId } = await apiFetch(`/api/metadata/volume/${id}`, {
         method: 'PATCH',
         body
       });
+      apiCache.invalidateSeriesCache(seriesId);
+      apiCache.invalidateVolumeCache(id);
     } catch (e: any) {
       throw e;
     }

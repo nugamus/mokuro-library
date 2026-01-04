@@ -1,6 +1,6 @@
 import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 import { retryWithBackoff } from '$lib/utils/network/retry';
-import { apiCache } from '$lib/utils/apiCache';
+import { apiCache } from '$lib/utils/caching/apiCache';
 
 /**
  * It's the same as RequestInit, but 'body' can be 'any'

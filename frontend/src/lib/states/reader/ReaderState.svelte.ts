@@ -1,4 +1,4 @@
-import type { VolumeReaderResponse, MokuroData, MokuroPage, MokuroBlock } from '$lib/types';
+import type { VolumeReaderResponse, MokuroData, MokuroPage, MokuroBlock, UserProgress } from '$lib/types';
 import { user, updateSettings, type ReaderSettingsData } from '$lib/stores/authStore';
 import { apiFetch } from '$lib/services/api';
 import { fromStore, get } from 'svelte/store';
@@ -245,7 +245,7 @@ class ReaderState {
   private async loadVolumeData(volumeId: string) {
     const [volData, progressData] = await Promise.all([
       apiFetch(`/api/library/volume/${volumeId}`, { cache: true }) as Promise<VolumeReaderResponse>,
-      apiFetch(`/api/metadata/volume/${volumeId}/progress`, { cache: true })
+      apiFetch(`/api/metadata/volume/${volumeId}/progress`) as Promise<UserProgress>
     ]);
 
     let startPage = 0;

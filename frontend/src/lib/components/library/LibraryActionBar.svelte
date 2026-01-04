@@ -8,7 +8,8 @@
 	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 	import type { Series } from '$lib/types';
 	import SelectionMoreMenu from '$lib/components/menu/SelectionMoreMenu.svelte';
-	import BulkScrapePanel from '$lib/components/panels/BulkScrapePanel.svelte';
+	import BulkScrapePanel from '$lib/components/modals/scraping/BulkScrapePanel.svelte';
+	import { apiCache } from '$lib/utils/caching/apiCache';
 
 	let {
 		type = 'series',
@@ -138,6 +139,8 @@
 						method: 'POST',
 						body: { ids, type }
 					});
+					apiCache.invalidateSeriesCache(uiState.activeId ?? undefined);
+					apiCache.invalidateLibraryCache();
 
 					uiState.exitSelectionMode();
 					onRefresh();
@@ -346,7 +349,3 @@
 {#if showScrapeModal}
 	<BulkScrapePanel provider={scrapingState.preferredProvider} onClose={handleScrapeClose} />
 {/if}
-
-
-
-

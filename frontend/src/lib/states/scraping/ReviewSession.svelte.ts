@@ -1,5 +1,6 @@
 import { Deque } from "$lib/utils/collections/Deque.svelte.ts";
 import { apiFetch } from '$lib/services/api';
+import { metadataOps } from "../metadata/metadataOperations.svelte";
 
 export interface ScrapedPreview {
   id: string; // Unique ID for the preview card
@@ -115,19 +116,15 @@ export class ReviewSession {
   async commitChange(preview: ScrapedPreview) {
     preview.status = 'applying';
     try {
-      await apiFetch(`/api/metadata/series/${preview.seriesId}`, {
-        method: 'PATCH',
-        body: {
-          title: preview.scraped.title,
-          japaneseTitle: preview.scraped.japaneseTitle,
-          romajiTitle: preview.scraped.romajiTitle,
-          synonyms: preview.scraped.synonyms,
-          description: preview.scraped.description,
-          tempCoverPath: preview.scraped.tempCoverPath,
-          organized: true
-        }
+      metadataOps.saveSeriesMetadata(preview.seriesId, {
+        title: preview.scraped.title,
+        japaneseTitle: preview.scraped.japaneseTitle,
+        romajiTitle: preview.scraped.romajiTitle,
+        synonyms: preview.scraped.synonyms,
+        description: preview.scraped.description,
+        tempCoverPath: preview.scraped.tempCoverPath,
+        organized: true
       });
-
       preview.status = 'applied';
       this.onSeriesUpdated(preview.seriesId);
     } catch (error) {

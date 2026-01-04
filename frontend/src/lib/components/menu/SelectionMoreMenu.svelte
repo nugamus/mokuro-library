@@ -3,6 +3,7 @@
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { apiFetch } from '$lib/services/api';
 	import { type MenuOption } from '$lib/stores/contextMenuStore';
+	import { apiCache } from '$lib/utils/caching/apiCache';
 
 	let {
 		selectionCount,
@@ -21,6 +22,10 @@
 				method: 'POST',
 				body: { ids, value }
 			});
+			for (const id of ids) {
+				apiCache.invalidateSeriesCache(id);
+			}
+			apiCache.invalidateLibraryCache();
 			uiState.exitSelectionMode();
 			onRefresh();
 		} catch (e) {
@@ -72,7 +77,3 @@
 		<circle cx="12" cy="19" r="1" />
 	</svg>
 </button>
-
-
-
-

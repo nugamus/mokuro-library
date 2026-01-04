@@ -1,9 +1,9 @@
 <script lang="ts">
 	import { apiFetch, apiUpload } from '$lib/services/api';
 	import { fade, scale } from 'svelte/transition';
-	import { createJobsFromFiles, type UploadJob } from '$lib/utils/upload/helpers';
+	import { createJobsFromFiles, type UploadJob } from '$lib/utils/helpers/upload';
 	import MenuGridRadio from '$lib/components/menu/MenuGridRadio.svelte';
-import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
+	import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 
 	let { isOpen, onClose, onUploadSuccess } = $props<{
 		isOpen: boolean;
@@ -35,26 +35,44 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 		return `Processing ${activeJob.name}`;
 	});
 
-	const pollUploadStatus = async (job: UploadJob, jobId: string) => {
+	const pollUploadStatus = async (job: UploadJob, jobId: string, onSuccess: () => void) => {
 		const start = Date.now();
 		const maxWaitMs = 10 * 60 * 1000;
+		let errorCount = 0;
 
 		while (Date.now() - start < maxWaitMs) {
-			const status = await apiFetch(`/api/library/upload/status/${jobId}`, {
-				method: 'GET',
-				showErrorToast: false
-			});
+			try {
+				const status = await apiFetch(`/api/library/upload/status/${jobId}`, {
+					method: 'GET',
+					showErrorToast: false
+				});
+				errorCount = 0; // Reset count on successful poll
 
-			if (status.status === 'completed') {
-				job.status = 'done';
-				job.resultMsg = status.message || 'OK';
-				return;
-			}
+				if (status.status === 'completed') {
+					job.status = 'done';
+					job.resultMsg = status.message || 'OK';
+					onSuccess();
+					return;
+				}
 
-			if (status.status === 'failed') {
-				job.status = 'error';
-				job.resultMsg = status.message || 'Upload failed';
-				return;
+				if (status.status === 'failed') {
+					job.status = 'error';
+					job.resultMsg = status.message || 'Upload failed';
+					return;
+				}
+			} catch (e) {
+				errorCount++;
+				// Only show error status in UI if it fails 3 times in a row
+				if (errorCount >= 3) {
+					job.status = 'error';
+					job.resultMsg = `Connection lost. Retrying...`;
+				}
+				// If it fails 10 times, give up
+				if (errorCount > 10) {
+					job.status = 'error';
+					job.resultMsg = `Polling failed: Network error.`;
+					return;
+				}
 			}
 
 			await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -100,6 +118,7 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 		if (isProcessingQueue) return;
 		isProcessingQueue = true;
 		let hasUpdates = false;
+		let jobPromises = [];
 
 		for (const job of jobs) {
 			if (job.status === 'done') continue;
@@ -152,18 +171,24 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 				});
 				if (response?.jobId) {
 					job.status = 'processing';
-					await pollUploadStatus(job, response.jobId);
+					jobPromises.push(
+						pollUploadStatus(job, response.jobId, () => {
+							hasUpdates = true;
+						})
+					);
 				} else {
 					job.status = 'done';
 					job.resultMsg = `OK`;
+					hasUpdates = true;
 				}
-				hasUpdates = job.status === 'done';
 			} catch (e) {
 				console.error(`Failed to upload ${job.name}`, e);
 				job.status = 'error';
 				job.resultMsg = (e as Error).message;
 			}
 		}
+
+		await Promise.allSettled(jobPromises);
 
 		isProcessingQueue = false;
 		files = null;
@@ -177,7 +202,9 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 {#if isOpen}
 	<div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
 		<div
-			class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity {hasActiveUploads ? 'cursor-not-allowed' : 'cursor-pointer'}"
+			class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity {hasActiveUploads
+				? 'cursor-not-allowed'
+				: 'cursor-pointer'}"
 			transition:fade={{ duration: 150 }}
 			onclick={handleClose}
 			role="button"
@@ -217,7 +244,9 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 				<button
 					onclick={handleClose}
 					disabled={hasActiveUploads}
-					class="p-2 rounded-lg text-theme-secondary transition-colors {hasActiveUploads ? 'opacity-50 cursor-not-allowed' : 'hover:text-theme-primary hover:bg-theme-surface-hover'}"
+					class="p-2 rounded-lg text-theme-secondary transition-colors {hasActiveUploads
+						? 'opacity-50 cursor-not-allowed'
+						: 'hover:text-theme-primary hover:bg-theme-surface-hover'}"
 					aria-label={hasActiveUploads ? 'Cannot close - uploads in progress' : 'Close'}
 					title={hasActiveUploads ? 'Please wait for uploads to complete' : 'Close'}
 				>
@@ -379,7 +408,9 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 
 								<div class="flex flex-col gap-2 pt-4">
 									{#if hasActiveUploads}
-										<div class="flex items-center gap-2 text-sm text-yellow-500 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2">
+										<div
+											class="flex items-center gap-2 text-sm text-yellow-500 bg-yellow-500/10 border border-yellow-500/30 rounded-lg px-4 py-2"
+										>
 											<svg
 												xmlns="http://www.w3.org/2000/svg"
 												width="16"
@@ -392,7 +423,9 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 												stroke-linejoin="round"
 												class="flex-shrink-0"
 											>
-												<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+												<path
+													d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"
+												/>
 												<line x1="12" y1="9" x2="12" y2="13" />
 												<line x1="12" y1="17" x2="12.01" y2="17" />
 											</svg>
@@ -404,8 +437,12 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 											<button
 												onclick={handleClose}
 												disabled={hasActiveUploads}
-												class="px-6 py-2.5 rounded-xl font-semibold transition-colors border {hasActiveUploads ? 'opacity-50 cursor-not-allowed bg-theme-main text-theme-secondary border-theme-border-light' : 'bg-theme-main hover:bg-theme-surface-hover text-theme-primary border-theme-border-light'}"
-												title={hasActiveUploads ? 'Please wait for uploads to complete' : 'Close upload modal'}
+												class="px-6 py-2.5 rounded-xl font-semibold transition-colors border {hasActiveUploads
+													? 'opacity-50 cursor-not-allowed bg-theme-main text-theme-secondary border-theme-border-light'
+													: 'bg-theme-main hover:bg-theme-surface-hover text-theme-primary border-theme-border-light'}"
+												title={hasActiveUploads
+													? 'Please wait for uploads to complete'
+													: 'Close upload modal'}
 											>
 												Done
 											</button>
@@ -524,4 +561,3 @@ import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
 		</div>
 	</div>
 {/if}
-
