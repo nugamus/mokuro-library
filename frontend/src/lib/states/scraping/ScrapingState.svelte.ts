@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { apiFetch } from '$lib/services/api';
 import { createId } from '@paralleldrive/cuid2';
-import { ReviewSession, type ScrapedPreview } from '../review/ReviewSession.svelte.ts';
+import { ReviewSession, type ScrapedPreview } from './ReviewSession.svelte.ts';
 import type { Series } from '$lib/types';
 
 export interface DescriptionFilter {

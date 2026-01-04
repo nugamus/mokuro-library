@@ -16,10 +16,7 @@
 			if (!isOptimizable) return src;
 			if (url.searchParams.has('w') || url.searchParams.has('format')) return src;
 
-			const width = Math.min(
-				Math.ceil(window.innerWidth * window.devicePixelRatio),
-				2200
-			);
+			const width = Math.min(Math.ceil(window.innerWidth * window.devicePixelRatio), 2200);
 			url.searchParams.set('w', width.toString());
 			url.searchParams.set('q', '80');
 			url.searchParams.set('format', 'webp');
