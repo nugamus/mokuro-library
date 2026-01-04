@@ -9,7 +9,7 @@ import { safeFilename } from '../../utils/safeFilename';
 import { drainStream } from '../../utils/stream';
 import { deleteFolder } from './delete';
 import { enqueueUploadJob } from '../../lib/uploadQueue';
-import { invalidateCacheByPrefix } from '../../lib/cache';
+import { libraryCache } from '../../lib/caches/libraryCache';
 
 const pump = util.promisify(pipeline);
 
@@ -226,9 +226,9 @@ export async function handleLibraryUpload(
         await updateSeriesStatus(fastify.prisma, userId, series.id);
       }
 
-      invalidateCacheByPrefix(`library:${userId}`);
-      invalidateCacheByPrefix(`series:${userId}`);
-      invalidateCacheByPrefix(`volume:${userId}`);
+      libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+      libraryCache.invalidateCacheByPrefix(`series:${userId}`);
+      libraryCache.invalidateCacheByPrefix(`volume:${userId}`);
 
       return volume;
     };

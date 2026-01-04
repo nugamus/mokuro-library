@@ -319,8 +319,8 @@ export class RebaseEngine {
       await fs.promises.copyFile(adminSnapPath, userSnapPath);
     } catch (e) {
       this.fastify.log.warn(`Admin snapshot missing for ${currentBranch.volumeId}, fixing admin and retrying...`);
-      const new_data = (await syncSnapshot(this.fastify, adminBranch)).data;
-      await saveSnapshot(this.fastify, currentBranch.id, new_data, new_data.patch_id ?? '');
+      const { data: adminData } = (await syncSnapshot(this.fastify, adminBranch));
+      await saveSnapshot(this.fastify, currentBranch.id, adminData, adminData.patch_id ?? '');
     }
     sessionCache.delete(ctx.sessionId);
   }

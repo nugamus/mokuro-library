@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { Prisma } from '../../generated/prisma/client';
-import { invalidateCacheByPrefix } from '../../lib/cache';
+import { libraryCache } from '../../lib/caches/libraryCache';
 import { updateSeriesStatus } from '../../utils/seriesStatus';
 
 export type ProgressBody = {
@@ -104,9 +104,9 @@ export async function updateVolumeProgress(
     }
   }
 
-  invalidateCacheByPrefix(`library:${userId}`);
-  invalidateCacheByPrefix(`series:${userId}`);
-  invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
+  libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+  libraryCache.invalidateCacheByPrefix(`series:${userId}`);
+  libraryCache.invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
 
   return upsertedProgress;
 }
@@ -126,9 +126,9 @@ export async function resetVolumeProgress(
   });
   if (volume) await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
 
-  invalidateCacheByPrefix(`library:${userId}`);
-  invalidateCacheByPrefix(`series:${userId}`);
-  invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
+  libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+  libraryCache.invalidateCacheByPrefix(`series:${userId}`);
+  libraryCache.invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
 
   return { message: 'Progress reset successfully.' };
 }

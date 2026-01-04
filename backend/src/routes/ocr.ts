@@ -2,8 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { ensureAdminBranch, ensureUserBranch, saveSnapshot, syncSnapshot } from '../utils/ocrHelpers';
 import { RebaseEngine } from '../lib/rebase/RebaseEngine';
-import { invalidateCacheByPrefix } from '../lib/cache';
-import { MokuroPage } from '../types/mokuro';
+import { libraryCache } from '../lib/caches/libraryCache';
+import { HttpError } from '../types/error';
 
 // --- Zod Schemas ---
 
@@ -46,30 +46,6 @@ export const patchBodySchema = z.object({
   branchVersion: z.number().int().nonnegative(),
 });
 
-const quadSchema = z.tuple([
-  z.tuple([z.number(), z.number()]),
-  z.tuple([z.number(), z.number()]),
-  z.tuple([z.number(), z.number()]),
-  z.tuple([z.number(), z.number()])
-]);
-
-const mokuroBlockSchema = z.object({
-  box: z.tuple([z.number(), z.number(), z.number(), z.number()]),
-  vertical: z.boolean(),
-  font_size: z.number().optional(),
-  lines: z.array(z.string()),
-  lines_coords: z.array(quadSchema)
-});
-
-const mokuroPageSchema = z.object({
-  blocks: z.array(mokuroBlockSchema),
-  img_path: z.string(),
-  img_width: z.number(),
-  img_height: z.number()
-});
-
-const saveOcrSchema = z.array(mokuroPageSchema);
-
 const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
   fastify.addHook('preHandler', fastify.authenticate);
 
@@ -88,17 +64,15 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.applyPatch(id, operation, branchVersion);
-        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unexpected error.';
-        if (message === 'Volume not found') {
-          return reply.code(404).send({ error: message });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ error: err.message });
         }
-        if (message.includes('Version mismatch') || message.includes('Conflict')) {
-          return reply.code(409).send({ error: message });
-        }
-        return reply.code(400).send({ error: message });
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Internal Server Error';
+        return reply.code(500).send({ error: message });
       }
     }
   );
@@ -114,19 +88,14 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.undo(id, branchVersion);
-        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unexpected error.';
-        if (message === 'Volume not found') {
-          return reply.code(404).send({ error: message });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ error: err.message });
         }
-        if (message.includes('Version mismatch')) {
-          return reply.code(409).send({ error: message });
-        }
-        if (message.includes('Cannot undo')) {
-          return reply.code(400).send({ error: message });
-        }
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Internal Server Error';
         return reply.code(500).send({ error: message });
       }
     }
@@ -143,22 +112,14 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.redo(id, branchVersion);
-        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unexpected error.';
-        if (message.includes('not available')) {
-          return reply.code(405).send({ error: message });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ error: err.message });
         }
-        if (message === 'Volume not found') {
-          return reply.code(404).send({ error: message });
-        }
-        if (message.includes('Version mismatch')) {
-          return reply.code(409).send({ error: message });
-        }
-        if (message.includes('Cannot redo') || message.includes('Nothing to redo')) {
-          return reply.code(400).send({ error: message });
-        }
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Internal Server Error';
         return reply.code(500).send({ error: message });
       }
     }
@@ -174,62 +135,56 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         await request.accessStrategy.reset(id);
-        invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return { success: true };
-      } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unexpected error.';
-        if (message.includes('not applicable')) {
-          return reply.code(405).send({ error: message });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ error: err.message });
         }
-        if (message === 'Volume not found' || message.includes('access denied')) {
-          return reply.code(404).send({ error: message });
-        }
-        if (message.includes('access denied')) {
-          return reply.code(403).send({ error: message });
-        }
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Internal Server Error';
         return reply.code(500).send({ error: message });
       }
     }
   );
 
   /**
-   * PUT /api/library/volume/:id/ocr
-   * Saves the current OCR state into the user's snapshot cache.
+   * POST /api/library/volume/:id/ocr
+   * Synchronizes the snapshot with the current server state (db patches + disk).
+   * Returns the fresh data and version to the frontend to reset optimistic locking.
    */
-  fastify.put<{ Params: { id: string }, Body: MokuroPage[] }>(
+  fastify.post<{ Params: { id: string } }>(
     '/volume/:id/ocr',
     async (request, reply) => {
       const { id } = request.params;
       const userId = request.user.id;
-      const parseResult = saveOcrSchema.safeParse(request.body);
 
-      if (!parseResult.success) {
-        return reply.code(400).send({ message: 'Invalid OCR payload', errors: parseResult.error });
+      try {
+        /**
+         * createSnapshot (via syncSnapshot) performs the server-side reconciliation:
+         * 1. Replays all pending database patches into the data object.
+         * 2. Persists the result to the .json snapshot file on disk.
+         * 3. Returns the OcrBranch (including version) and the MokuroData.
+         */
+        const { data, branch } = await request.accessStrategy.createSnapshot(id);
+
+        // Invalidate read cache (e.g., Redis/Memory) so the next GET sees the new snapshot
+        libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
+
+        // Return everything the frontend needs to stay in sync
+        return reply.send({
+          success: true,
+          data,           // The flattened OCR pages
+          version: branch.version, // The new version for the next patch request
+          headPatchId: branch.headPatchId
+        });
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ error: err.message });
+        }
+        request.log.error(err);
+        return reply.code(500).send({ error: 'Failed to synchronize OCR snapshot' });
       }
-
-      const volume = await fastify.prisma.volume.findFirst({
-        where: {
-          id,
-          series: { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
-        },
-        select: { mokuroPath: true }
-      });
-
-      if (!volume) {
-        return reply.code(404).send({ message: 'Volume not found or access denied' });
-      }
-
-      const adminBranch = await ensureAdminBranch(fastify, id, volume.mokuroPath);
-      const userBranch = await ensureUserBranch(fastify, id, userId, adminBranch);
-      const { data, branch } = await syncSnapshot(fastify, userBranch);
-
-      data.pages = parseResult.data;
-      data.patch_id = branch.headPatchId;
-
-      await saveSnapshot(fastify, branch.id, data, branch.headPatchId);
-      invalidateCacheByPrefix(`volume:${userId}:${id}`);
-
-      return reply.send({ success: true });
     }
   );
 
@@ -256,13 +211,13 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
             where: { volumeId_userId: { volumeId: id, userId } }
           });
-          invalidateCacheByPrefix(`volume:${userId}:${id}`);
+          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send({
             status: 'complete',
             newHeadId: updatedBranch?.headPatchId
           });
         } else {
-          invalidateCacheByPrefix(`volume:${userId}:${id}`);
+          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send(result);
         }
       } catch (error: unknown) {
@@ -302,13 +257,13 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
             where: { volumeId_userId: { volumeId: id, userId } }
           });
-          invalidateCacheByPrefix(`volume:${userId}:${id}`);
+          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send({
             status: 'complete',
             newHeadId: updatedBranch?.headPatchId
           });
         } else {
-          invalidateCacheByPrefix(`volume:${userId}:${id}`);
+          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send(result);
         }
       } catch (error: unknown) {
@@ -343,7 +298,7 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
         const engine = new RebaseEngine(fastify);
         await engine.abort(rebaseId);
-        invalidateCacheByPrefix(`volume:${userId}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
         return reply.send({ status: 'aborted' });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Failed to abort rebase';

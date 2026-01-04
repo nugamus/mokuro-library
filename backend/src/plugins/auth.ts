@@ -2,6 +2,7 @@ import { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin'; // Import fastify-plugin
 import { AuthUser } from '../types/fastify'; // Import our new type
 import { APIAccessStrategyFactory } from '../lib/strategies/APIAccessStrategyFactory';
+import { userAuthCache } from '../lib/caches/userAuthCache';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
@@ -39,15 +40,17 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
       });
     }
 
+
     // Find user by the ID from JWT
-    const user = await request.server.prisma.user.findUnique({
-      where: { id: decoded.userId },
-      select: {
-        id: true,
-        username: true,
-        settings: true,
-      },
-    });
+    let user = userAuthCache.get(decoded.userId);
+
+    if (!user) {
+      // 3. Fallback to Database
+      user = await request.server.prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: { id: true, username: true, settings: true },
+      }) as AuthUser;
+    }
 
     if (!user) {
       reply.clearCookie('sessionId', {
@@ -62,6 +65,8 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
         message: 'User not found.',
       });
     }
+
+    userAuthCache.set(decoded.userId, user);
 
     // --- SUCCESS ---
     // Attach the user to the request object

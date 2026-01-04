@@ -5,6 +5,7 @@
  */
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
+import { HttpError } from '../types/error';
 
 /**
  * Standard error response structure
@@ -13,13 +14,6 @@ export interface ErrorResponse {
   statusCode: number;
   error: string;
   message: string;
-}
-
-/**
- * Error with HTTP status code
- */
-export interface HttpError extends Error {
-  statusCode?: number;
 }
 
 /**
@@ -70,24 +64,6 @@ export function handleRouteError(
     error: 'Internal Server Error',
     message
   });
-}
-
-/**
- * Creates an error with an HTTP status code
- *
- * @param message - Error message
- * @param statusCode - HTTP status code (default: 500)
- * @returns Error with statusCode property
- *
- * @example
- * ```typescript
- * throw createHttpError('Series not found', 404);
- * ```
- */
-export function createHttpError(message: string, statusCode = 500): HttpError {
-  const error = new Error(message) as HttpError;
-  error.statusCode = statusCode;
-  return error;
 }
 
 /**

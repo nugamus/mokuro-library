@@ -3,7 +3,7 @@ import path from 'path';
 import util from 'util';
 import { pipeline } from 'stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { invalidateCacheByPrefix } from '../../lib/cache';
+import { libraryCache } from '../../lib/caches/libraryCache';
 
 const pump = util.promisify(pipeline);
 
@@ -51,8 +51,8 @@ export async function handleSeriesCoverUpload(
       data: { coverPath: filePathRelative.replace(/\\/g, '/') }
     });
 
-    invalidateCacheByPrefix(`library:${userId}`);
-    invalidateCacheByPrefix(`series:${userId}:${seriesId}`);
+    libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+    libraryCache.invalidateCacheByPrefix(`series:${userId}:${seriesId}`);
 
     return reply.status(200).send({ message: 'Cover updated successfully.' });
   } catch (error) {

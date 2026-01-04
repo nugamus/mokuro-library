@@ -1,6 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '../generated/prisma/client'; // Import Prisma for types
-import { invalidateCacheByPrefix } from '../lib/cache';
+import { libraryCache } from '../lib/caches/libraryCache';
 import { scrapeFromProvider } from '../services/metadata/scrape';
 import {
   getVolumeProgress,
@@ -190,7 +190,7 @@ const metadataRoutes: FastifyPluginAsync = async (
 
         if (hasSharedUpdates) {
           if (!isOwner) {
-            // We don't throw error, just log and ignore shared updates 
+            // We don't throw error, just log and ignore shared updates
             // to allow "mixed" requests (bookmark + title) to partially succeed
             fastify.log.warn(`User ${userId} attempted to edit shared series ${id}`);
           } else {
@@ -248,8 +248,8 @@ const metadataRoutes: FastifyPluginAsync = async (
           });
         }
 
-        invalidateCacheByPrefix(`library:${userId}`);
-        invalidateCacheByPrefix(`series:${userId}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+        libraryCache.invalidateCacheByPrefix(`series:${userId}:${id}`);
 
         return reply.send({ message: 'Series updated successfully.' });
       } catch (error) {
@@ -285,9 +285,9 @@ const metadataRoutes: FastifyPluginAsync = async (
           data: { title, sortTitle: title ?? vol.folderName },
         });
 
-        invalidateCacheByPrefix(`library:${userId}`);
-        invalidateCacheByPrefix(`series:${userId}`);
-        invalidateCacheByPrefix(`volume:${userId}:${id}`);
+        libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+        libraryCache.invalidateCacheByPrefix(`series:${userId}`);
+        libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
 
         return reply.send({ message: 'Volume title updated.' });
       } catch (error) {
@@ -321,8 +321,8 @@ const metadataRoutes: FastifyPluginAsync = async (
           )
         );
 
-        invalidateCacheByPrefix(`library:${userId}`);
-        invalidateCacheByPrefix(`series:${userId}`);
+        libraryCache.invalidateCacheByPrefix(`library:${userId}`);
+        libraryCache.invalidateCacheByPrefix(`series:${userId}`);
 
         return reply.send({ message: 'Batch update successful.', count: ids.length });
       } catch (error) {

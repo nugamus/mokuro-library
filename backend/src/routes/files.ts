@@ -1,9 +1,14 @@
 import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import path from 'path';
 import fs from 'fs'; // We need fs to check if the file exists
+import { PassThrough } from 'stream';
 import { createHash } from 'crypto';
 import sharp from 'sharp';
+import { LRUCache } from 'lru-cache';
+import { libraryCache } from '../lib/caches/libraryCache';
 
+sharp.cache({ items: 500, memory: 512 });
+sharp.concurrency(Math.max(1, require('os').cpus().length - 1));
 // Define an interface for our type-safe params
 interface FileParams {
   id: string; // This 'id' is the volumeId
@@ -58,6 +63,9 @@ const parseTransformOptions = (query: ImageTransformQuery): TransformOptions | n
   };
 };
 
+// Track active tasks
+const activeRequests = new Map<string, Promise<void>>();
+
 const sendOptimizedImage = async (
   reply: FastifyReply,
   absolutePath: string,
@@ -65,39 +73,130 @@ const sendOptimizedImage = async (
   cacheRoot: string
 ) => {
   const ext = path.extname(absolutePath).replace('.', '').toLowerCase();
-  const targetFormat = options.format || (ext === 'jpg' ? 'jpeg' : ext || 'jpeg');
+  const targetFormat = options.format || (ext === 'jpg' ? 'jpeg' : ext || 'webp');
   const sizeKey = `${options.width || ''}x${options.height || ''}-${options.quality || ''}-${targetFormat}`;
   const cacheKey = createHash('sha1').update(`${absolutePath}:${sizeKey}`).digest('hex');
+
   const cacheDir = path.join(cacheRoot, 'uploads', 'cache', 'images');
   const cachePath = path.join(cacheDir, `${cacheKey}.${targetFormat}`);
+  const tempPath = `${cachePath}.tmp`;
+
+  reply.header('Cache-Control', 'public, max-age=31536000, immutable');
+
+  // Attempt to serve from cache immediately
+  try {
+    const handle = await fs.promises.open(cachePath, 'r');
+    return reply.type(`image/${targetFormat}`).send(handle.createReadStream());
+  } catch { }
+
+  if (activeRequests.has(cacheKey)) {
+    await activeRequests.get(cacheKey);
+    const handle = await fs.promises.open(cachePath, 'r');
+    return reply.type(`image/${targetFormat}`).send(handle.createReadStream());
+  }
 
   await fs.promises.mkdir(cacheDir, { recursive: true });
 
-  try {
-    const cached = await fs.promises.readFile(cachePath);
-    return reply.type(`image/${targetFormat}`).send(cached);
-  } catch {
-    // Cache miss; continue to transform.
-  }
-
-  const transformer = sharp(absolutePath);
-  if (options.width || options.height) {
-    transformer.resize({
-      width: options.width,
-      height: options.height,
-      fit: 'inside',
-      withoutEnlargement: true
+  const transformer = sharp(absolutePath)
+    .resize({ ...options, fit: 'inside', withoutEnlargement: true })
+    .toFormat(targetFormat as any, {
+      quality: options.quality,
+      progressive: true, // Better for perceived loading speed
+      mozjpeg: targetFormat === 'jpeg' // Use mozjpeg for better compression
     });
-  }
 
-  const buffer = await transformer
-    .toFormat(targetFormat as keyof sharp.FormatEnum, {
-      quality: options.quality
-    })
-    .toBuffer();
+  const responseStream = new PassThrough({ highWaterMark: 1024 * 512 });
+  const fileStream = fs.createWriteStream(tempPath);
 
-  await fs.promises.writeFile(cachePath, buffer);
-  return reply.type(`image/${targetFormat}`).send(buffer);
+  let isResponseDestroyed = false;
+  let fileBufferFull = false;
+  let responseBufferFull = false;
+
+  const updateBackpressure = () => {
+    // Only resume if both streams are ready to receive data
+    if (!fileBufferFull && !responseBufferFull) {
+      transformer.resume();
+    }
+  };
+
+  transformer.on('data', (chunk) => {
+    // Write to file and check for backpressure
+    fileBufferFull = !fileStream.write(chunk);
+
+    // Write to response (if active) and check for backpressure
+    if (!isResponseDestroyed) {
+      responseBufferFull = !responseStream.write(chunk);
+    } else {
+      responseBufferFull = false; // Ignore backpressure from a dead response
+    }
+
+    if (fileBufferFull || responseBufferFull) {
+      transformer.pause();
+    }
+  });
+
+  transformer.on('end', () => {
+    fileStream.end();
+    if (!isResponseDestroyed) responseStream.end();
+  });
+
+  fileStream.on('drain', () => {
+    fileBufferFull = false;
+    updateBackpressure();
+  });
+
+  responseStream.on('drain', () => {
+    responseBufferFull = false;
+    updateBackpressure();
+  });
+
+  const transformTask = new Promise<void>((resolve, reject) => {
+    // Set a safety timeout (e.g., 30 seconds) so a hung process doesn't block the key
+    const timeout = setTimeout(() => {
+      cleanup();
+      reject(new Error('Transformation timeout'));
+    }, 30000);
+
+    const cleanup = async () => {
+      clearTimeout(timeout);
+      fileStream.destroy();
+      if (!isResponseDestroyed) responseStream.destroy(new Error(`Image serving transformer timed out`));
+      try {
+        await fs.promises.unlink(tempPath);
+      } catch { /* ignore if file doesn't exist */ }
+    };
+
+    fileStream.on('finish', async () => {
+      try {
+        await fs.promises.rename(tempPath, cachePath);
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    transformer.on('error', async (err) => {
+      await cleanup();
+      reject(err);
+    });
+
+    fileStream.on('error', async (err) => {
+      await cleanup();
+      reject(err);
+    });
+  });
+
+  activeRequests.set(cacheKey, transformTask);
+  transformTask.finally(() => activeRequests.delete(cacheKey));
+
+  // If the client disconnects, mark response as destroyed but let the task continue
+  reply.raw.on('close', () => {
+    isResponseDestroyed = true;
+    responseStream.destroy();
+    // Resume transformer in case it was paused waiting for the response stream
+    transformer.resume();
+  });
+  return reply.type(`image/${targetFormat}`).send(responseStream);
 };
 
 // Helper function
@@ -105,23 +204,47 @@ const sendOptimizedImage = async (
 /**
  * Resolves a file path by checking both NFC and NFD normalization forms.
  * This ensures cross-platform compatibility (Linux/Windows/macOS).
- * * @param baseDir The root directory (e.g., fastify.projectRoot).
+ * @param baseDir The root directory (e.g., fastify.projectRoot).
  * @param relativePath The path stored in the database.
  * @returns The verified absolute path in its correct normalization, or null if not found.
+ */
+
+// Initialize the cache.
+// max: 1000 entries
+// ttl: 24 hours (paths on disk are unlikely to change frequently)
+const pathResolutionCache = new LRUCache<string, string>({
+  max: 2000,
+  ttl: 1000 * 60 * 60 * 24,
+});
+
+/**
+ * Resolves a file path by checking both NFC and NFD normalization forms.
+ * Results are cached in memory to minimize disk I/O.
  */
 export async function resolveNormalizedPath(
   baseDir: string,
   relativePath: string
 ): Promise<string | null> {
-  // 1. Generate the primary target (NFC)
+  const cacheKey = `${baseDir}:${relativePath}`;
+
+  // 1. Check memory cache first
+  const cachedPath = pathResolutionCache.get(cacheKey);
+  if (cachedPath) {
+    return cachedPath;
+  }
+
+  // 2. Generate the primary target (NFC)
   const absolutePathNFC = path.join(baseDir, relativePath).normalize('NFC');
 
   try {
     // Check if the NFC version exists on disk
     await fs.promises.access(absolutePathNFC, fs.constants.R_OK);
+
+    // Store in cache before returning
+    pathResolutionCache.set(cacheKey, absolutePathNFC);
     return absolutePathNFC;
   } catch {
-    // 2. Generate the fallback (NFD)
+    // 3. Generate the fallback (NFD)
     const absolutePathNFD = absolutePathNFC.normalize('NFD');
 
     // If the strings are identical, there is no need for a second disk check
@@ -131,6 +254,9 @@ export async function resolveNormalizedPath(
 
     try {
       await fs.promises.access(absolutePathNFD, fs.constants.R_OK);
+
+      // Store in cache before returning
+      pathResolutionCache.set(cacheKey, absolutePathNFD);
       return absolutePathNFD;
     } catch {
       // File does not exist in either form
@@ -231,29 +357,19 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
       const transformOptions = parseTransformOptions(request.query);
 
       try {
-        const series = await fastify.prisma.series.findFirst({
-          where: {
-            id: seriesId,
-            OR: [
-              { ownerId: userId },
-              { ownerId: 'admin' }
-            ]
-          },
-          select: {
-            coverPath: true,
-          },
+        const cacheKey = `series:${userId}:${seriesId}:cover-path`;
+
+        const validPath = await libraryCache.cachedQuery(cacheKey, async () => {
+          const series = await fastify.prisma.series.findFirst({
+            where: { id: seriesId, OR: [{ ownerId: userId }, { ownerId: 'admin' }] },
+            select: { coverPath: true }
+          });
+
+          if (!series?.coverPath) return null;
+          return await resolveNormalizedPath(fastify.projectRoot, series.coverPath);
         });
 
-        if (!series || !series.coverPath) {
-          return reply.status(404).send('Cover not found');
-        }
-
-        // Ensure file exists before trying to send it
-        const validPath = await resolveNormalizedPath(fastify.projectRoot, series.coverPath);
-
-        if (!validPath) {
-          return reply.status(404).send('Cover file missing from disk');
-        }
+        if (!validPath) return reply.status(404).send('Cover not found');
 
         if (transformOptions) {
           return await sendOptimizedImage(reply, validPath, transformOptions, fastify.projectRoot);
