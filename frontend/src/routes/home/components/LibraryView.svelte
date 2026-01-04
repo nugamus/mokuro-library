@@ -11,6 +11,7 @@
 	import LibraryActionBar from '$lib/components/library/LibraryActionBar.svelte';
 	import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
 	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
+	import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
 	import type {
 		FilterStatus,
 		FilterMissing,
@@ -363,13 +364,7 @@
 	{:else}
 		<div class="flex-grow pb-24 relative">
 			<!-- Glassmorphic container wrapper with fade on background only -->
-			<div class="relative p-3 sm:p-4">
-				<!-- Background layer simplified to avoid heavy mask/blur work during scroll -->
-				<div class="absolute inset-0 pointer-events-none z-0">
-					<div class="absolute inset-0 bg-black/15"></div>
-					<div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent"></div>
-				</div>
-
+			<LibraryListWrapper>
 				<!-- Content layer (series cards) - fully visible, not affected by fade -->
 				<div
 					class="relative z-10 {uiState.viewMode === 'grid'
@@ -462,7 +457,7 @@
 						</LibraryEntry>
 					{/each}
 				</div>
-			</div>
+			</LibraryListWrapper>
 		</div>
 
 		<Footer {meta} />

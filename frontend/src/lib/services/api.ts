@@ -6,7 +6,7 @@ import { apiCache } from '$lib/utils/apiCache';
  * It's the same as RequestInit, but 'body' can be 'any'
  * We will convert 'body' into a valid type inside of apiFetch.
  */
-interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
+interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'cache'> {
   body?: any;
   retry?: boolean;
   showErrorToast?: boolean;
