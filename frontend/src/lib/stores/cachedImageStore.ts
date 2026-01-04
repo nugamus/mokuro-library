@@ -31,6 +31,11 @@ async function fetchAndCreateBlob(src: string): Promise<string> {
   }
 }
 
+// Snap to 2 discrete height values for optimal cache efficiency
+const SMALL_HEIGHT = 1800;
+const LARGE_HEIGHT = 2400;
+const HEIGHT_THRESHOLD = 2100; // Switch to large if target exceeds this
+
 export const optimizeSrc = (src: string, browser: boolean) => {
   if (!browser) return src;
   try {
@@ -44,7 +49,7 @@ export const optimizeSrc = (src: string, browser: boolean) => {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const viewportHeight = window.innerHeight || 900;
     const targetHeight = Math.round(viewportHeight * dpr * 1.2);
-    const height = Math.min(Math.max(targetHeight, 1200), 3000);
+    const height = targetHeight > HEIGHT_THRESHOLD ? LARGE_HEIGHT : SMALL_HEIGHT;
     url.searchParams.set('h', height.toString());
     url.searchParams.set('q', '45');
     url.searchParams.set('format', 'avif');
