@@ -281,7 +281,7 @@
 								title: vol.title,
 								folderName: vol.folderName,
 								coverUrl: vol.coverImageName
-									? `/api/files/volume/${vol.id}/image/${vol.coverImageName}`
+									? `/api/files/volume/${vol.id}/image/${vol.coverImageName}?w=300&q=44&format=avif`
 									: null
 							}}
 							type="volume"
@@ -405,7 +405,3 @@
 		onRefresh={handleRefresh}
 	/>
 </div>
-
-
-
-

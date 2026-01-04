@@ -4,9 +4,13 @@ import { apiFetch } from '$lib/services/api';
 import { fromStore, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { untrack } from 'svelte';
+import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
+
+// How many pages to keep ready in the cache
+const PREFETCH_COUNT = 3;
 
 class ReaderState {
   // --- Core State ---
@@ -71,6 +75,25 @@ class ReaderState {
     } else {
       return h >= startHour || h < endHour;
     }
+  });
+
+  prefetchUrls = $derived.by(() => {
+    if (!this.volume || !this.mokuroData) return [];
+
+    const urls: string[] = [];
+    // Calculate start based on visible pages to stay ahead of the view
+    const nextStart = this.currentPageIndex + this.visiblePages.length;
+
+    for (let i = 0; i < PREFETCH_COUNT; i++) {
+      const targetIndex = nextStart + i;
+      if (targetIndex < this.totalPages) {
+        const page = this.mokuroData.pages[targetIndex];
+        const baseUrl = `/api/files/volume/${this.id}/image/${page.img_path}`;
+        const url = optimizeSrc(baseUrl, browser);
+        urls.push(url);
+      }
+    }
+    return urls;
   });
 
   // --- Editing / UI State ---
@@ -149,6 +172,16 @@ class ReaderState {
           this.now = new Date();
         }, 60000);
         return () => clearInterval(interval);
+      });
+
+      // prefetch X images ahead for responsiveness
+      $effect(() => {
+        if (!browser) return;
+
+        // Whenever prefetchUrls changes, tell the store to fetch them
+        this.prefetchUrls.forEach(url => {
+          imageStore.get(url).catch(() => { });
+        });
       });
 
     });

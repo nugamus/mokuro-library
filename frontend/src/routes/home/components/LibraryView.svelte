@@ -11,7 +11,11 @@
 	import LibraryActionBar from '$lib/components/library/LibraryActionBar.svelte';
 	import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
 	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
-	import type { FilterStatus, FilterMissing, FilterOrganization } from '$lib/states/ui/uiState.svelte.ts';
+	import type {
+		FilterStatus,
+		FilterMissing,
+		FilterOrganization
+	} from '$lib/states/ui/uiState.svelte.ts';
 	import { formatLastReadDate } from '$lib/utils/date/helpers';
 
 	interface UserProgress {
@@ -149,10 +153,7 @@
 		}
 
 		if (uiState.filterOrganization !== 'all') {
-			newParams.set(
-				'is_organized',
-				uiState.filterOrganization === 'organized' ? 'true' : 'false'
-			);
+			newParams.set('is_organized', uiState.filterOrganization === 'organized' ? 'true' : 'false');
 		} else {
 			newParams.delete('is_organized');
 		}
@@ -378,7 +379,9 @@
 								id: series.id,
 								title: series.title,
 								folderName: series.folderName,
-								coverUrl: series.coverPath ? `/api/files/series/${series.id}/cover` : null
+								coverUrl: series.coverPath
+									? `/api/files/series/${series.id}/cover?w=300&q=44&format=avif`
+									: null
 							}}
 							type="series"
 							viewMode={uiState.viewMode}

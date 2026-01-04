@@ -1,30 +1,12 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import { imageStore } from '$lib/stores/cachedImageStore';
+	import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
 
 	let { src } = $props<{ src: string }>();
 
 	let localUrl = $state<string | null>(null);
 	let error = $state<string | null>(null);
-	let optimizedSrc = $derived.by(() => {
-		if (!browser) return src;
-		try {
-			const url = new URL(src, window.location.origin);
-			const isOptimizable =
-				url.pathname.startsWith('/api/files/volume/') ||
-				url.pathname.startsWith('/api/files/series/');
-			if (!isOptimizable) return src;
-			if (url.searchParams.has('w') || url.searchParams.has('format')) return src;
-
-			const width = Math.min(Math.ceil(window.innerWidth * window.devicePixelRatio), 2200);
-			url.searchParams.set('w', width.toString());
-			url.searchParams.set('q', '80');
-			url.searchParams.set('format', 'webp');
-			return `${url.pathname}?${url.searchParams.toString()}`;
-		} catch {
-			return src;
-		}
-	});
+	let optimizedSrc = $derived.by(() => optimizeSrc(src, browser));
 
 	$effect(() => {
 		if (!browser) return;

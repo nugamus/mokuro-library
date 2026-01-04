@@ -22,11 +22,12 @@ interface ImageTransformQuery {
   format?: string;
 }
 
+type ImageFormat = 'webp' | 'jpeg' | 'png' | 'avif'
 type TransformOptions = {
   width?: number;
   height?: number;
   quality?: number;
-  format?: string;
+  format?: ImageFormat;
 };
 
 const parsePositiveInt = (value?: string) => {
@@ -36,13 +37,13 @@ const parsePositiveInt = (value?: string) => {
   return parsed;
 };
 
-const normalizeFormat = (value?: string) => {
+const normalizeFormat = (value?: string): ImageFormat | undefined => {
   if (!value) return undefined;
   const normalized = value.toLowerCase();
   if (!['webp', 'jpeg', 'jpg', 'png', 'avif'].includes(normalized)) {
     return undefined;
   }
-  return normalized === 'jpg' ? 'jpeg' : normalized;
+  return normalized === 'jpg' ? 'jpeg' : normalized as ImageFormat;
 };
 
 const parseTransformOptions = (query: ImageTransformQuery): TransformOptions | null => {
@@ -72,14 +73,15 @@ const sendOptimizedImage = async (
   options: TransformOptions,
   cacheRoot: string
 ) => {
-  const ext = path.extname(absolutePath).replace('.', '').toLowerCase();
-  const targetFormat = options.format || (ext === 'jpg' ? 'jpeg' : ext || 'webp');
+  const ext = normalizeFormat(path.extname(absolutePath).replace('.', '').toLowerCase());
+  const targetFormat: ImageFormat = options.format || (ext || 'webp');
   const sizeKey = `${options.width || ''}x${options.height || ''}-${options.quality || ''}-${targetFormat}`;
   const cacheKey = createHash('sha1').update(`${absolutePath}:${sizeKey}`).digest('hex');
 
   const cacheDir = path.join(cacheRoot, 'uploads', 'cache', 'images');
   const cachePath = path.join(cacheDir, `${cacheKey}.${targetFormat}`);
   const tempPath = `${cachePath}.tmp`;
+
 
   reply.header('Cache-Control', 'public, max-age=31536000, immutable');
 
@@ -99,11 +101,24 @@ const sendOptimizedImage = async (
 
   const transformer = sharp(absolutePath)
     .resize({ ...options, fit: 'inside', withoutEnlargement: true })
-    .toFormat(targetFormat as any, {
+    .toFormat(targetFormat, {
+      ...{ smartSubsample: targetFormat === 'webp' ? true : undefined },
       quality: options.quality,
       progressive: true, // Better for perceived loading speed
+      chromaSubsampling: targetFormat === 'webp' ? undefined : '4:2:0',
+      effort: targetFormat === 'avif' ? 2 : undefined,
       mozjpeg: targetFormat === 'jpeg' // Use mozjpeg for better compression
     });
+
+  if (targetFormat === 'avif') {
+    transformer.avif({
+    });
+  } else if (targetFormat === 'webp') {
+    transformer.webp({
+      effort: 4,
+      smartSubsample: true // WebP's high-quality 4:2:0 mode
+    });
+  }
 
   const responseStream = new PassThrough({ highWaterMark: 1024 * 512 });
   const fileStream = fs.createWriteStream(tempPath);
