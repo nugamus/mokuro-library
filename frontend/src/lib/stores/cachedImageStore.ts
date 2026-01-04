@@ -39,9 +39,12 @@ export const optimizeSrc = (src: string, browser: boolean) => {
       url.pathname.startsWith('/api/files/volume/') ||
       url.pathname.startsWith('/api/files/series/');
     if (!isOptimizable) return src;
-    if (url.searchParams.has('w') || url.searchParams.has('format')) return src;
+    if (url.searchParams.has('w') || url.searchParams.has('h') || url.searchParams.has('format')) return src;
 
-    const height = 2000;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const viewportHeight = window.innerHeight || 900;
+    const targetHeight = Math.round(viewportHeight * dpr * 1.2);
+    const height = Math.min(Math.max(targetHeight, 1200), 3000);
     url.searchParams.set('h', height.toString());
     url.searchParams.set('q', '45');
     url.searchParams.set('format', 'avif');

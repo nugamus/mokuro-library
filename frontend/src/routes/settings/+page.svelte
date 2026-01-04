@@ -5,33 +5,60 @@
 	import { page } from '$app/state';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { onMount } from 'svelte';
+	import type { ComponentType } from 'svelte';
 
-	// Import setting panels
-	import ReaderSettings from '$lib/components/settings/ReaderSettings.svelte';
-	import AnkiSettings from '$lib/components/settings/AnkiSettings.svelte';
-	import LibraryOverview from '$lib/components/settings/LibraryOverview.svelte';
-	import ScrapeSettings from '$lib/components/settings/ScrapeSettings.svelte';
-	import KeybindSettings from '$lib/components/settings/KeybindSettings.svelte';
-	import TestRunnerSettings from '$lib/components/settings/TestRunnerSettings.svelte';
+	// Lazy load setting panels - only load when needed
+	const loadReaderSettings = () => import('$lib/components/settings/ReaderSettings.svelte');
+	const loadAnkiSettings = () => import('$lib/components/settings/AnkiSettings.svelte');
+	const loadLibraryOverview = () => import('$lib/components/settings/LibraryOverview.svelte');
+	const loadScrapeSettings = () => import('$lib/components/settings/ScrapeSettings.svelte');
+	const loadKeybindSettings = () => import('$lib/components/settings/KeybindSettings.svelte');
+	const loadTestRunnerSettings = () =>
+		import('$lib/components/settings/TestRunnerSettings.svelte');
 
-	// Define available categories
-	const categories = [
-		{ id: 'reader', label: 'Reader Settings', icon: 'book', component: ReaderSettings },
-		{ id: 'scrape', label: 'Scrape Settings', icon: 'download', component: ScrapeSettings },
-		{ id: 'keybinds', label: 'Keybinds', icon: 'keyboard', component: KeybindSettings },
-		{ id: 'tests', label: 'Test Runner', icon: 'flask', component: TestRunnerSettings }
+	// Define available categories with lazy loaders
+	type Category = {
+		id: string;
+		label: string;
+		icon: string;
+		loader: () => Promise<{ default: ComponentType }>;
+	};
+
+	const categories: Category[] = [
+		{ id: 'reader', label: 'Reader Settings', icon: 'book', loader: loadReaderSettings },
+		{ id: 'scrape', label: 'Scrape Settings', icon: 'download', loader: loadScrapeSettings },
+		{ id: 'keybinds', label: 'Keybinds', icon: 'keyboard', loader: loadKeybindSettings },
+		{ id: 'tests', label: 'Test Runner', icon: 'flask', loader: loadTestRunnerSettings }
 	];
 
-	const categories_WIP = [
-		{ id: 'anki', label: 'Anki Connect', icon: 'link', component: AnkiSettings }, // TODO: Implement as part of Anki integration feature
-		{ id: 'library', label: 'Library Overview', icon: 'library', component: LibraryOverview }
-		// { id: 'users', label: 'User Management', icon: 'users', component: UserManagement },
-		// { id: 'version', label: 'Version History', icon: 'clock', component: VersionHistory },
-		// { id: 'defaults', label: 'Default Values', icon: 'settings', component: DefaultValues },
-	];
+	// WIP categories for future implementation
+	// const categories_WIP = [
+	// 	{ id: 'anki', label: 'Anki Connect', icon: 'link', loader: loadAnkiSettings },
+	// 	{ id: 'library', label: 'Library Overview', icon: 'library', loader: loadLibraryOverview }
+	// ];
 
 	// State
 	let activeCategory = $state('reader');
+	let loadedComponent = $state<ComponentType | null>(null);
+	let isLoadingComponent = $state(false);
+
+	// Load component when category changes
+	$effect(() => {
+		const category = categories.find((c) => c.id === activeCategory);
+		if (category) {
+			isLoadingComponent = true;
+			category
+				.loader()
+				.then((module) => {
+					loadedComponent = module.default;
+					isLoadingComponent = false;
+				})
+				.catch((err) => {
+					console.error('Failed to load component:', err);
+					isLoadingComponent = false;
+				});
+		}
+	});
 
 	// Initialize
 	onMount(() => {
@@ -188,11 +215,13 @@
 	</aside>
 
 	<main class="flex-1 p-4 overflow-y-auto">
-		{#each categories as category}
-			{#if activeCategory === category.id}
-				<category.component />
-			{/if}
-		{/each}
+		{#if isLoadingComponent}
+			<div class="flex items-center justify-center p-12">
+				<div class="text-theme-secondary">Loading...</div>
+			</div>
+		{:else if loadedComponent}
+			<svelte:component this={loadedComponent} />
+		{/if}
 	</main>
 </div>
 

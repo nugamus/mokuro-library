@@ -44,7 +44,18 @@
 		return { isRead, percent, lastRead };
 	};
 
+	const defaultVolumeStats = { isRead: false, percent: 0, lastRead: 0 };
+
 	// --- Derived State ---
+	const volumeStatsMap = $derived.by(() => {
+		const map = new Map<string, { isRead: boolean; percent: number; lastRead: number }>();
+		if (!series?.volumes) return map;
+		for (const vol of series.volumes) {
+			map.set(vol.id, getVolumeStats(vol));
+		}
+		return map;
+	});
+
 	let processedVolumes = $derived.by(() => {
 		if (!series) return [];
 		let vols = [...(series.volumes ?? [])];
@@ -56,7 +67,7 @@
 
 		if (uiState.filterStatus !== 'all') {
 			vols = vols.filter((v) => {
-				const { isRead, percent } = getVolumeStats(v);
+				const { isRead, percent } = volumeStatsMap.get(v.id) ?? defaultVolumeStats;
 				if (uiState.filterStatus === 'read') return isRead;
 				if (uiState.filterStatus === 'unread') return !isRead && percent === 0;
 				if (uiState.filterStatus === 'reading') return !isRead && percent > 0;
@@ -65,8 +76,8 @@
 		}
 
 		vols.sort((a, b) => {
-			const statsA = getVolumeStats(a);
-			const statsB = getVolumeStats(b);
+			const statsA = volumeStatsMap.get(a.id) ?? defaultVolumeStats;
+			const statsB = volumeStatsMap.get(b.id) ?? defaultVolumeStats;
 			switch (uiState.sortKey) {
 				case 'title':
 					const tA = a.sortTitle || a.title || a.folderName;
@@ -111,7 +122,7 @@
 		isLoading = true;
 		error = null;
 		try {
-			const data = await apiFetch(`/api/library/series/${id}`);
+			const data = await apiFetch(`/api/library/series/${id}`, { cache: true });
 			series = data as Series;
 			if (series) {
 				uiState.setContext(
@@ -269,7 +280,7 @@
 						: 'flex flex-col gap-3'}
 				>
 					{#each processedVolumes as vol (vol.id)}
-						{@const stats = getVolumeStats(vol)}
+						{@const stats = volumeStatsMap.get(vol.id) ?? defaultVolumeStats}
 						{@const isSelected = uiState.selection.has(vol.id)}
 
 						<LibraryEntry

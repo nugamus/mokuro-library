@@ -69,7 +69,7 @@
 			vibrate(HAPTIC_PATTERNS.medium);
 			onLongPress?.();
 		}}
-		class={`group relative backdrop-blur-2xl rounded-2xl border-2 border-theme-primary flex flex-col transition-all duration-300 overflow-hidden 
+		class={`library-entry library-entry-grid group relative rounded-2xl border-2 border-theme-primary bg-theme-surface/20 flex flex-col transition-all duration-300 overflow-hidden 
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
 			isSelected
@@ -97,6 +97,7 @@
 					src={entry.coverUrl}
 					alt={entry.folderName}
 					loading="lazy"
+					decoding="async"
 					class="h-full w-full object-cover transition-transform duration-700 md:group-hover:scale-110"
 				/>
 			{:else}
@@ -121,7 +122,7 @@
 		</div>
 
 		<div
-			class="px-3 py-2 bg-theme-surface/40 backdrop-blur-xl flex items-center justify-between gap-3 relative z-20 border-t border-theme-border/30"
+			class="px-3 py-2 bg-theme-surface/60 flex items-center justify-between gap-3 relative z-20 border-t border-theme-border/30"
 		>
 			<div class="flex flex-col gap-1.5 min-w-0 flex-1">
 				{#if mainStat}
@@ -192,7 +193,7 @@
 			vibrate(HAPTIC_PATTERNS.medium);
 			onLongPress?.();
 		}}
-		class={`group relative backdrop-blur-2xl rounded-2xl border-2 flex items-center 
+		class={`library-entry library-entry-list group relative rounded-2xl border-2 bg-theme-surface/30 flex items-center 
     transition-all duration-300 overflow-hidden h-32
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
@@ -220,6 +221,8 @@
 				<img
 					src={entry.coverUrl}
 					alt=""
+					loading="lazy"
+					decoding="async"
 					class="h-full w-full object-cover transition-transform duration-700 md:group-hover:scale-110"
 				/>
 			{:else}
@@ -286,6 +289,16 @@
 {/if}
 
 <style>
+	.library-entry {
+		content-visibility: auto;
+		contain: content;
+		contain-intrinsic-size: auto 420px;
+	}
+
+	.library-entry-list {
+		contain-intrinsic-size: auto 128px;
+	}
+
 	.neon-glow {
 		/* Layer 1: Sharp definition (The "hot" edge) */
 		filter: drop-shadow(0 0 1px currentColor) /* Layer 2: Immediate bloom */

@@ -47,7 +47,7 @@
 		<div
 			use:longpress
 			onlongpress={() => onSeriesLongPress(series.id)}
-			class="group relative backdrop-blur-2xl rounded-xl sm:rounded-2xl border-2 transition-all duration-300 overflow-hidden shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0] {isSeriesSelected ? 'border-accent/50 ring-1 ring-accent shadow-[0_0_20px_rgba(99,102,241,0.4)] z-30 scale-[1.02]' : 'border-theme-primary/10 hover:border-accent/30 z-10'} {isSelectionMode && !isSeriesSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}"
+			class="contrib-series-card group relative rounded-xl sm:rounded-2xl border-2 bg-theme-surface/25 transition-all duration-300 overflow-hidden shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0] {isSeriesSelected ? 'border-accent/50 ring-1 ring-accent shadow-[0_0_20px_rgba(99,102,241,0.4)] z-30 scale-[1.02]' : 'border-theme-primary/10 hover:border-accent/30 z-10'} {isSelectionMode && !isSeriesSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}"
 			style="animation: slideIn 0.3s ease-out {i * 0.05}s both"
 		>
 			<!-- Series Card Header -->
@@ -72,6 +72,7 @@
 							alt={series.title}
 							class="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110"
 							loading="lazy"
+							decoding="async"
 							onerror={(e) => handleImageError(e, 'series', series.id)}
 						/>
 					{:else}
@@ -178,6 +179,7 @@
 											alt={volume.title || volume.folderName}
 											class="w-10 h-14 sm:w-14 sm:h-20 object-cover rounded-md shadow-md transition-all duration-200 border border-theme-border/30"
 											loading="lazy"
+											decoding="async"
 											onerror={(e) => handleImageError(e, 'volume', volume.id)}
 										/>
 									{:else}
@@ -295,3 +297,11 @@
 		</div>
 	{/each}
 </div>
+
+<style>
+	.contrib-series-card {
+		content-visibility: auto;
+		contain: content;
+		contain-intrinsic-size: auto 260px;
+	}
+</style>

@@ -41,7 +41,7 @@
 	let isRefreshing = $state(false);
 	let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-	const getSeriesProgress = (series: Series) => {
+	const computeSeriesProgress = (series: Series) => {
 		let totalPages = 0;
 		let readPages = 0;
 		let completedCount = 0;
@@ -69,6 +69,11 @@
 			isRead: completedCount === series.volumes.length
 		};
 	};
+
+	let seriesProgressMap = $state(new Map<string, { percent: number; isRead: boolean }>());
+
+	const getSeriesProgress = (series: Series) =>
+		seriesProgressMap.get(series.id) ?? computeSeriesProgress(series);
 
 	onMount(() => {
 		uiState.setContext('library', 'Library', [
@@ -199,8 +204,12 @@
 			if (!silent) isLoadingLibrary = true;
 			libraryError = null;
 
-			const response = await apiFetch(`/api/library${queryString}`);
-			library = response.data as Series[];
+			const response = await apiFetch(`/api/library${queryString}`, { cache: true });
+			const nextLibrary = response.data as Series[];
+			library = nextLibrary;
+			seriesProgressMap = new Map(
+				nextLibrary.map((series) => [series.id, computeSeriesProgress(series)])
+			);
 			meta = response.meta;
 		} catch (e) {
 			libraryError = (e as Error).message;
@@ -355,11 +364,11 @@
 		<div class="flex-grow pb-24 relative">
 			<!-- Glassmorphic container wrapper with fade on background only -->
 			<div class="relative p-3 sm:p-4">
-				<!-- Background layer with fade mask - only fades the background, not content -->
-				<div
-					class="absolute inset-0 bg-black/20 backdrop-blur-3xl pointer-events-none z-0"
-					style="mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); mask-composite: intersect; -webkit-mask-image: linear-gradient(to right, transparent 0%, black 15%, black 85%, transparent 100%), linear-gradient(to bottom, transparent 0%, black 15%, black 85%, transparent 100%); -webkit-mask-composite: source-in;"
-				></div>
+				<!-- Background layer simplified to avoid heavy mask/blur work during scroll -->
+				<div class="absolute inset-0 pointer-events-none z-0">
+					<div class="absolute inset-0 bg-black/15"></div>
+					<div class="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent"></div>
+				</div>
 
 				<!-- Content layer (series cards) - fully visible, not affected by fade -->
 				<div

@@ -244,8 +244,8 @@ class ReaderState {
 
   private async loadVolumeData(volumeId: string) {
     const [volData, progressData] = await Promise.all([
-      apiFetch(`/api/library/volume/${volumeId}`) as Promise<VolumeReaderResponse>,
-      apiFetch(`/api/metadata/volume/${volumeId}/progress`)
+      apiFetch(`/api/library/volume/${volumeId}`, { cache: true }) as Promise<VolumeReaderResponse>,
+      apiFetch(`/api/metadata/volume/${volumeId}/progress`, { cache: true })
     ]);
 
     let startPage = 0;

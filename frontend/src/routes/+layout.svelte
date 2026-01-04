@@ -3,26 +3,61 @@
 	import '../app.css';
 
 	import { onMount } from 'svelte';
-	import { invalidateAll } from '$app/navigation';
 	import { checkAuth, user } from '$lib/stores/authStore';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
 	import { keybindStore } from '$lib/stores/keybindStore';
 	import { handleGlobalKeydown } from '$lib/keybinds/runtime';
+	import { prefetchAppData } from '$lib/utils/eagercache';
+	import { prefetchCommonRoutes } from '$lib/utils/prefetch';
 
-	// Components
+	// Components - Critical components loaded immediately
 	import Header from '$lib/components/layout/Header.svelte';
 	import ContextMenu from '$lib/components/menu/ContextMenu.svelte';
 	import ConfirmationModal from '$lib/components/modals/ConfirmationModal.svelte';
-	import UploadModal from '$lib/components/modals/UploadModal.svelte';
-	import StatisticsModal from '$lib/components/modals/StatisticsModal.svelte';
-	import AboutModal from '$lib/components/modals/AboutModal.svelte';
-	import AppearanceModal from '$lib/components/modals/AppearanceModal.svelte';
 	import ToastContainer from '$lib/components/feedback/ToastContainer.svelte';
 	import KeyboardShortcutsModal from '$lib/components/modals/KeyboardShortcutsModal.svelte';
 
+	// Lazy load modals that are less frequently used
+	const loadUploadModal = () => import('$lib/components/modals/UploadModal.svelte');
+	const loadStatisticsModal = () => import('$lib/components/modals/StatisticsModal.svelte');
+	const loadAboutModal = () => import('$lib/components/modals/AboutModal.svelte');
+	const loadAppearanceModal = () => import('$lib/components/modals/AppearanceModal.svelte');
+
 	let { children } = $props();
+
+	// Lazy-loaded modal components
+	let UploadModal = $state<any>(null);
+	let StatisticsModal = $state<any>(null);
+	let AboutModal = $state<any>(null);
+	let AppearanceModal = $state<any>(null);
+	let didPrefetch = $state(false);
+
+	// Load modals when needed
+	$effect(() => {
+		if (uiState.isUploadOpen && !UploadModal) {
+			loadUploadModal().then((m) => (UploadModal = m.default));
+		}
+	});
+
+	$effect(() => {
+		if (uiState.isStatsOpen && !StatisticsModal) {
+			loadStatisticsModal().then((m) => (StatisticsModal = m.default));
+		}
+	});
+
+	$effect(() => {
+		if (uiState.isAboutOpen && !AboutModal) {
+			loadAboutModal().then((m) => (AboutModal = m.default));
+		}
+	});
+
+	$effect(() => {
+		if (uiState.isAppearanceOpen && !AppearanceModal) {
+			loadAppearanceModal().then((m) => (AppearanceModal = m.default));
+		}
+	});
 
 	onMount(() => {
 		checkAuth();
@@ -72,9 +107,20 @@
 	});
 
 	$effect(() => {
-		if (!$user) return;
-		uiState.libraryVersion;
+		if (!$user || didPrefetch) return;
+		didPrefetch = true;
+
 		contributionsStore.refresh();
+
+		// Prefetch app data after login
+		prefetchAppData();
+		prefetchCommonRoutes();
+	});
+
+	$effect(() => {
+		if ($user === null) {
+			didPrefetch = false;
+		}
 	});
 
 	$effect(() => {
@@ -101,22 +147,33 @@
 	</main>
 
 	{#if $user}
-		<UploadModal
-			isOpen={uiState.isUploadOpen}
-			onClose={() => (uiState.isUploadOpen = false)}
-			onUploadSuccess={() => {
-				uiState.refreshLibrary();
-			}}
-		/>
+		{#if uiState.isUploadOpen && UploadModal}
+			<UploadModal
+				isOpen={uiState.isUploadOpen}
+				onClose={() => (uiState.isUploadOpen = false)}
+				onUploadSuccess={() => {
+					uiState.refreshLibrary();
+				}}
+			/>
+		{/if}
 
-		<StatisticsModal isOpen={uiState.isStatsOpen} onClose={() => (uiState.isStatsOpen = false)} />
+		{#if uiState.isStatsOpen && StatisticsModal}
+			<StatisticsModal
+				isOpen={uiState.isStatsOpen}
+				onClose={() => (uiState.isStatsOpen = false)}
+			/>
+		{/if}
 
-		<AboutModal isOpen={uiState.isAboutOpen} onClose={() => (uiState.isAboutOpen = false)} />
+		{#if uiState.isAboutOpen && AboutModal}
+			<AboutModal isOpen={uiState.isAboutOpen} onClose={() => (uiState.isAboutOpen = false)} />
+		{/if}
 
-		<AppearanceModal
-			isOpen={uiState.isAppearanceOpen}
-			onClose={() => (uiState.isAppearanceOpen = false)}
-		/>
+		{#if uiState.isAppearanceOpen && AppearanceModal}
+			<AppearanceModal
+				isOpen={uiState.isAppearanceOpen}
+				onClose={() => (uiState.isAppearanceOpen = false)}
+			/>
+		{/if}
 	{/if}
 
 	<ContextMenu />

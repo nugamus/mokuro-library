@@ -136,7 +136,7 @@ import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 </script>
 
 <div
-	class="relative w-full bg-theme-surface/40 backdrop-blur-3xl rounded-3xl overflow-hidden border border-white/10 shadow-2xl group mb-10"
+	class="series-hero relative w-full bg-theme-surface/40 backdrop-blur-3xl rounded-3xl overflow-hidden border border-white/10 shadow-2xl group mb-10"
 >
 	<div class="absolute inset-0 z-0 opacity-40 pointer-events-none select-none overflow-hidden">
 		{#if series.coverPath}
@@ -404,6 +404,12 @@ import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 {/snippet}
 
 <style>
+	.series-hero {
+		content-visibility: auto;
+		contain: content;
+		contain-intrinsic-size: auto 520px;
+	}
+
 	@keyframes bookmark-pop {
 		0% {
 			transform: scale(1);

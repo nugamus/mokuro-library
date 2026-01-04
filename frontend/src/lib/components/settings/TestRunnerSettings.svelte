@@ -20,9 +20,9 @@
 		errorMessage = null;
 		lastSuccess = null;
 		lastResults = [];
-		expandedResults.clear();
-		expandedSuites.clear();
-		showRawOutput.clear();
+		expandedResults = new Set();
+		expandedSuites = new Set();
+		showRawOutput = new Set();
 
 		try {
 			const response = await apiFetch('/api/tests/run', {
@@ -39,30 +39,33 @@
 	};
 
 	const toggleExpanded = (target: string) => {
-		if (expandedResults.has(target)) {
-			expandedResults.delete(target);
+		const next = new Set(expandedResults);
+		if (next.has(target)) {
+			next.delete(target);
 		} else {
-			expandedResults.add(target);
+			next.add(target);
 		}
-		expandedResults = expandedResults;
+		expandedResults = next;
 	};
 
 	const toggleSuite = (suiteKey: string) => {
-		if (expandedSuites.has(suiteKey)) {
-			expandedSuites.delete(suiteKey);
+		const next = new Set(expandedSuites);
+		if (next.has(suiteKey)) {
+			next.delete(suiteKey);
 		} else {
-			expandedSuites.add(suiteKey);
+			next.add(suiteKey);
 		}
-		expandedSuites = expandedSuites;
+		expandedSuites = next;
 	};
 
 	const toggleRawOutput = (target: string) => {
-		if (showRawOutput.has(target)) {
-			showRawOutput.delete(target);
+		const next = new Set(showRawOutput);
+		if (next.has(target)) {
+			next.delete(target);
 		} else {
-			showRawOutput.add(target);
+			next.add(target);
 		}
-		showRawOutput = showRawOutput;
+		showRawOutput = next;
 	};
 
 	const copyOutput = async (output: string) => {

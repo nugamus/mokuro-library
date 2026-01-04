@@ -1,5 +1,6 @@
 import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 import { retryWithBackoff } from '$lib/utils/network/retry';
+import { apiCache } from '$lib/utils/apiCache';
 
 /**
  * It's the same as RequestInit, but 'body' can be 'any'
@@ -9,6 +10,8 @@ interface ApiFetchOptions extends Omit<RequestInit, 'body'> {
   body?: any;
   retry?: boolean;
   showErrorToast?: boolean;
+  cache?: boolean; // Enable caching for GET requests
+  skipCache?: boolean; // Force fresh fetch
 }
 
 const getCsrfToken = () => {
@@ -28,7 +31,10 @@ const isStateChanging = (method?: string) => {
  * and uses relative paths that work with our Vite proxy.
  */
 export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
-  const { retry = false, showErrorToast = true, ...fetchOptions } = options;
+  const { retry = false, showErrorToast = true, cache = false, skipCache = false, ...fetchOptions } = options;
+
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  const isGet = method === 'GET';
 
   const doFetch = async () => {
     // Set default headers
@@ -96,6 +102,16 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     // If we get here, it's a successful JSON response
     return response.json();
   };
+
+  // Use cache for GET requests if enabled
+  if (isGet && cache) {
+    const cacheKey = `${method}:${path}`;
+    return apiCache.get(
+      cacheKey,
+      () => doFetch(),
+      { skipCache }
+    );
+  }
 
   try {
     if (retry) {

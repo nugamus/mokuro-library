@@ -19,6 +19,8 @@ export type TestResult = {
 	code: number;
 	durationMs: number;
 	output: string;
+	skipped?: boolean;
+	skipReason?: string;
 	suites?: TestSuite[];
 	summary?: {
 		totalTests: number;
@@ -26,4 +28,10 @@ export type TestResult = {
 		failed: number;
 		skipped: number;
 	};
+};
+
+export type TestRunSummary = {
+	ran: number;
+	skipped: number;
+	failed: number;
 };
