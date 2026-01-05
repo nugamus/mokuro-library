@@ -1,6 +1,6 @@
 <script lang="ts">
 	import MenuGridRadio from '$lib/components/menu/MenuGridRadio.svelte';
-	import ScrapeDescriptionFilterPanel from '$lib/components/panels/ScrapeDescriptionFilterPanel.svelte';
+	import ScrapeDescriptionFilterPanel from '$lib/components/modals/scraping/ScrapeDescriptionFilterPanel.svelte';
 	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 
 	let width = $state(0);
@@ -47,7 +47,3 @@
 		</section>
 	</div>
 </div>
-
-
-
-
