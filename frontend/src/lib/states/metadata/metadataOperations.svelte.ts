@@ -89,8 +89,8 @@ class MetadataOperations {
         method: 'PATCH',
         body
       });
-      apiCache.invalidateSeriesCache(id);
-      apiCache.invalidateLibraryCache();
+      apiCache.invalidateSeriesCache({ seriesId: id });
+      apiCache.invalidateLibraryCache(true);
     } catch (e: any) {
       throw e;
     }
@@ -102,8 +102,8 @@ class MetadataOperations {
         method: 'PATCH',
         body
       });
-      apiCache.invalidateSeriesCache(seriesId);
-      apiCache.invalidateVolumeCache(id);
+      apiCache.invalidateSeriesCache({ seriesId });
+      apiCache.invalidateVolumeCache({ volumeId: id });
     } catch (e: any) {
       throw e;
     }

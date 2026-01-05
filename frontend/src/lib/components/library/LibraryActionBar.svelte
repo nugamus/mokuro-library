@@ -139,8 +139,8 @@
 						method: 'POST',
 						body: { ids, type }
 					});
-					apiCache.invalidateSeriesCache(uiState.activeId ?? undefined);
-					apiCache.invalidateLibraryCache();
+					apiCache.invalidateSeriesCache({ seriesId: uiState.activeId ?? undefined });
+					apiCache.invalidateLibraryCache(true);
 
 					uiState.exitSelectionMode();
 					onRefresh();

@@ -122,7 +122,12 @@
 		isLoading = true;
 		error = null;
 		try {
-			const data = await apiFetch(`/api/library/series/${id}`, { cache: true });
+			const data = await apiFetch(`/api/library/series/${id}`, {
+				cache: true,
+				onStaleRefetch: (data) => {
+					series = data as Series;
+				}
+			});
 			series = data as Series;
 			if (series) {
 				uiState.setContext(

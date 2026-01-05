@@ -154,7 +154,7 @@
 				onClose={() => (uiState.isUploadOpen = false)}
 				onUploadSuccess={() => {
 					apiCache.invalidateSeriesCache();
-					apiCache.invalidateLibraryCache();
+					apiCache.invalidateLibraryCache(true);
 					uiState.refreshLibrary();
 				}}
 			/>

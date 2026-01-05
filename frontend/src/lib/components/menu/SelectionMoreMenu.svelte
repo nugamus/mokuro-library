@@ -23,9 +23,9 @@
 				body: { ids, value }
 			});
 			for (const id of ids) {
-				apiCache.invalidateSeriesCache(id);
+				apiCache.invalidateSeriesCache({ seriesId: id });
 			}
-			apiCache.invalidateLibraryCache();
+			apiCache.invalidateLibraryCache(true);
 			uiState.exitSelectionMode();
 			onRefresh();
 		} catch (e) {

@@ -7,11 +7,12 @@ interface CacheEntry<T> {
   data: T;
   timestamp: number;
   promise?: Promise<T>;
+  stale?: boolean;
 }
 
 class APICache {
   private cache = new Map<string, CacheEntry<any>>();
-  private maxAge = 5 * 60 * 1000; // 5 minutes default
+  private maxAge = 60 * 60 * 1000; // 60 minutes default
   private staleTime = 30 * 1000; // 30 seconds - serve stale while revalidating
 
   /**
@@ -25,6 +26,7 @@ class APICache {
       maxAge?: number;
       staleTime?: number;
       skipCache?: boolean;
+      onStaleRefetch?: (data: any) => void;
     }
   ): Promise<T> {
     const maxAge = options?.maxAge ?? this.maxAge;
@@ -52,13 +54,13 @@ class APICache {
 
     // Check if already fetching
     if (cached.promise) {
-      return cached.promise;
+      return await cached.promise;
     }
 
     const age = now - cached.timestamp;
 
     // Fresh data - return immediately
-    if (age < staleTime) {
+    if (age < staleTime && !cached.stale) {
       return cached.data;
     }
 
@@ -72,6 +74,7 @@ class APICache {
         promise
           .then((data) => {
             this.set(key, data);
+            if (options?.onStaleRefetch) options.onStaleRefetch(data);
           })
           .catch((err) => {
             console.error('Background revalidation failed:', err);
@@ -137,16 +140,26 @@ class APICache {
   /**
    * Invalidate cache entries by prefix
    */
-  invalidate(prefix: string): void {
+  invalidate(prefix: string, hard: boolean = false): void {
     for (const key of this.cache.keys()) {
       if (key.startsWith(prefix)) {
-        this.cache.delete(key);
+        if (hard) this.cache.delete(key);
+        else {
+          const entry = this.cache.get(key);
+          if (!entry) return;
+          else this.cache.set(key, { ...entry, stale: true });
+        }
       }
     }
   }
 
-  invalidateExact(entry: string): void {
-    this.cache.delete(entry);
+  invalidateExact(key: string, hard?: boolean): void {
+    if (hard) this.cache.delete(key);
+    else {
+      const entry = this.cache.get(key);
+      if (!entry) return;
+      else this.cache.set(key, { ...entry, stale: true });
+    }
   }
 
   /**
@@ -169,26 +182,26 @@ class APICache {
   /**
    * Invalidate cache when user makes changes
    */
-  invalidateLibraryCache(): void {
-    this.invalidate('GET:/api/library');
+  invalidateLibraryCache(hard?: boolean): void {
+    this.invalidate('GET:/api/library', hard);
   }
 
-  invalidateStatsCache(): void {
-    this.invalidateExact('GET:/api/stats');
+  invalidateStatsCache(hard?: boolean): void {
+    this.invalidateExact('GET:/api/stats', hard);
   }
 
-  invalidateContributionsCache(): void {
-    this.invalidate('GET:/api/contributions');
+  invalidateContributionsCache(hard?: boolean): void {
+    this.invalidate('GET:/api/contributions', hard);
   }
 
-  invalidateSeriesCache(seriesId?: string): void {
-    if (seriesId) this.invalidateExact(`GET:/api/library/series/${seriesId}`);
-    else this.invalidate(`GET:/api/library/series`);
+  invalidateSeriesCache(options?: { seriesId?: string, hard?: boolean }): void {
+    if (options?.seriesId) this.invalidateExact(`GET:/api/library/series/${options.seriesId}`, options.hard);
+    else this.invalidate(`GET:/api/library/series`, options?.hard);
   }
 
-  invalidateVolumeCache(volumeId?: string): void {
-    if (volumeId) this.invalidateExact(`GET:/api/library/volume/${volumeId}`);
-    else this.invalidate(`GET:/api/library/volume`);
+  invalidateVolumeCache(options?: { volumeId?: string, hard?: boolean }): void {
+    if (options?.volumeId) this.invalidateExact(`GET:/api/library/volume/${options.volumeId}`, options.hard);
+    else this.invalidate(`GET:/api/library/volume`, options?.hard);
   }
 }
 

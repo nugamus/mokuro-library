@@ -12,6 +12,7 @@ interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'cache'> {
   showErrorToast?: boolean;
   cache?: boolean; // Enable caching for GET requests
   skipCache?: boolean; // Force fresh fetch
+  onStaleRefetch?: (data: any) => void;
 }
 
 const getCsrfToken = () => {
@@ -106,10 +107,11 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
   // Use cache for GET requests if enabled
   if (isGet && cache) {
     const cacheKey = `${method}:${path}`;
+    const onStaleRefetch = options.onStaleRefetch;
     return apiCache.get(
       cacheKey,
       () => doFetch(),
-      { skipCache }
+      { skipCache, onStaleRefetch }
     );
   }
 

@@ -5,6 +5,7 @@ import { fromStore, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { untrack } from 'svelte';
 import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
+import { apiCache } from '$lib/utils/caching/apiCache';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
@@ -107,6 +108,7 @@ class ReaderState {
   // --- Internals ---
   private initialPageIndex = 0;
   private settingsInitialized = false;
+  private canLazyServe = false;
   private cleanupEffectRoot: (() => void) | null = null;
   private progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private settingsSaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -191,9 +193,10 @@ class ReaderState {
    * Initialize the reader with a volume ID.
    */
   async mount(volumeId: string) {
-    this.cleanup(); // Reset volume data
+    await this.cleanup(); // Reset volume data
     this.isLoading = true;
     this.error = null;
+    this.canLazyServe = true;
 
     const handleError = (e: any) => console.log(`Set fullscreen state failed ${e}`);
     const shouldFullscreen = untrack(() => this.autoFullscreen);
@@ -214,12 +217,12 @@ class ReaderState {
   /**
    * Cleanup method called when leaving the reader page.
    */
-  cleanup() {
+  async cleanup() {
     // 1. Flush pending volume progress save
     if (this.progressSaveTimer) {
       clearTimeout(this.progressSaveTimer);
       this.progressSaveTimer = null;
-      if (this.volume?.id) this.saveProgress(this.volume.id);
+      if (this.volume?.id) await this.saveProgress(this.volume.id);
     }
 
     // 2. Kill volume-specific watchers
@@ -229,6 +232,7 @@ class ReaderState {
     }
 
     // 3. Reset Volume State Only
+    this.canLazyServe = false;
     this.volume = null;
     this.focusedBlock = null;
     this.focusedPage = null;
@@ -244,7 +248,11 @@ class ReaderState {
 
   private async loadVolumeData(volumeId: string) {
     const [volData, progressData] = await Promise.all([
-      apiFetch(`/api/library/volume/${volumeId}`, { cache: true }) as Promise<VolumeReaderResponse>,
+      apiFetch(`/api/library/volume/${volumeId}`, {
+        cache: true, onStaleRefetch: (data) => {
+          if (this.canLazyServe) this.volume = data;
+        }
+      }) as Promise<VolumeReaderResponse>,
       apiFetch(`/api/metadata/volume/${volumeId}/progress`) as Promise<UserProgress>
     ]);
 
@@ -294,10 +302,11 @@ class ReaderState {
   private async saveProgress(volumeId: string) {
     if (!this.volume) return;
     try {
-      await apiFetch(`/api/metadata/volume/${volumeId}/progress`, {
+      const { seriesId } = await apiFetch(`/api/metadata/volume/${volumeId}/progress`, {
         method: 'PATCH',
         body: { page: this.currentPageIndex + 1 }
       });
+      apiCache.invalidateSeriesCache({ seriesId: seriesId ?? undefined });
       this.initialPageIndex = this.currentPageIndex;
     } catch (e) {
       console.error('Failed to save progress', e);

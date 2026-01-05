@@ -27,8 +27,6 @@
 	let settingsOpen = $state(false);
 	let panzoomInstance = $state<PanzoomObject | null>(null);
 	// handle header visibility on mobile
-	let headerTimer: ReturnType<typeof setTimeout> | null = null;
-	let headerIsVisible = $state(false);
 	let showTouchZones = $state(false);
 	let touchHintTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -37,10 +35,6 @@
 		if (params.id) {
 			readerState.mount(params.id);
 		}
-		return () => {
-			readerState.cleanup();
-			imageStore.clear();
-		};
 	});
 
 	// Auth Check
@@ -51,47 +45,41 @@
 	});
 
 	// --- Navigation Guard ---
+	let navigateLock = false;
 	beforeNavigate(({ to, cancel }) => {
+		if (navigateLock) {
+			navigateLock = false;
+			return;
+		}
+
+		cancel();
 		if (readerState.hasUnsavedChanges) {
-			cancel();
 			confirmation.open(
 				'Discard Unsaved Changes?',
 				'You have unsaved OCR edits. Are you sure you want to discard them?',
 				async () => {
 					readerState.hasUnsavedChanges = false;
+					await readerState.cleanup();
+					imageStore.clear();
 					if (to?.url) goto(to.url);
 				},
 				'Discard & Exit',
 				'Exiting...'
 			);
+			return;
 		}
+
+		readerState
+			.cleanup()
+			.then(() => {
+				navigateLock = true;
+				imageStore.clear();
+				if (to?.url) goto(to.url);
+			})
+			.catch((error) => {
+				console.error("Save failed, sync code didn't run", error);
+			});
 	});
-
-	// Font Slider Helpers
-	const focusedBlockFontSize = $derived(readerState.focusedBlock?.font_size ?? 16);
-	const sliderMax = $derived(
-		readerState.focusedPage
-			? Math.floor(
-					Math.min(readerState.focusedPage.img_height, readerState.focusedPage.img_width) / 3
-				)
-			: 100
-	);
-
-	const handleFontSizeInput = (e: Event) => {
-		if (readerState.focusedBlock) {
-			readerState.focusedBlock.font_size = parseFloat((e.target as HTMLInputElement).value);
-			readerState.onOcrChange();
-		}
-	};
-
-	const handleFontSizeWheel = (e: WheelEvent) => {
-		if (readerState.focusedBlock) {
-			const delta = e.deltaY > 0 ? -1 : 1;
-			const newSize = (readerState.focusedBlock.font_size ?? 16) + delta;
-			readerState.focusedBlock.font_size = Math.max(newSize, 1);
-			readerState.onOcrChange();
-		}
-	};
 
 	// Reset Panzoom
 	$effect(() => {
@@ -226,7 +214,3 @@
 		<LineOrderModal />
 	{/if}
 </div>
-
-
-
-

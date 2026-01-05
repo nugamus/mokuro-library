@@ -104,7 +104,7 @@ export async function updateVolumeProgress(
     }
   }
 
-  return upsertedProgress;
+  return { ...upsertedProgress, seriesId: volume?.seriesId };
 }
 
 export async function resetVolumeProgress(
