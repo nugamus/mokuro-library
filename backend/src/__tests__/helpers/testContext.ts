@@ -5,9 +5,8 @@ import { execSync } from 'child_process';
 import { randomUUID } from 'crypto';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import pino from 'pino';
-import type { PrismaClient } from '../../generated/prisma/client';
 import { buildServer } from '../../core/app';
-import { createPrismaClient } from '../../lib/prisma';
+import { createPrismaClient, ExtendedPrismaClient } from '../../lib/prisma';
 import { ensureAdminUser } from '../../utils/bootstrap';
 
 const TEST_PNG_BASE64 =
@@ -18,7 +17,7 @@ type CookieMap = Record<string, string>;
 
 export type TestContext = {
   app: FastifyInstance;
-  prisma: PrismaClient;
+  prisma: ExtendedPrismaClient;
   projectRoot: string;
   cleanup: () => Promise<void>;
 };
@@ -108,7 +107,7 @@ export async function registerAndLogin(
 }
 
 export async function seedLibrary(
-  prisma: PrismaClient,
+  prisma: ExtendedPrismaClient,
   projectRoot: string,
   userId: string
 ) {

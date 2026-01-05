@@ -4,7 +4,7 @@ import fs from 'fs';
 import { PatchApplicator } from '../lib/PatchApplicator';
 import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
-import { OcrBranch, Patch, PrismaClient } from '../generated/prisma/client';
+import { OcrBranch, Patch } from '../generated/prisma/client';
 import { ExtendedPrismaClient } from '../lib/prisma';
 import { HttpError } from '../types/error';
 

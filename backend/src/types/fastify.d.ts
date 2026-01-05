@@ -1,4 +1,4 @@
-import { PrismaClient, Prisma } from '../generated/prisma/client';
+import { Prisma } from '../generated/prisma/client';
 import { FastifyReply, FastifyRequest } from 'fastify';
 // Import the strategy interface
 import { IAPIAccessStrategy } from '../lib/strategies/IAPIAccessStrategy';

@@ -1,8 +1,8 @@
-import { PrismaClient } from '../generated/prisma/client'; // Adjust path if needed
 import bcrypt from 'bcryptjs';
 import type { FastifyBaseLogger } from 'fastify';
+import { ExtendedPrismaClient } from '../lib/prisma';
 
-export async function ensureAdminUser(prisma: PrismaClient, logger: FastifyBaseLogger) {
+export async function ensureAdminUser(prisma: ExtendedPrismaClient, logger: FastifyBaseLogger) {
   try {
     // Check if the hardcoded 'admin' user exists
     const admin = await prisma.user.findUnique({
