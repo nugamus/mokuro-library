@@ -10,6 +10,7 @@ import { IAPIAccessStrategy } from './IAPIAccessStrategy';
 import {
   ensureAdminBranch,
   ensureUserBranch,
+  inheritAdminSnapshot,
   saveSnapshot,
   syncSnapshot
 } from '../../utils/ocrHelpers';
@@ -421,16 +422,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
     // 2. Physical File Sync (Post-Transaction)
     // Since the DB is committed, we now align the disk state.
-    const adminSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
-    const userSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${userBranch.id}.json`);
-
-    try {
-      await fs.promises.copyFile(adminSnapPath, userSnapPath);
-    } catch (e) {
-      this.fastify.log.warn(`Admin snapshot missing for ${volumeId}, fixing admin and retrying...`);
-      const new_data = (await syncSnapshot(this.fastify, adminBranch)).data;
-      await saveSnapshot(this.fastify, userBranch.id, new_data, new_data.patch_id ?? '');
-    }
+    await inheritAdminSnapshot(this.fastify, userBranch, adminBranch);
   }
 
   /**

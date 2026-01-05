@@ -12,7 +12,7 @@ import {
 import { PatchOperation } from '../../types/history';
 import { PatchTransformer } from './PatchTransformer';
 import { EffectFactory } from './Effect';
-import { fetchAncestryChain, saveSnapshot, syncSnapshot } from '../../utils/ocrHelpers';
+import { fetchAncestryChain, inheritAdminSnapshot, saveSnapshot, syncSnapshot } from '../../utils/ocrHelpers';
 import { OcrBranch, Prisma } from '../../generated/prisma/client';
 
 interface RebaseContext {
@@ -247,12 +247,13 @@ export class RebaseEngine {
     ctx.currentUserIndex = 0;
 
     if (commit) {
-      await this.commit(ctx, currentPatches.map(p => p.operation));
+      await this.commit(ctx);
     }
     return { status: 'complete', finalPatches: currentPatches.map(p => p.operation) };
   }
 
-  private async commit(ctx: RebaseContext, finalOps: PatchOperation[]) {
+  private async commit(ctx: RebaseContext) {
+    const finalOps = ctx.currentPatches.map(p => p.operation)
     const newPatchesData: Prisma.PatchCreateManyInput[] = [];
     let prevId = ctx.targetHeadId;
 
@@ -313,21 +314,13 @@ export class RebaseEngine {
     });
 
     // Copy admin snapshot to user
-    const adminSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
-    const userSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${currentBranch.id}.json`);
-    try {
-      await fs.promises.copyFile(adminSnapPath, userSnapPath);
-    } catch (e) {
-      this.fastify.log.warn(`Admin snapshot missing for ${currentBranch.volumeId}, fixing admin and retrying...`);
-      const { data: adminData } = (await syncSnapshot(this.fastify, adminBranch));
-      await saveSnapshot(this.fastify, currentBranch.id, adminData, adminData.patch_id ?? '');
-    }
+    await inheritAdminSnapshot(this.fastify, currentBranch, adminBranch);
     sessionCache.delete(ctx.sessionId);
   }
 
-  private async fastForward(branch: OcrBranch, adminBranch: OcrBranch) {
+  private async fastForward(userBranch: OcrBranch, adminBranch: OcrBranch) {
     await this.prisma.ocrBranch.update({
-      where: { id: branch.id },
+      where: { id: userBranch.id },
       data: {
         headPatchId: adminBranch.headPatchId,
         rootPatchId: null,
@@ -337,15 +330,7 @@ export class RebaseEngine {
     });
 
     // Copy admin snapshot to user
-    const adminSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${adminBranch.id}.json`);
-    const userSnapPath = path.join(this.fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branch.id}.json`);
-    try {
-      await fs.promises.copyFile(adminSnapPath, userSnapPath);
-    } catch (e) {
-      this.fastify.log.warn(`Admin snapshot missing for ${branch.volumeId}, fixing admin and retrying...`);
-      const new_data = (await syncSnapshot(this.fastify, adminBranch)).data;
-      await saveSnapshot(this.fastify, branch.id, new_data, new_data.patch_id ?? '');
-    }
+    await inheritAdminSnapshot(this.fastify, userBranch, adminBranch);
   }
 
   private async restoreSession(sessionId: string): Promise<RebaseContext> {
