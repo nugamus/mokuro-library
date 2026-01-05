@@ -372,19 +372,21 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
       const transformOptions = parseTransformOptions(request.query);
 
       try {
-        const cacheKey = `series:${userId}:${seriesId}:cover-path`;
-
-        const validPath = await libraryCache.cachedQuery(cacheKey, async () => {
-          const series = await fastify.prisma.series.findFirst({
-            where: { id: seriesId, OR: [{ ownerId: userId }, { ownerId: 'admin' }] },
-            select: { coverPath: true }
-          });
-
-          if (!series?.coverPath) return null;
-          return await resolveNormalizedPath(fastify.projectRoot, series.coverPath);
-        });
-
+        const cacheKey = `series:${seriesId}:cover-path`;
+        const { coverPath } = await fastify.prisma.findCached(
+          userId,
+          cacheKey,
+          ["series:."],
+          async () => {
+            return await fastify.prisma.series.findFirst({
+              where: { id: seriesId, OR: [{ ownerId: userId }, { ownerId: 'admin' }] },
+              select: { id: true, coverPath: true }
+            });
+          }
+        ) ?? {};
+        const validPath = coverPath ? await resolveNormalizedPath(fastify.projectRoot, coverPath) : null;
         if (!validPath) return reply.status(404).send('Cover not found');
+
 
         if (transformOptions) {
           return await sendOptimizedImage(reply, validPath, transformOptions, fastify.projectRoot);

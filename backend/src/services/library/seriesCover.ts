@@ -51,9 +51,6 @@ export async function handleSeriesCoverUpload(
       data: { coverPath: filePathRelative.replace(/\\/g, '/') }
     });
 
-    libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-    libraryCache.invalidateCacheByPrefix(`series:${userId}:${seriesId}`);
-
     return reply.status(200).send({ message: 'Cover updated successfully.' });
   } catch (error) {
     fastify.log.error(error);

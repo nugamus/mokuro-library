@@ -1,17 +1,22 @@
 import { LRUCache } from 'lru-cache';
 
-type CacheValue = string | number | boolean | bigint | symbol | object;
+type CacheValue = any;
 
 class LibraryCache {
   private static instance: LibraryCache;
   private queryCache: LRUCache<string, CacheValue>;
+  private tagMap: Map<string, Set<string>> = new Map();
+  private keyToTagsMap = new Map<string, Set<string>>();
 
   constructor() {
     this.queryCache = new LRUCache<string, CacheValue>({
       max: 1000,
       ttl: 1000 * 60 * 5, // 5 minutes
+      // CRITICAL: This fires whenever a key is deleted OR expires
+      dispose: (value, key, reason) => {
+        this.cleanupTagsForKey(key);
+      },
     });
-
   }
 
   public static getInstance(): LibraryCache {
@@ -21,173 +26,76 @@ class LibraryCache {
     return LibraryCache.instance;
   }
 
+  /**
+   * Internal helper to scrub the tag maps when a key is removed
+   */
+  private cleanupTagsForKey(key: string) {
+    const tags = this.keyToTagsMap.get(key);
+    if (!tags) return;
+
+    for (const tag of tags) {
+      const keysForTag = this.tagMap.get(tag);
+      if (keysForTag) {
+        keysForTag.delete(key);
+        // Save RAM: if no more keys use this tag, remove the Set
+        if (keysForTag.size === 0) {
+          this.tagMap.delete(tag);
+        }
+      }
+    }
+    this.keyToTagsMap.delete(key);
+  }
+
   public async cachedQuery<T>(
     key: string,
+    tags: string[],
     queryFn: () => Promise<T>,
     ttl?: number
   ): Promise<T> {
     const cached = this.queryCache.get(key) as T | undefined;
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      return cached;
+    }
 
     const result = await queryFn();
+
+    // Only cache if there's actually data
     if (result !== null && result !== undefined) {
-      this.queryCache.set(key, result as CacheValue, ttl ? { ttl } : undefined);
+      // 1. Map Key -> Tags for later cleanup
+      this.keyToTagsMap.set(key, new Set(tags));
+
+      // 2. Map Tags -> Key for invalidation
+      tags.forEach(tag => {
+        if (!this.tagMap.has(tag)) this.tagMap.set(tag, new Set());
+        this.tagMap.get(tag)!.add(key);
+      });
+
+      // 3. Set the actual data (LRU handles the TTL)
+      this.queryCache.set(key, result, ttl ? { ttl } : undefined);
     }
     return result;
   }
 
-  public invalidateCache(key: string) {
-    this.queryCache.delete(key);
+  public invalidateTags(tags: string[]) {
+    tags.forEach(tag => {
+      const keys = this.tagMap.get(tag);
+      if (keys) {
+        // We convert to array because queryCache.delete triggers dispose()
+        // which modifies the tagMap we are currently iterating.
+        Array.from(keys).forEach(key => {
+          this.queryCache.delete(key);
+        });
+      }
+    });
   }
 
+  // Prefix deletion is slow with LRU but works for manual overrides
   public invalidateCacheByPrefix(prefix: string) {
     for (const key of this.queryCache.keys()) {
       if (key.startsWith(prefix)) {
         this.queryCache.delete(key);
       }
     }
-  }
-
-  /**
-   * Invalidates all library-related cache entries for a user
-   *
-   * @param userId - The user whose library cache should be invalidated
-   *
-   * @example
-   * ```typescript
-   * invalidateLibraryCache(userId);
-   * ```
-   */
-  public invalidateLibraryCache(userId: string): void {
-    this.invalidateCacheByPrefix(`library:${userId}`);
-  }
-
-  /**
-   * Invalidates series-related cache entries
-   *
-   * @param userId - The user ID
-   * @param seriesId - Optional specific series ID to invalidate
-   *
-   * @example
-   * ```typescript
-   * // Invalidate all series for a user
-   * invalidateSeriesCache(userId);
-   *
-   * // Invalidate specific series
-   * invalidateSeriesCache(userId, seriesId);
-   * ```
-   */
-  public invalidateSeriesCache(userId: string, seriesId?: string): void {
-    if (seriesId) {
-      this.invalidateCacheByPrefix(`series:${userId}:${seriesId}`);
-    } else {
-      this.invalidateCacheByPrefix(`series:${userId}`);
-    }
-  }
-
-  /**
-   * Invalidates volume-related cache entries
-   *
-   * @param userId - The user ID
-   * @param volumeId - Optional specific volume ID to invalidate
-   *
-   * @example
-   * ```typescript
-   * // Invalidate all volumes for a user
-   * invalidateVolumeCache(userId);
-   *
-   * // Invalidate specific volume
-   * invalidateVolumeCache(userId, volumeId);
-   * ```
-   */
-  public invalidateVolumeCache(userId: string, volumeId?: string): void {
-    if (volumeId) {
-      this.invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
-    } else {
-      this.invalidateCacheByPrefix(`volume:${userId}`);
-    }
-  }
-
-  /**
-   * Invalidates all content caches for a user (library, series, volumes)
-   *
-   * Use this when making changes that affect multiple cache levels,
-   * such as uploading new content, deleting series, or updating metadata.
-   *
-   * @param userId - The user ID
-   * @param options - Optional specific IDs to invalidate
-   * @param options.seriesId - Specific series to invalidate
-   * @param options.volumeId - Specific volume to invalidate
-   *
-   * @example
-   * ```typescript
-   * // Invalidate all user content after upload
-   * invalidateUserContentCache(userId);
-   *
-   * // Invalidate specific series and its volumes
-   * invalidateUserContentCache(userId, { seriesId });
-   *
-   * // Invalidate specific volume
-   * invalidateUserContentCache(userId, { volumeId });
-   * ```
-   */
-  public invalidateUserContentCache(
-    userId: string,
-    options?: {
-      seriesId?: string;
-      volumeId?: string;
-    }
-  ): void {
-    this.invalidateLibraryCache(userId);
-    this.invalidateSeriesCache(userId, options?.seriesId);
-    this.invalidateVolumeCache(userId, options?.volumeId);
-  }
-
-  /**
-   * Invalidates metadata-related caches
-   *
-   * @param userId - The user ID
-   * @param seriesId - The series ID
-   *
-   * @example
-   * ```typescript
-   * invalidateMetadataCache(userId, seriesId);
-   * ```
-   */
-  public invalidateMetadataCache(userId: string, seriesId: string): void {
-    this.invalidateSeriesCache(userId, seriesId);
-    this.invalidateLibraryCache(userId);
-  }
-
-  /**
-   * Invalidates OCR-related caches for a volume
-   *
-   * @param userId - The user ID
-   * @param volumeId - The volume ID
-   *
-   * @example
-   * ```typescript
-   * invalidateOcrCache(userId, volumeId);
-   * ```
-   */
-  public invalidateOcrCache(userId: string, volumeId: string): void {
-    this.invalidateVolumeCache(userId, volumeId);
-  }
-
-  /**
-   * Invalidates progress-related caches
-   *
-   * @param userId - The user ID
-   * @param volumeId - The volume ID
-   *
-   * @example
-   * ```typescript
-   * invalidateProgressCache(userId, volumeId);
-   * ```
-   */
-  public invalidateProgressCache(userId: string, volumeId: string): void {
-    this.invalidateVolumeCache(userId, volumeId);
-    this.invalidateLibraryCache(userId);
   }
 }
 

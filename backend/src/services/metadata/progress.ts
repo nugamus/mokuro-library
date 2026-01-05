@@ -104,10 +104,6 @@ export async function updateVolumeProgress(
     }
   }
 
-  libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-  libraryCache.invalidateCacheByPrefix(`series:${userId}`);
-  libraryCache.invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
-
   return upsertedProgress;
 }
 
@@ -125,10 +121,6 @@ export async function resetVolumeProgress(
     select: { seriesId: true }
   });
   if (volume) await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
-
-  libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-  libraryCache.invalidateCacheByPrefix(`series:${userId}`);
-  libraryCache.invalidateCacheByPrefix(`volume:${userId}:${volumeId}`);
 
   return { message: 'Progress reset successfully.' };
 }

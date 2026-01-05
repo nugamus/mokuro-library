@@ -86,71 +86,70 @@ export async function getLibraryList(
     is_organized
   })}`;
 
-  return libraryCache.cachedQuery(cacheKey, async () => {
-    if (sort === 'recent') {
-      const [total, settings] = await fastify.prisma.$transaction([
-        fastify.prisma.userSeriesSettings.count({
-          where: { userId, series: seriesWhere }
-        }),
-        fastify.prisma.userSeriesSettings.findMany({
-          where: { userId, series: seriesWhere },
-          orderBy: { lastReadAt: order },
-          take: limit,
-          skip: (page - 1) * limit,
-          include: {
-            series: {
-              include: {
-                volumes: {
-                  orderBy: { sortTitle: 'asc' },
-                  select: {
-                    pageCount: true,
-                    progress: { where: { userId }, select: { completed: true, page: true } }
-                  }
-                }
-              }
-            }
-          }
-        })
-      ]);
 
-      const data = settings.map((setting: any) => transformSeries(setting.series, userId, setting));
-
-      return {
-        data,
-        meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
-      };
-    }
-
-    let orderBy: Prisma.SeriesOrderByWithRelationInput;
-    if (sort === 'created') orderBy = { createdAt: order };
-    else if (sort === 'updated') orderBy = { updatedAt: order };
-    else orderBy = { sortTitle: order };
-
-    const [total, seriesList] = await fastify.prisma.$transaction([
-      fastify.prisma.series.count({ where: seriesWhere }),
-      fastify.prisma.series.findMany({
-        where: seriesWhere,
-        orderBy,
+  if (sort === 'recent') {
+    const [total, settings] = await fastify.prisma.$transaction([
+      fastify.prisma.userSeriesSettings.count({
+        where: { userId, series: seriesWhere }
+      }),
+      fastify.prisma.userSeriesSettings.findMany({
+        where: { userId, series: seriesWhere },
+        orderBy: { lastReadAt: order },
         take: limit,
         skip: (page - 1) * limit,
         include: {
-          userSettings: { where: { userId } },
-          volumes: {
-            orderBy: { sortTitle: 'asc' },
-            select: {
-              pageCount: true,
-              progress: { where: { userId }, select: { completed: true, page: true } }
+          series: {
+            include: {
+              volumes: {
+                orderBy: { sortTitle: 'asc' },
+                select: {
+                  pageCount: true,
+                  progress: { where: { userId }, select: { completed: true, page: true } }
+                }
+              }
             }
           }
         }
       })
     ]);
 
-    const data = seriesList.map((series: any) => transformSeries(series, userId));
+    const data = settings.map((setting: any) => transformSeries(setting.series, userId, setting));
 
     return {
       data,
       meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
     };
-  });
+  }
+
+  let orderBy: Prisma.SeriesOrderByWithRelationInput;
+  if (sort === 'created') orderBy = { createdAt: order };
+  else if (sort === 'updated') orderBy = { updatedAt: order };
+  else orderBy = { sortTitle: order };
+
+  const [total, seriesList] = await fastify.prisma.$transaction([
+    fastify.prisma.series.count({ where: seriesWhere }),
+    fastify.prisma.series.findMany({
+      where: seriesWhere,
+      orderBy,
+      take: limit,
+      skip: (page - 1) * limit,
+      include: {
+        userSettings: { where: { userId } },
+        volumes: {
+          orderBy: { sortTitle: 'asc' },
+          select: {
+            pageCount: true,
+            progress: { where: { userId }, select: { completed: true, page: true } }
+          }
+        }
+      }
+    })
+  ]);
+
+  const data = seriesList.map((series: any) => transformSeries(series, userId));
+
+  return {
+    data,
+    meta: { total, page, limit, totalPages: Math.ceil(total / limit) }
+  };
 }

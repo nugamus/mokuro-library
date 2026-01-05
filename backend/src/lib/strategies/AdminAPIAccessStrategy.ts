@@ -42,26 +42,35 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
    * 2. hasAhead/hasBehind are always false (Admin is the definition of current).
    */
   async getVolume(volumeId: string): Promise<VolumeResponse> {
-    const volume = await this.fastify.prisma.volume.findUnique({
-      where: { id: volumeId, series: { ownerId: 'admin' } },
-      include: {
-        // Admin sees their own progress, or could see global stats (implementation choice)
-        // Here we just fetch admin's personal progress for consistency.
-        progress: {
-          where: { userId: 'admin' },
-          select: {
-            id: true,
-            page: true,
-            completed: true,
-            timeRead: true,
-            charsRead: true,
-            lastReadAt: true,
-            userId: true,
-            volumeId: true
+
+    const cacheKey = `volume:${volumeId}`;
+    const volume = await this.fastify.prisma.findCached(
+      'admin',
+      cacheKey,
+      ["volume:.:shared", "userprogress:progress:private"],
+      async () => {
+        return await this.fastify.prisma.volume.findUnique({
+          where: { id: volumeId, series: { ownerId: 'admin' } },
+          include: {
+            // Admin sees their own progress, or could see global stats (implementation choice)
+            // Here we just fetch admin's personal progress for consistency.
+            progress: {
+              where: { userId: 'admin' },
+              select: {
+                id: true,
+                page: true,
+                completed: true,
+                timeRead: true,
+                charsRead: true,
+                lastReadAt: true,
+                userId: true,
+                volumeId: true
+              }
+            }
           }
-        }
+        });
       }
-    });
+    );
 
     if (!volume) {
       throw new HttpError(404, 'Volume not found');

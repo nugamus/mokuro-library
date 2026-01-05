@@ -41,27 +41,35 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
    */
   async getVolume(volumeId: string): Promise<VolumeResponse> {
     // 1. Fetch volume with ownership check (Private OR Admin-owned)
-    const volume = await this.fastify.prisma.volume.findFirst({
-      where: {
-        id: volumeId,
-        series: { OR: [{ ownerId: this.userId }, { ownerId: 'admin' }] }
-      },
-      include: {
-        progress: {
-          where: { userId: this.userId },
-          select: {
-            id: true,
-            page: true,
-            completed: true,
-            timeRead: true,
-            charsRead: true,
-            lastReadAt: true,
-            userId: true,
-            volumeId: true
+    const cacheKey = `volume:${volumeId}`;
+    const volume = await this.fastify.prisma.findCached(
+      this.userId,
+      cacheKey,
+      ["volume:.:shared", "userprogress:progress:private"],
+      async () => {
+        return await this.fastify.prisma.volume.findFirst({
+          where: {
+            id: volumeId,
+            series: { OR: [{ ownerId: this.userId }, { ownerId: 'admin' }] }
+          },
+          include: {
+            progress: {
+              where: { userId: this.userId },
+              select: {
+                id: true,
+                page: true,
+                completed: true,
+                timeRead: true,
+                charsRead: true,
+                lastReadAt: true,
+                userId: true,
+                volumeId: true
+              }
+            }
           }
-        }
+        });
       }
-    });
+    );
 
     if (!volume) {
       throw new HttpError(404, 'Volume not found or access denied');

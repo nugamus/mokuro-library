@@ -64,7 +64,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.applyPatch(id, operation, branchVersion);
-        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
       } catch (err: any) {
         if (err instanceof HttpError) {
@@ -88,7 +87,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.undo(id, branchVersion);
-        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
       } catch (err: any) {
         if (err instanceof HttpError) {
@@ -112,7 +110,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         const result = await request.accessStrategy.redo(id, branchVersion);
-        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return result;
       } catch (err: any) {
         if (err instanceof HttpError) {
@@ -135,7 +132,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       try {
         await request.accessStrategy.reset(id);
-        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${id}`);
         return { success: true };
       } catch (err: any) {
         if (err instanceof HttpError) {
@@ -167,9 +163,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
          * 3. Returns the OcrBranch (including version) and the MokuroData.
          */
         const { data, branch } = await request.accessStrategy.createSnapshot(id);
-
-        // Invalidate read cache (e.g., Redis/Memory) so the next GET sees the new snapshot
-        libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
 
         // Return everything the frontend needs to stay in sync
         return reply.send({
@@ -211,13 +204,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
             where: { volumeId_userId: { volumeId: id, userId } }
           });
-          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send({
             status: 'complete',
             newHeadId: updatedBranch?.headPatchId
           });
         } else {
-          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send(result);
         }
       } catch (error: unknown) {
@@ -257,13 +248,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           const updatedBranch = await fastify.prisma.ocrBranch.findUnique({
             where: { volumeId_userId: { volumeId: id, userId } }
           });
-          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send({
             status: 'complete',
             newHeadId: updatedBranch?.headPatchId
           });
         } else {
-          libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
           return reply.send(result);
         }
       } catch (error: unknown) {
@@ -298,7 +287,6 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
         const engine = new RebaseEngine(fastify);
         await engine.abort(rebaseId);
-        libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
         return reply.send({ status: 'aborted' });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : 'Failed to abort rebase';

@@ -226,10 +226,6 @@ export async function handleLibraryUpload(
         await updateSeriesStatus(fastify.prisma, userId, series.id);
       }
 
-      libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-      libraryCache.invalidateCacheByPrefix(`series:${userId}`);
-      libraryCache.invalidateCacheByPrefix(`volume:${userId}`);
-
       return volume;
     };
 

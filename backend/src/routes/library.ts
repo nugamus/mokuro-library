@@ -121,39 +121,42 @@ const libraryRoutes: FastifyPluginAsync = async (
       const userId = request.user.id;
 
       try {
-        const cacheKey = `series:${userId}:${seriesId}`;
-        const response = await libraryCache.cachedQuery(cacheKey, async () => {
-          const series = await fastify.prisma.series.findFirst({
-            where: {
-              id: seriesId,
-              OR: [{ ownerId: userId }, { ownerId: 'admin' }]
-            },
-            include: {
-              userSettings: { where: { userId } },
-              volumes: {
-                orderBy: { sortTitle: 'asc' },
-                include: {
-                  progress: {
-                    where: { userId: userId },
-                    select: {
-                      page: true,
-                      completed: true,
-                      timeRead: true,
-                      charsRead: true,
-                      lastReadAt: true
+        const response = await fastify.prisma.findCached(
+          userId,
+          `series:${seriesId}`,
+          ["series:.:shared", "volume:volumes:shared", "userprogress:volumes.progress:private"],
+          async () => {
+            const series = await fastify.prisma.series.findFirst({
+              where: {
+                id: seriesId,
+                OR: [{ ownerId: userId }, { ownerId: 'admin' }]
+              },
+              include: {
+                userSettings: { where: { userId } },
+                volumes: {
+                  orderBy: { sortTitle: 'asc' },
+                  include: {
+                    progress: {
+                      where: { userId: userId },
+                      select: {
+                        id: true,
+                        page: true,
+                        completed: true,
+                        timeRead: true,
+                        charsRead: true,
+                        lastReadAt: true
+                      }
                     }
                   }
-                }
+                },
               },
-            },
-          });
+            });
 
-          if (!series) {
-            return null;
+            if (!series) return null;
+
+            return transformSeries(series, userId);
           }
-
-          return transformSeries(series, userId);
-        });
+        );
 
         if (!response) {
           return reply.status(404).send({
@@ -180,13 +183,9 @@ const libraryRoutes: FastifyPluginAsync = async (
     '/volume/:id',
     async (request, reply) => {
       const { id: volumeId } = request.params;
+      const userId = request.user.id;
       try {
-        const cacheKey = `volume:${request.user.id}:${volumeId}`;
-        const volume = await libraryCache.cachedQuery(
-          cacheKey,
-          () => request.accessStrategy.getVolume(volumeId),
-          1000 * 30
-        );
+        const volume = await request.accessStrategy.getVolume(volumeId);
         return volume;
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : 'Unexpected error.';
@@ -207,9 +206,6 @@ const libraryRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       try {
         await deleteSeriesById(fastify, request.params.id, request.user.id);
-        libraryCache.invalidateCacheByPrefix(`library:${request.user.id}`);
-        libraryCache.invalidateCacheByPrefix(`series:${request.user.id}:${request.params.id}`);
-        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}`);
         return reply.status(200).send({ message: 'Series deleted successfully.' });
       } catch (error) {
         const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
@@ -243,9 +239,6 @@ const libraryRoutes: FastifyPluginAsync = async (
     async (request, reply) => {
       try {
         await deleteVolumeById(fastify, request.params.id, request.user.id);
-        libraryCache.invalidateCacheByPrefix(`library:${request.user.id}`);
-        libraryCache.invalidateCacheByPrefix(`series:${request.user.id}`);
-        libraryCache.invalidateCacheByPrefix(`volume:${request.user.id}:${request.params.id}`);
         return reply.status(200).send({ message: 'Volume deleted successfully.' });
       } catch (error) {
         const statusCode = (error as Error & { statusCode?: number }).statusCode ?? 500;
@@ -304,10 +297,6 @@ const libraryRoutes: FastifyPluginAsync = async (
           results.errors.push({ id, error: (e as Error).message });
         }
       }
-
-      libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-      libraryCache.invalidateCacheByPrefix(`series:${userId}`);
-      libraryCache.invalidateCacheByPrefix(`volume:${userId}`);
 
       return reply.send({
         message: `Deleted ${results.success.length} items. Failed: ${results.errors.length}`,

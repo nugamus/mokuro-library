@@ -248,9 +248,6 @@ const metadataRoutes: FastifyPluginAsync = async (
           });
         }
 
-        libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-        libraryCache.invalidateCacheByPrefix(`series:${userId}:${id}`);
-
         return reply.send({ message: 'Series updated successfully.' });
       } catch (error) {
         fastify.log.error(error);
@@ -285,10 +282,6 @@ const metadataRoutes: FastifyPluginAsync = async (
           data: { title, sortTitle: title ?? vol.folderName },
         });
 
-        libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-        libraryCache.invalidateCacheByPrefix(`series:${userId}`);
-        libraryCache.invalidateCacheByPrefix(`volume:${userId}:${id}`);
-
         return reply.send({ message: 'Volume title updated.', seriesId: vol.series.id });
       } catch (error) {
         fastify.log.error(error);
@@ -320,9 +313,6 @@ const metadataRoutes: FastifyPluginAsync = async (
             })
           )
         );
-
-        libraryCache.invalidateCacheByPrefix(`library:${userId}`);
-        libraryCache.invalidateCacheByPrefix(`series:${userId}`);
 
         return reply.send({ message: 'Batch update successful.', count: ids.length });
       } catch (error) {
