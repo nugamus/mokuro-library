@@ -96,6 +96,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
       versionInfo: {
         branchId: adminBranch.id,
         headPatchId: adminBranch.headPatchId,
+        branchVersion: adminBranch.version,
         // Admin is never ahead/behind themselves
         hasAhead: false,
         hasBehind: false,

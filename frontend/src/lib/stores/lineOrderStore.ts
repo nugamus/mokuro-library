@@ -4,14 +4,14 @@ import type { MokuroBlock } from '$lib/types';
 type LineOrderState = {
   isOpen: boolean;
   block: MokuroBlock | null;
-  onSave: () => void;
+  onCommit: (newOrder: number[]) => void;
 };
 
 // Default empty state
 const defaultState: LineOrderState = {
   isOpen: false,
   block: null,
-  onSave: () => { } // No-op
+  onCommit: () => { }
 };
 
 function createLineOrderStore() {
@@ -22,11 +22,11 @@ function createLineOrderStore() {
     /**
      * Opens the line order modal for a specific block.
      */
-    open: (block: MokuroBlock, onSave: () => void) => {
+    open: (block: MokuroBlock, onCommit: (newOrder: number[]) => void) => {
       set({
         isOpen: true,
         block,
-        onSave
+        onCommit
       });
     },
     /**

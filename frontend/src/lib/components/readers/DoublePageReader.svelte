@@ -2,7 +2,7 @@
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
-import CachedImage from '$lib/components/media/CachedImage.svelte';
+	import CachedImage from '$lib/components/media/CachedImage.svelte';
 	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
@@ -12,16 +12,12 @@ import CachedImage from '$lib/components/media/CachedImage.svelte';
 
 		// Pass-through props for OcrOverlay
 		showTriggerOutline,
-		onOcrChange,
-		onLineFocus,
-		onOcrChangeMode
+		onLineFocus
 	} = $props<{
 		panzoomInstance: PanzoomObject | null;
 		navZoneWidth: number;
 		showTriggerOutline: boolean;
-		onOcrChange: () => void;
 		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
-		onOcrChangeMode: (state: 'READ' | 'BOX' | 'TEXT') => void;
 	}>();
 
 	const handleClickLeft = () => {
@@ -79,15 +75,14 @@ import CachedImage from '$lib/components/media/CachedImage.svelte';
 			>
 				<CachedImage src={`/api/files/volume/${readerState.id}/image/${page.img_path}`} />
 				<OcrOverlay
+					pageIndex={page.index}
 					page={readerState.visiblePages[i]}
 					{panzoomInstance}
 					ocrMode={readerState.ocrMode}
 					isSmartResizeMode={readerState.isSmartResizeMode}
 					{showTriggerOutline}
 					readingDirection={readerState.readingDirection}
-					{onOcrChange}
 					{onLineFocus}
-					onChangeMode={onOcrChangeMode}
 				/>
 			</div>
 		{/each}
@@ -106,7 +101,3 @@ import CachedImage from '$lib/components/media/CachedImage.svelte';
 			sepia(var(--reader-red-shift, 0%)) hue-rotate(-20deg) saturate(120%);
 	}
 </style>
-
-
-
-

@@ -110,6 +110,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       versionInfo: {
         branchId: userBranch.id,
         headPatchId: userBranch.headPatchId,
+        branchVersion: userBranch.version,
         hasAhead,
         hasBehind,
       }
@@ -172,7 +173,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     }
 
     // 4. Transactional Write
-    const result = await this.fastify.prisma.$transaction(async (tx: any) => {
+    const result = await this.fastify.prisma.$transaction(async (tx) => {
       // CASE 1: Root is NULL (Clean state -> Fork)
       // No deletion needed
 

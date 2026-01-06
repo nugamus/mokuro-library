@@ -162,27 +162,21 @@
 				<VerticalReader
 					bind:panzoomInstance
 					showTriggerOutline={readerState.showTriggerOutline}
-					{onOcrChange}
 					{onLineFocus}
-					onOcrChangeMode={(m) => readerState.setOcrMode(m)}
 				/>
 			{:else if readerState.layoutMode === 'double'}
 				<DoublePageReader
 					bind:panzoomInstance
 					navZoneWidth={readerState.navZoneWidth}
 					showTriggerOutline={readerState.showTriggerOutline}
-					{onOcrChange}
 					{onLineFocus}
-					onOcrChangeMode={(m) => readerState.setOcrMode(m)}
 				/>
 			{:else}
 				<SinglePageReader
 					bind:panzoomInstance
 					navZoneWidth={readerState.navZoneWidth}
 					showTriggerOutline={readerState.showTriggerOutline}
-					{onOcrChange}
 					{onLineFocus}
-					onOcrChangeMode={(m) => readerState.setOcrMode(m)}
 				/>
 			{/if}
 		</main>

@@ -4,71 +4,51 @@
 	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 	import { getRelativeCoords, getScaleRatios } from '$lib/utils/ocr/math';
-
 	import OcrBlock from './OcrBlock.svelte';
 
-	// --- Props ---
 	let {
 		page,
+		pageIndex, // New Prop
 		panzoomInstance,
 		ocrMode,
 		isSmartResizeMode,
 		showTriggerOutline,
 		readingDirection,
-		onOcrChange,
-		onLineFocus,
-		onChangeMode
+		onLineFocus
 	} = $props<{
 		page: MokuroPage;
+		pageIndex: number;
 		panzoomInstance: PanzoomObject | null;
 		ocrMode: 'READ' | 'BOX' | 'TEXT';
 		isSmartResizeMode: boolean;
 		showTriggerOutline: boolean;
 		readingDirection: string;
-		onOcrChange: () => void;
 		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
-		onChangeMode: (state: 'READ' | 'BOX' | 'TEXT') => void;
 	}>();
 
-	// --- State Initialization ---
-	// We use a singleton state class for this tree.
-	// We pass the references. Since `page` and `panzoomInstance` can change,
-	// we need to keep the state object updated.
-
+	// Initialize State with Page Index
 	const ocrState = new OcrState({
-		onOcrChange: () => onOcrChange(),
-		onLineFocus: (b, p) => onLineFocus(b, p),
-		onChangeMode: (m) => onChangeMode(m)
+		pageIndex,
+		onLineFocus: (b, p) => onLineFocus(b, p)
 	});
 
-	// Sync props to state (One-way flow mainly)
+	// Sync Props
 	$effect(() => {
 		ocrState.page = page;
+		ocrState.pageIndex = pageIndex; // Keep synced
 		ocrState.panzoomInstance = panzoomInstance;
 		ocrState.isSmartResizeMode = isSmartResizeMode;
 		ocrState.showTriggerOutline = showTriggerOutline;
 		ocrState.readingDirection = readingDirection;
-		// Callbacks are stable, no need to sync usually, but handled in constructor
-	});
-
-	// Sync prop, isolated because this is affected by onChangeMode
-	$effect(() => {
 		ocrState.ocrMode = ocrMode;
 	});
 
-	// --- Actions ---
-
 	const handleOverlayClick = (e: MouseEvent) => {
-		// Only act on clicks directly on the background (not bubbling from block)
 		if (e.target !== e.currentTarget) return;
-
-		// Blur focus if clicking empty space
 		if (ocrMode === 'TEXT') {
 			ocrState.setFocus(null);
 			ocrState.setMode('BOX');
 		}
-
-		// Clear Selection
 		const selection = window.getSelection();
 		if (selection) selection.removeAllRanges();
 	};
@@ -76,16 +56,13 @@
 	const handleCreateBlock = (event: MouseEvent) => {
 		if (!ocrState.overlayElement || !page.blocks) return;
 
-		// 1. Get click position (Image Coordinates)
+		// 1. Math (Viewport -> Image Coords)
 		const { imgX, imgY } = getRelativeCoords(
 			event,
 			ocrState.overlayElement,
 			page.img_width,
 			page.img_height
 		);
-
-		// 2. Calculate dynamic size (15% of viewport)
-		// We need scale ratios to convert "Viewport Pixels" -> "Image Pixels"
 		const { scaleRatioX, scaleRatioY } = getScaleRatios(
 			ocrState.overlayElement,
 			page.img_width,
@@ -95,13 +72,8 @@
 		const rect = ocrState.overlayElement.parentElement?.getBoundingClientRect();
 		if (!rect) return;
 
-		const BOX_WIDTH_VIEWPORT = rect.width * 0.15;
-		const BOX_HEIGHT_VIEWPORT = rect.height * 0.15;
-
-		const BOX_WIDTH_IMAGE = BOX_WIDTH_VIEWPORT * scaleRatioX;
-		const BOX_HEIGHT_IMAGE = BOX_HEIGHT_VIEWPORT * scaleRatioY;
-
-		// 3. Define default line (90% of box)
+		const BOX_WIDTH_IMAGE = rect.width * 0.15 * scaleRatioX;
+		const BOX_HEIGHT_IMAGE = rect.height * 0.15 * scaleRatioY;
 		const LINE_WIDTH = BOX_WIDTH_IMAGE * 0.9;
 		const LINE_HEIGHT = BOX_HEIGHT_IMAGE * 0.9;
 
@@ -113,40 +85,38 @@
 				[imgX - LINE_WIDTH / 2, imgY + LINE_HEIGHT / 2]
 			];
 
-		// 4. Create Block Object
+		// 2. Define New Block
 		const newBlock: MokuroBlock = {
 			box: [
-				imgX - BOX_WIDTH_IMAGE / 2, // x_min
-				imgY - BOX_HEIGHT_IMAGE / 2, // y_min
-				imgX + BOX_WIDTH_IMAGE / 2, // x_max
-				imgY + BOX_HEIGHT_IMAGE / 2 // y_max
+				imgX - BOX_WIDTH_IMAGE / 2,
+				imgY - BOX_HEIGHT_IMAGE / 2,
+				imgX + BOX_WIDTH_IMAGE / 2,
+				imgY + BOX_HEIGHT_IMAGE / 2
 			],
 			lines: ['New Text'],
 			lines_coords: [newLineCoords],
 			vertical: false,
-			font_size: Math.min(page.img_width, page.img_height) / 50 // Default font size heuristic
+			font_size: Math.min(page.img_width, page.img_height) / 50
 		};
 
-		page.blocks.push(newBlock);
-		ocrState.markDirty();
+		// 3. Dispatch 'ADD' Op
+		// Path: /pages/{p}/blocks/- (Append)
+		ocrState.dispatch('blocks/-', 'add', newBlock);
 	};
 
 	const handleDeleteBlock = (blockToDelete: MokuroBlock) => {
 		const index = page.blocks.indexOf(blockToDelete);
 		if (index > -1) {
-			page.blocks.splice(index, 1);
-			ocrState.markDirty();
+			// Dispatch 'REMOVE' Op
+			ocrState.dispatch(`blocks/${index}`, 'remove', null, blockToDelete);
 		}
 	};
 
 	const handleContextMenu = (event: MouseEvent) => {
-		// Only on empty background
 		if (event.target !== event.currentTarget) return;
-
 		if (ocrMode !== 'READ') {
 			event.preventDefault();
 			event.stopPropagation();
-
 			contextMenu.open(event.clientX, event.clientY, [
 				{
 					label: 'Add Block',
@@ -165,10 +135,11 @@
 	oncontextmenu={handleContextMenu}
 >
 	{#each page.blocks as block, i (block)}
-		<OcrBlock block={page.blocks[i]} {ocrState} onDelete={() => handleDeleteBlock(block)} />
+		<OcrBlock
+			blockIndex={i}
+			block={page.blocks[i]}
+			{ocrState}
+			onDelete={() => handleDeleteBlock(block)}
+		/>
 	{/each}
 </div>
-
-
-
-

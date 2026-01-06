@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { tick } from 'svelte';
-	import type { MokuroBlock } from '$lib/types';
+	import type { MokuroBlock, PatchOperation, Quad, Rect } from '$lib/types';
 	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
 	import { lineOrderStore } from '$lib/stores/lineOrderStore';
 	import { getImageDeltas, smartResizeFont, getRelativeCoords } from '$lib/utils/ocr/math';
@@ -12,11 +12,17 @@
 	import TouchToggle from './TouchToggle.svelte';
 
 	// --- Props ---
-	let { block, ocrState, onDelete } = $props<{
+	let {
+		blockIndex,
+		block,
+		ocrState,
+		onDelete
+	}: {
+		blockIndex: number;
 		block: MokuroBlock;
 		ocrState: OcrState;
 		onDelete: () => void;
-	}>();
+	} = $props();
 
 	// --- Local State ---
 	let isHovered = $state(false);
@@ -36,19 +42,27 @@
 	let resizeHandleIsVisible = $state(false);
 
 	// --- Derived Styles ---
+	let visualDelta: Rect = $state([0, 0, 0, 0]);
+	let visualBox: Rect = $derived([
+		block.box[0] + visualDelta[0],
+		block.box[1] + visualDelta[1],
+		block.box[2] + visualDelta[2],
+		block.box[3] + visualDelta[3]
+	]);
 	let geometry = $derived.by(() => {
 		// Safety check
 		if (ocrState.imgWidth === 0 || ocrState.imgHeight === 0) {
 			return { left: 0, top: 0, width: 0, height: 0 };
 		}
 
-		const x_min = (block.box[0] / ocrState.imgWidth) * 100;
-		const y_min = (block.box[1] / ocrState.imgHeight) * 100;
-		const width = ((block.box[2] - block.box[0]) / ocrState.imgWidth) * 100;
-		const height = ((block.box[3] - block.box[1]) / ocrState.imgHeight) * 100;
+		const x_min = (visualBox[0] / ocrState.imgWidth) * 100;
+		const y_min = (visualBox[1] / ocrState.imgHeight) * 100;
+		const width = ((visualBox[2] - visualBox[0]) / ocrState.imgWidth) * 100;
+		const height = ((visualBox[3] - visualBox[1]) / ocrState.imgHeight) * 100;
 
 		return { x_min, y_min, width, height };
 	});
+	const getPageIndex = () => ocrState.pageIndex;
 
 	// --- Interactions ---
 
@@ -143,22 +157,40 @@
 			// Do not commit, do not mark dirty
 			if (isPendingDoubleClick) return;
 
-			// Commit Data Changes
-			const box = block.box; // circumvent mutation warning
-			box[0] += totalImageDeltaX;
-			box[1] += totalImageDeltaY;
-			box[2] += totalImageDeltaX;
-			box[3] += totalImageDeltaY;
+			// --- REFACTOR: Dispatch Batch Ops ---
+			const pIdx = ocrState.pageIndex;
+			const bIdx = blockIndex;
+			const ops: PatchOperation[] = [];
 
-			// Update Children
-			for (const lineCoords of block.lines_coords) {
-				for (const coord of lineCoords) {
-					coord[0] += totalImageDeltaX;
-					coord[1] += totalImageDeltaY;
-				}
-			}
+			// 1. Update Block Box
+			const newBox = [
+				block.box[0] + totalImageDeltaX,
+				block.box[1] + totalImageDeltaY,
+				block.box[2] + totalImageDeltaX,
+				block.box[3] + totalImageDeltaY
+			] as Rect;
+			ops.push({
+				op: 'replace',
+				path: `/pages/${pIdx}/blocks/${bIdx}/box`,
+				value: newBox,
+				old_value: block.box
+			});
 
-			ocrState.markDirty();
+			// 2. Update All Lines Coords (Independent Coordinates)
+			block.lines_coords.forEach((coords, lIdx) => {
+				const newCoords = coords.map((pt) => [
+					pt[0] + totalImageDeltaX,
+					pt[1] + totalImageDeltaY
+				]) as Quad;
+				ops.push({
+					op: 'replace',
+					path: `/pages/${pIdx}/blocks/${bIdx}/lines/${lIdx}/coords`,
+					value: newCoords,
+					old_value: coords
+				});
+			});
+
+			readerState.dispatch(ops);
 		};
 
 		window.addEventListener('pointermove', handleDragMove);
@@ -187,35 +219,34 @@
 				ocrState.imgHeight
 			);
 
-			const box = block.box; // circumvent mutation warning
 			switch (handleType) {
 				case 'top-left':
-					box[0] += imageDeltaX;
-					box[1] += imageDeltaY;
+					visualDelta[0] += imageDeltaX;
+					visualDelta[1] += imageDeltaY;
 					break;
 				case 'top-center':
-					box[1] += imageDeltaY;
+					visualDelta[1] += imageDeltaY;
 					break;
 				case 'top-right':
-					box[2] += imageDeltaX;
-					box[1] += imageDeltaY;
+					visualDelta[2] += imageDeltaX;
+					visualDelta[1] += imageDeltaY;
 					break;
 				case 'middle-left':
-					box[0] += imageDeltaX;
+					visualDelta[0] += imageDeltaX;
 					break;
 				case 'middle-right':
-					box[2] += imageDeltaX;
+					visualDelta[2] += imageDeltaX;
 					break;
 				case 'bottom-left':
-					box[0] += imageDeltaX;
-					box[3] += imageDeltaY;
+					visualDelta[0] += imageDeltaX;
+					visualDelta[3] += imageDeltaY;
 					break;
 				case 'bottom-center':
-					box[3] += imageDeltaY;
+					visualDelta[3] += imageDeltaY;
 					break;
 				case 'bottom-right':
-					box[2] += imageDeltaX;
-					box[3] += imageDeltaY;
+					visualDelta[2] += imageDeltaX;
+					visualDelta[3] += imageDeltaY;
 					break;
 			}
 		};
@@ -223,7 +254,30 @@
 		const handleDragEnd = () => {
 			window.removeEventListener('pointermove', handleDragMove);
 			window.removeEventListener('pointerup', handleDragEnd);
-			ocrState.markDirty();
+			const pIdx = ocrState.pageIndex;
+			const bIdx = blockIndex;
+
+			// Calculate Final Box
+			const newBox: Rect = [
+				block.box[0] + visualDelta[0],
+				block.box[1] + visualDelta[1],
+				block.box[2] + visualDelta[2],
+				block.box[3] + visualDelta[3]
+			];
+
+			// Dispatch
+			readerState.dispatch([
+				{
+					op: 'replace',
+					path: `/pages/${pIdx}/blocks/${bIdx}/box`,
+					value: newBox,
+					old_value: block.box
+				}
+			]);
+
+			// Reset local visual state immediately
+			// (Staging updates synchronously via dispatch, so no jump occurs)
+			visualDelta = [0, 0, 0, 0];
 		};
 
 		window.addEventListener('pointermove', handleDragMove);
@@ -233,62 +287,74 @@
 	// 3. Child Line Actions (Bubbled Up)
 
 	const handleSplit = async (index: number, textBefore: string, textAfter: string) => {
-		// 1. Update current line
-		block.lines[index] = textBefore;
+		const pIdx = getPageIndex();
+		const bIdx = blockIndex;
 
-		// 2. Calculate Geometry for new line (Simple heuristic: place below or next to)
+		// Calculate New Geometry
 		const GAP = 2;
 		const oldCoords = block.lines_coords[index];
 		const width = oldCoords[1][0] - oldCoords[0][0];
 		const height = oldCoords[3][1] - oldCoords[0][1];
 
-		// Simple offset logic based on verticality
 		let newX = oldCoords[0][0];
 		let newY = oldCoords[0][1];
 
 		if (block.vertical) {
-			// Assuming RTL for vertical typically, but let's just stick to "next to it"
-			// Logic from original: check readingDirection or default to Left shift?
-			// Original used `readingDirection` global. We'll default to left-shift for vertical (standard manga).
 			newX = oldCoords[0][0] - width - GAP;
 		} else {
 			newY = oldCoords[0][1] + height + GAP;
 		}
 
-		const newCoords: [[number, number], [number, number], [number, number], [number, number]] = [
+		const newCoords: Quad = [
 			[newX, newY],
 			[newX + width, newY],
 			[newX + width, newY + height],
 			[newX, newY + height]
 		];
 
-		// 3. Insert new data
-		block.lines.splice(index + 1, 0, textAfter);
-		block.lines_coords.splice(index + 1, 0, newCoords);
+		// Dispatch Batch
+		// 1. Update old line text
+		// 2. Add new line (Text + Coords)
+		await readerState.dispatch([
+			{
+				op: 'replace',
+				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index}/text`,
+				value: textBefore,
+				old_value: block.lines[index]
+			},
+			{
+				op: 'add',
+				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index + 1}`,
+				value: { text: textAfter, coords: newCoords }
+			}
+		]);
 
-		ocrState.markDirty();
 		await tick();
-
-		// 4. Focus new line
 		lineComponents[index + 1]?.focus();
 	};
 
 	const handleMerge = async (index: number, text: string) => {
 		if (index === 0) return;
-
-		// 1. Capture the length of the previous line BEFORE the merge.
-		// This is where the caret should go.
+		const pIdx = getPageIndex();
+		const bIdx = blockIndex;
 		const prevLength = block.lines[index - 1].length;
+		const combinedText = block.lines[index - 1] + text;
 
-		// 2. Perform Data Merge
-		block.lines[index - 1] += text;
-		block.lines.splice(index, 1);
-		block.lines_coords.splice(index, 1);
+		await readerState.dispatch([
+			{
+				op: 'replace',
+				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index - 1}/text`,
+				value: combinedText,
+				old_value: block.lines[index - 1]
+			},
+			{
+				op: 'remove',
+				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index}`,
+				old_value: block.lines[index]
+			}
+		]);
 
-		ocrState.markDirty();
 		await tick();
-
-		// 3. Focus and Set Caret
 		const prevComponent = lineComponents[index - 1];
 		if (prevComponent) {
 			prevComponent.focus();
@@ -327,27 +393,81 @@
 	};
 
 	const handleSmartResize = (targetElement: HTMLElement) => {
-		// Execute the math utility on THIS block
-		smartResizeFont(block, targetElement, ocrState.imgWidth, ocrState.fontScale);
-		ocrState.markDirty();
+		// Clone to prevent direct mutation during calculation
+		const clone = $state.snapshot(block) as MokuroBlock;
+
+		// Run math on clone
+		smartResizeFont(clone, targetElement, ocrState.imgWidth, ocrState.fontScale);
+
+		// If changed, dispatch
+		if (clone.font_size !== block.font_size) {
+			const pIdx = getPageIndex();
+			readerState.dispatch([
+				{
+					op: 'replace',
+					path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
+					value: clone.font_size!,
+					old_value: block.font_size!
+				}
+			]);
+		}
 	};
 
 	// 4. Block-Level Mutations
 	const toggleVertical = () => {
-		block.vertical = !block.vertical;
-		ocrState.markDirty();
+		const pIdx = getPageIndex();
+		readerState.dispatch([
+			{
+				op: 'replace',
+				path: `/pages/${pIdx}/blocks/${blockIndex}/vertical`,
+				value: !block.vertical!,
+				old_value: block.vertical!
+			}
+		]);
 	};
 
 	const deleteLine = (index: number) => {
 		if (block.lines.length <= 1) {
-			// If it's the last line, delete the whole block
-			onDelete();
+			onDelete(); // Block deletion is handled by parent (OcrOverlay)
 		} else {
-			block.lines.splice(index, 1);
-			block.lines_coords.splice(index, 1);
-			ocrState.markDirty();
+			const pIdx = getPageIndex();
+			readerState.dispatch([
+				{
+					op: 'remove',
+					path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${index}`,
+					old_value: { text: block.lines[index], coords: block.lines_coords[index] }
+				}
+			]);
 		}
 	};
+
+	const handleAddLine = (e: MouseEvent) => {
+		if (!ocrState.overlayElement) return;
+		const { imgX, imgY } = getRelativeCoords(
+			e,
+			ocrState.overlayElement,
+			ocrState.imgWidth,
+			ocrState.imgHeight
+		);
+		const DEFAULT_S = 100;
+		const newBox: Quad = [
+			[imgX, imgY],
+			[imgX + DEFAULT_S, imgY],
+			[imgX + DEFAULT_S, imgY + DEFAULT_S],
+			[imgX, imgY + DEFAULT_S]
+		];
+
+		const pIdx = getPageIndex();
+		// Dispatch Add to end of list ('-')
+		readerState.dispatch([
+			{
+				op: 'add',
+				path: `/pages/${pIdx}/blocks/${blockIndex}/lines/-`,
+				value: { text: 'New Text', coords: newBox }
+			}
+		]);
+	};
+
 	// --- Keyboard Shortcuts (Ctrl+A) ---
 	const handleWindowKeydown = (e: KeyboardEvent) => {
 		if (!isHovered) return;
@@ -366,35 +486,6 @@
 		}
 	};
 
-	const handleAddLine = (e: MouseEvent) => {
-		if (!ocrState.overlayElement) return;
-
-		// 1. Get relative image coordinates
-		const { imgX, imgY } = getRelativeCoords(
-			e,
-			ocrState.overlayElement,
-			ocrState.imgWidth,
-			ocrState.imgHeight
-		);
-
-		const DEFAULT_WIDTH = 100;
-		const DEFAULT_HEIGHT = 100;
-
-		// 2. Create the box (Standard Mokuro 4-point polygon)
-		const newBox: [[number, number], [number, number], [number, number], [number, number]] = [
-			[imgX, imgY],
-			[imgX + DEFAULT_WIDTH, imgY],
-			[imgX + DEFAULT_WIDTH, imgY + DEFAULT_HEIGHT],
-			[imgX, imgY + DEFAULT_HEIGHT]
-		];
-
-		// 3. Mutate
-		block.lines.push('New Text');
-		block.lines_coords.push(newBox);
-
-		ocrState.markDirty();
-	};
-
 	// --- Context Menu ---
 	const handleContextMenu = (e: MouseEvent) => {
 		e.preventDefault();
@@ -406,7 +497,7 @@
 			options.push({ separator: true });
 			options.push({
 				label: 'Re-order Lines...',
-				action: () => lineOrderStore.open(block, ocrState.onOcrChange)
+				action: handleOpenReorder
 			});
 			options.push({ label: 'Delete Block', action: onDelete });
 		}
@@ -414,10 +505,13 @@
 		if (options.length > 0) contextMenu.open(e.clientX, e.clientY, options);
 	};
 
-	// Callback Context Menu Logic for Lines
-	const handleLineContextMenuAction = (action: 'delete' | 'toggle-vertical', lineIndex: number) => {
-		if (action === 'delete') deleteLine(lineIndex);
-		if (action === 'toggle-vertical') toggleVertical();
+	const handleOpenReorder = () => {
+		lineOrderStore.open(block, (newOrder) => {
+			// Dispatch the reorder op
+			// Path: /pages/{p}/blocks/{b}/lines (property is implicitly handled by backend for lines)
+
+			ocrState.dispatch(`blocks/${blockIndex}/lines`, 'reorder', null, null, newOrder);
+		});
 	};
 </script>
 
@@ -478,7 +572,7 @@
 					line={block.lines[i]}
 					coords={block.lines_coords[i]}
 					lineIndex={i}
-					blockBox={block.box}
+					blockBox={visualBox}
 					isVertical={block.vertical ?? false}
 					fontSize={block.font_size ?? 12}
 					{ocrState}
@@ -491,18 +585,27 @@
 						// Optional: update global active element tracking if needed
 					}}
 					onLineChange={(newText) => {
-						// This function is necessary because block.lines[i] is passed by value
-						const line = block.lines; // circumvent warning
-						line[i] = newText;
-						/* Note: ocrState.markDirty() is called by the Line component */
+						const pIdx = ocrState.pageIndex;
+						if (newText === block.lines[i]) return;
+						readerState.dispatch([
+							{
+								op: 'replace',
+								path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${i}/text`,
+								value: newText,
+								old_value: block.lines[i]
+							}
+						]);
 					}}
 					onCoordChange={(newCoords) => {
-						const coords = block.lines_coords[i]; // circumvent mutation warning
-						for (let j = 0; j < coords.length; j++) {
-							const coord = coords[j];
-							coord[0] = newCoords[j][0];
-							coord[1] = newCoords[j][1];
-						}
+						const pIdx = ocrState.pageIndex;
+						readerState.dispatch([
+							{
+								op: 'replace',
+								path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${i}/coords`,
+								value: newCoords,
+								old_value: block.lines_coords[i]
+							}
+						]);
 					}}
 					onDeleteRequest={() => deleteLine(i)}
 					onToggleVerticalRequest={toggleVertical}
@@ -522,7 +625,3 @@
 			'locl' 1;
 	}
 </style>
-
-
-
-

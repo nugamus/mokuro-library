@@ -3,22 +3,18 @@
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
-import CachedImage from '$lib/components/media/CachedImage.svelte';
+	import CachedImage from '$lib/components/media/CachedImage.svelte';
 	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
 		panzoomInstance = $bindable(),
 		showTriggerOutline,
-		onOcrChange,
-		onLineFocus,
-		onOcrChangeMode
+		onLineFocus
 	} = $props<{
 		panzoomInstance: PanzoomObject | null;
 		showTriggerOutline: boolean;
-		onOcrChange: () => void;
 		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
-		onOcrChangeMode: (state: 'READ' | 'BOX' | 'TEXT') => void;
 	}>();
 
 	let verticalScrollerElement = $state<HTMLElement | null>(null);
@@ -218,8 +214,8 @@ import CachedImage from '$lib/components/media/CachedImage.svelte';
 				onInit: (pz) => (panzoomInstance = pz)
 			}}
 		>
-			{#if readerState.mokuroData}
-				{#each readerState.mokuroData.pages as page, i (page.img_path)}
+			{#if readerState.mokuroStagingData}
+				{#each readerState.mokuroStagingData.pages as page, i (page.img_path)}
 					<div
 						class="relative flex-shrink-0 bg-white mb-2 shadow-lg reader-page"
 						style={`aspect-ratio: ${page.img_width} / ${page.img_height};`}
@@ -228,15 +224,14 @@ import CachedImage from '$lib/components/media/CachedImage.svelte';
 						{#if visiblePages[i]}
 							<CachedImage src={`/api/files/volume/${readerState.id}/image/${page.img_path}`} />
 							<OcrOverlay
+								pageIndex={i}
 								{page}
 								{panzoomInstance}
 								ocrMode={readerState.ocrMode}
 								isSmartResizeMode={readerState.isSmartResizeMode}
 								{showTriggerOutline}
 								readingDirection={readerState.readingDirection}
-								{onOcrChange}
 								{onLineFocus}
-								onChangeMode={onOcrChangeMode}
 							/>
 						{/if}
 					</div>
@@ -253,7 +248,3 @@ import CachedImage from '$lib/components/media/CachedImage.svelte';
 			sepia(var(--reader-red-shift, 0%)) hue-rotate(-20deg) saturate(120%);
 	}
 </style>
-
-
-
-

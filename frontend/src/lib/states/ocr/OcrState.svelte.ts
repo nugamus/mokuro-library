@@ -1,11 +1,14 @@
 import type { PanzoomObject } from '@panzoom/panzoom';
-import type { MokuroBlock, MokuroPage } from '$lib/types';
+import type { MokuroBlock, MokuroPage, PatchOperation } from '$lib/types';
+import { readerState } from '$lib/states/reader/ReaderState.svelte';
 
 export class OcrState {
   // --- Raw State ---
   page = $state<MokuroPage | null>(null);
   panzoomInstance = $state<PanzoomObject | null>(null);
   overlayElement = $state<HTMLElement | null>(null);
+
+  pageIndex = $state<number>(-1); // Critical for path generation
 
   // --- Modes ---
   ocrMode = $state<'READ' | 'BOX' | 'TEXT'>('READ');
@@ -21,7 +24,6 @@ export class OcrState {
   // This function is purely to coordinate font slider logic on the top-level
   // I should rethink this
   onLineFocus = $state<(block: MokuroBlock | null, page: MokuroPage | null) => void>(() => { });
-  onChangeMode = $state<(state: 'READ' | 'BOX' | 'TEXT') => void>(() => { });
 
   constructor(init?: Partial<OcrState>) {
     Object.assign(this, init);
@@ -49,12 +51,30 @@ export class OcrState {
 
   // --- Actions ---
 
+  dispatch(
+    subPath: string,
+    op: 'replace' | 'add' | 'remove' | 'reorder', // Added 'reorder'
+    value: any,
+    oldValue?: any,
+    newOrder?: number[] // Added specific optional param
+  ) {
+    if (this.pageIndex === -1) return;
+
+    const patch: PatchOperation = {
+      op: op as any,
+      path: `/pages/${this.pageIndex}/${subPath}`,
+      ...(op === 'reorder' ? { new_order: newOrder } : { value, old_value: oldValue })
+    } as PatchOperation;
+
+    readerState.dispatch([patch]);
+  }
+
   markDirty() {
     this.onOcrChange();
   }
 
   setMode(mode: 'READ' | 'BOX' | 'TEXT') {
-    this.onChangeMode(mode);
+    readerState.setOcrMode(mode);
   }
 
   setFocus(block: MokuroBlock | null) {

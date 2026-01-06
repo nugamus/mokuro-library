@@ -1,7 +1,16 @@
+export type Quad = [
+  [number, number],
+  [number, number],
+  [number, number],
+  [number, number]
+];
+
+export type Rect = [number, number, number, number];
+
 // --- Type definitions Reader GET ---
 export interface MokuroBlock {
-  box: [number, number, number, number];
-  lines_coords: [[number, number], [number, number], [number, number], [number, number]][];
+  box: Rect;
+  lines_coords: Quad[];
   lines: string[];
   vertical?: boolean;
   font_size?: number;
@@ -26,7 +35,15 @@ export interface VolumeReaderResponse {
   seriesId: string;
   pageCount: number;
   coverImageName: string | null;
+  progress: UserProgress[];
   mokuroData: MokuroData;
+  versionInfo: {
+    branchId: string;
+    headPatchId: string;
+    branchVersion: number;
+    hasAhead: boolean;
+    hasBehind: boolean;
+  };
 }
 
 // --- Core Library Types ---
@@ -119,3 +136,39 @@ export interface SeriesMetadata {
     }
   >;
 }
+
+// Fine Values: Used for 'replace' operations on leaf nodes.
+export type FineValue =
+  | string  // For text content
+  | boolean // For 'vertical' flag
+  | number  // For 'font_size'
+  | Rect    // For block 'box'
+  | Quad;   // For line 'coords'
+
+// --- 2. Coarse / Unified Values ---
+
+// UnifiedLine: Merges the split arrays (lines + lines_coords) into one atomic unit.
+export interface UnifiedLine {
+  text: string;
+  coords: Quad;
+}
+
+// UnifiedBlock: Represents a full block structure.
+export interface UnifiedBlock {
+  box: Rect;
+  vertical: boolean;
+  font_size?: number;
+  lines: UnifiedLine[];
+}
+
+export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
+
+// --- 3. The Patch Operation ---
+export type OpType = 'replace' | 'add' | 'remove' | 'reorder' | 'genesis';
+
+export type PatchOperation =
+  | { op: 'genesis'; path: string }
+  | { op: 'replace'; path: string; value: PatchValue; old_value: PatchValue }
+  | { op: 'add'; path: string; value: PatchValue }
+  | { op: 'remove'; path: string; old_value: PatchValue }
+  | { op: 'reorder'; path: string; new_order: number[] };

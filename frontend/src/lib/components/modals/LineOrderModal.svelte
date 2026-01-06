@@ -2,32 +2,34 @@
 	import { lineOrderStore } from '$lib/stores/lineOrderStore';
 	import { fade, scale } from 'svelte/transition';
 
-	/**
-	 * Swaps two elements in an array.
-	 * This function mutates the array to trigger reactivity.
-	 */
-	const swap = (arr: any[], i: number, j: number) => {
-		[arr[i], arr[j]] = [arr[j], arr[i]];
+	// Local state to track the reordering visually
+	// This ensures we don't mutate the 'staging' data until the user clicks Done
+	let order = $state<number[]>([]);
+
+	// Initialize order when the modal opens with a new block
+	$effect(() => {
+		if ($lineOrderStore.block) {
+			order = $lineOrderStore.block.lines.map((_, i) => i);
+		}
+	});
+
+	const swap = (i: number, j: number) => {
+		const newOrder = [...order];
+		[newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
+		order = newOrder;
 	};
 
-	const handleMoveUp = (lineIndex: number) => {
-		const { block } = $lineOrderStore;
-		if (!block || lineIndex === 0) return;
-
-		swap(block.lines, lineIndex, lineIndex - 1);
-		swap(block.lines_coords, lineIndex, lineIndex - 1);
+	const handleMoveUp = (index: number) => {
+		if (index > 0) swap(index, index - 1);
 	};
 
-	const handleMoveDown = (lineIndex: number) => {
-		const { block } = $lineOrderStore;
-		if (!block || lineIndex === block.lines.length - 1) return;
-
-		swap(block.lines, lineIndex, lineIndex + 1);
-		swap(block.lines_coords, lineIndex, lineIndex + 1);
+	const handleMoveDown = (index: number) => {
+		if (index < order.length - 1) swap(index, index + 1);
 	};
 
 	const handleDone = () => {
-		$lineOrderStore.onSave();
+		// Pass the final permutation back to the caller
+		$lineOrderStore.onCommit(order);
 		lineOrderStore.close();
 	};
 </script>
@@ -75,7 +77,9 @@
 					</svg>
 					<div>
 						<h2 class="text-2xl font-bold theme-primary">Re-order Lines</h2>
-						<p class="text-xs text-theme-secondary mt-0.5">Adjust the reading order for text selection.</p>
+						<p class="text-xs text-theme-secondary mt-0.5">
+							Adjust the reading order for text selection.
+						</p>
 					</div>
 				</div>
 				<button
@@ -103,20 +107,23 @@
 			<!-- Content (Scrollable) -->
 			<div class="flex-1 overflow-y-auto p-6">
 				<div class="space-y-2">
-					{#each $lineOrderStore.block.lines as line, lineIndex (lineIndex)}
+					{#each order as originalIndex, visualIndex (originalIndex)}
+						{@const line = $lineOrderStore.block.lines[originalIndex]}
 						<div
 							class="flex items-center justify-between gap-4 rounded-xl bg-theme-main border border-theme-border-light p-3 text-sm theme-primary transition-colors hover:bg-theme-surface-hover"
 						>
 							<span class="truncate font-medium flex-1">
-								<span class="text-accent mr-2 font-bold">{lineIndex + 1}.</span>
+								<span class="text-accent mr-2 font-bold">{visualIndex + 1}.</span>
 								{line}
 							</span>
 
-							<div class="flex flex-shrink-0 gap-1 bg-theme-surface rounded-lg p-1 border border-theme-border">
+							<div
+								class="flex flex-shrink-0 gap-1 bg-theme-surface rounded-lg p-1 border border-theme-border"
+							>
 								<button
 									type="button"
-									onclick={() => handleMoveUp(lineIndex)}
-									disabled={lineIndex === 0}
+									onclick={() => handleMoveUp(visualIndex)}
+									disabled={visualIndex === 0}
 									class="p-1.5 rounded-md text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-hover disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
 									aria-label="Move line up"
 								>
@@ -131,8 +138,8 @@
 
 								<button
 									type="button"
-									onclick={() => handleMoveDown(lineIndex)}
-									disabled={lineIndex === $lineOrderStore.block.lines.length - 1}
+									onclick={() => handleMoveDown(visualIndex)}
+									disabled={visualIndex === $lineOrderStore.block.lines.length - 1}
 									class="p-1.5 rounded-md text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-hover disabled:opacity-30 disabled:hover:bg-transparent disabled:cursor-not-allowed transition-colors"
 									aria-label="Move line down"
 								>
@@ -151,7 +158,9 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="px-6 py-4 bg-theme-main border-t border-theme-border flex justify-end flex-shrink-0">
+			<div
+				class="px-6 py-4 bg-theme-main border-t border-theme-border flex justify-end flex-shrink-0"
+			>
 				<button
 					type="button"
 					onclick={handleDone}

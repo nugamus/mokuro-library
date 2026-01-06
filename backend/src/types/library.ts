@@ -60,6 +60,7 @@ export interface VolumeResponse {
   versionInfo: {
     branchId: string;
     headPatchId: string;
+    branchVersion: number;
     hasAhead: boolean;
     hasBehind: boolean;
   };

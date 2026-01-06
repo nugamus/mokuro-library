@@ -1,4 +1,4 @@
-import type { VolumeReaderResponse, MokuroData, MokuroPage, MokuroBlock, UserProgress } from '$lib/types';
+import type { VolumeReaderResponse, MokuroData, MokuroPage, MokuroBlock, UserProgress, PatchOperation } from '$lib/types';
 import { user, updateSettings, type ReaderSettingsData } from '$lib/stores/authStore';
 import { apiFetch } from '$lib/services/api';
 import { fromStore, get } from 'svelte/store';
@@ -6,12 +6,19 @@ import { browser } from '$app/environment';
 import { untrack } from 'svelte';
 import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
 import { apiCache } from '$lib/utils/caching/apiCache';
+import { PatchApplicator } from '$lib/utils/ocr/PatchApplicator';
+import { toastStore } from '$lib/stores/toastStore.svelte';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
 
 // How many pages to keep ready in the cache
 const PREFETCH_COUNT = 3;
+interface PatchTask {
+  ops: PatchOperation[];
+  resolve: () => void;
+  reject: (reason: any) => void;
+}
 
 class ReaderState {
   // --- Core State ---
@@ -103,6 +110,12 @@ class ReaderState {
   hasUnsavedChanges = $state(false);
   isSaving = $state(false);
   saveSuccess = $state(false);
+
+  // --- Version Control ---
+  branchVersion = $state(0);
+  isPatching = $state(false);
+  private patchQueue: PatchTask[] = [];
+  mokuroStagingData = $state<MokuroData | null>(null)
 
 
   // --- Internals ---
@@ -262,6 +275,8 @@ class ReaderState {
     }
 
     this.volume = volData;
+    this.mokuroStagingData = structuredClone(volData.mokuroData);
+    this.branchVersion = volData.versionInfo.branchVersion;
     this.currentPageIndex = startPage;
     this.initialPageIndex = startPage;
   }
@@ -298,6 +313,95 @@ class ReaderState {
   }
 
   // --- Saving Logic ---
+  /**
+   * Entry point for components to request changes.
+   * 1. Applies ALL operations immediately to 'staging' (Optimistic UI).
+   * 2. Enqueues the batch as a single Task to be processed sequentially.
+   */
+  async dispatch(ops: PatchOperation[]) {
+    if (!this.volume?.id || ops.length === 0) return;
+
+    if (!this.mokuroStagingData) {
+      console.error("ReaderState: Cannot dispatch, staging data missing.");
+      return;
+    }
+
+    // 1. Optimistic Update (Batch)
+    // The UI updates instantly for all ops in the array
+    try {
+      PatchApplicator.applyAll(this.mokuroStagingData, ops);
+    } catch (e) {
+      console.error("ReaderState: Optimistic apply failed", e);
+      return;
+    }
+
+    // 2. Queue for Serial Execution
+    return new Promise<void>((resolve, reject) => {
+      this.patchQueue.push({ ops, resolve, reject });
+      if (!this.isPatching) {
+        this.processQueue();
+      }
+    });
+  }
+
+  /**
+   * Serial Processor
+   * Handles "One Patch at a Time" constraint.
+   * If a Task has 50 ops, it sends 50 distinct HTTP requests sequentially.
+   */
+  private async processQueue() {
+    if (this.patchQueue.length === 0) {
+      this.isPatching = false;
+      return;
+    }
+
+    this.isPatching = true;
+
+    while (this.patchQueue.length > 0) {
+      const task = this.patchQueue[0];
+
+      try {
+        // Iterate through the batch and send 1-by-1
+        for (const op of task.ops) {
+          const res = await apiFetch(`/api/library/volume/${this.volume!.id}/patch`, {
+            method: 'POST',
+            body: {
+              operation: op,
+              branchVersion: this.branchVersion
+            }
+          });
+
+          // Update Authoritative State (Committed) step-by-step
+          // This keeps 'committed' strictly in sync with the server's truth
+          if (this.volume?.mokuroData && res.patch) {
+            PatchApplicator.apply(this.volume.mokuroData, res.patch);
+          }
+
+          // Update Version (Critical for the next iteration of the loop)
+          if (res.newVersion) {
+            this.branchVersion = res.newVersion;
+          }
+        }
+
+        // Entire batch succeeded
+        task.resolve();
+
+      } catch (e) {
+        console.error('Patch Dispatch Failed:', e);
+        toastStore.error('Sync failed.');
+
+        // If the batch fails halfway, 'staging' is now ahead of 'committed'
+        // in a way that might not be reconcilable.
+        // In a full implementation, you might force a re-fetch here.
+        task.reject(e);
+      } finally {
+        this.patchQueue.shift(); // Remove task
+      }
+    }
+
+    if (this.volume?.mokuroData) this.mokuroStagingData = $state.snapshot(this.volume).mokuroData as MokuroData;
+    this.isPatching = false;
+  }
 
   private async saveProgress(volumeId: string) {
     if (!this.volume) return;
@@ -366,30 +470,30 @@ class ReaderState {
   get pages(): MokuroPage[] { return this.volume?.mokuroData.pages ?? []; }
   get totalPages() { return this.mokuroData?.pages.length ?? 0; }
 
-  get visiblePages(): MokuroPage[] {
-    if (!this.mokuroData) return [];
+  get visiblePages(): (MokuroPage & { index: number })[] {
+    if (!this.mokuroStagingData) return [];
 
     const page1Index = this.currentPageIndex;
-    const page1 = this.mokuroData.pages[page1Index];
+    const page1 = this.mokuroStagingData.pages[page1Index];
     if (!page1) return [];
 
     if (this.layoutMode === 'single' || this.layoutMode === 'vertical') {
-      return [page1];
+      return [{ ...page1, index: page1Index }];
     }
 
     if (this.layoutMode === 'double') {
       // If first page is cover and we're on page 1, show it alone
       if (this.firstPageIsCover && page1Index === 0) {
-        return [page1];
+        return [{ ...page1, index: page1Index }];
       }
 
       const page2Index = page1Index + 1;
-      const page2 = this.mokuroData.pages[page2Index];
+      const page2 = this.mokuroStagingData.pages[page2Index];
 
       if (!page2) {
-        return [page1];
+        return [{ ...page1, index: page1Index }];
       }
-      return [page1, page2];
+      return [{ ...page1, index: page1Index }, { ...page2, index: page2Index }];
     }
     return [];
   }

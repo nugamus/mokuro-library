@@ -3,7 +3,7 @@
 	import { getImageDeltas, ligaturize } from '$lib/utils/ocr/math';
 	import ResizeHandles from './ResizeHandles.svelte';
 	import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
-	import { stopPropagation } from 'svelte/legacy';
+	import type { Quad, Rect } from '$lib/types';
 
 	// --- Props ---
 	let {
@@ -27,11 +27,11 @@
 		onDeleteRequest,
 		onToggleVerticalRequest,
 		onReorderRequest
-	} = $props<{
+	}: {
 		line: string;
-		coords: [[number, number], [number, number], [number, number], [number, number]];
+		coords: Quad;
 		lineIndex: number;
-		blockBox: [number, number, number, number];
+		blockBox: Rect;
 		isVertical: boolean;
 		fontSize: number;
 		ocrState: OcrState;
@@ -46,11 +46,11 @@
 		onSmartResizeRequest: (targetElement: HTMLElement) => void;
 		onFocusRequest: (targetElement: HTMLElement) => void;
 		onLineChange: (newText: string) => void;
-		onCoordChange: (newCoords: string) => void;
+		onCoordChange: (newCoords: Quad) => void;
 		onDeleteRequest: () => void;
 		onToggleVerticalRequest: () => void;
 		onReorderRequest: () => void;
-	}>();
+	} = $props();
 
 	let lineElement: HTMLElement | undefined = $state();
 	let textHoldingElement: HTMLElement | undefined = $state();
@@ -174,11 +174,11 @@
 		isEmpty = textHoldingElement?.textContent === '';
 		if (ocrState.isSmartResizeMode && textHoldingElement && textHoldingElement.textContent !== '')
 			onSmartResizeRequest(textHoldingElement);
-
+	};
+	const handleBlur = () => {
 		// Sync local -> parent (upsync)
 		let innerText = textHoldingElement?.innerText;
-		onLineChange(innerText);
-		ocrState.markDirty();
+		onLineChange(innerText ?? '');
 	};
 
 	// --- Derived Geometry ---
@@ -207,7 +207,7 @@
 	const handleDoubleClick = (event: MouseEvent) => {
 		// 1. Prioritize DBLCLICK action
 		ocrState.setMode('TEXT');
-		onFocusRequest(event.currentTarget);
+		onFocusRequest(event.currentTarget as HTMLElement);
 
 		// 2. Crucial State Reset & Drag Prevention
 		if (doubleClickTimer) {
@@ -312,7 +312,7 @@
 			if (isPendingDoubleClick) return;
 
 			// Commit
-			const localCoords = JSON.parse(JSON.stringify(coords));
+			const localCoords = coords.map((pair) => [pair[0], pair[1]]) as Quad;
 			for (const coord of localCoords) {
 				coord[0] += totalImageDeltaX;
 				coord[1] += totalImageDeltaY;
@@ -333,7 +333,7 @@
 
 		// 1. Snapshot Initial State
 		// We work on a local copy to avoid triggering Svelte updates during drag
-		const localCoords = JSON.parse(JSON.stringify(coords));
+		const localCoords = coords.map((pair) => [pair[0], pair[1]]) as Quad;
 
 		// We need block dimensions for percentage calculations
 		const blockW = blockBox[2] - blockBox[0];
@@ -554,6 +554,7 @@
 			onpointerdown={(e) => e.stopPropagation()}
 			onkeydown={handleKeyDown}
 			oninput={handleInput}
+			onblur={handleBlur}
 			onfocus={(e) => {
 				onFocusRequest(e.currentTarget);
 				if (
@@ -631,7 +632,3 @@
 		line-height: 1;
 	}
 </style>
-
-
-
-
