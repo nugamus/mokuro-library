@@ -18,11 +18,20 @@ export async function getLibraryList(
   const bookmarked = query.bookmarked === 'true';
   const filter_missing = query.filter_missing ?? 'none';
   const is_organized = query.is_organized;
+  const owner = query.owner ?? 'all';
+
+  // Build owner filter
+  let ownerFilter: Prisma.SeriesWhereInput;
+  if (owner === 'admin') {
+    ownerFilter = { ownerId: 'admin' };
+  } else if (owner === 'user') {
+    ownerFilter = { ownerId: userId };
+  } else {
+    ownerFilter = { OR: [{ ownerId: userId }, { ownerId: 'admin' }] };
+  }
 
   const seriesWhere: Prisma.SeriesWhereInput = {
-    AND: [
-      { OR: [{ ownerId: userId }, { ownerId: 'admin' }] }
-    ]
+    AND: [ownerFilter]
   };
   const andConditions = (seriesWhere.AND as Prisma.SeriesWhereInput[]);
 
@@ -83,7 +92,8 @@ export async function getLibraryList(
     status,
     bookmarked,
     filter_missing,
-    is_organized
+    is_organized,
+    owner
   })}`;
 
 
@@ -106,7 +116,8 @@ export async function getLibraryList(
                   pageCount: true,
                   progress: { where: { userId }, select: { completed: true, page: true } }
                 }
-              }
+              },
+              _count: { select: { volumes: true } }
             }
           }
         }
@@ -141,7 +152,8 @@ export async function getLibraryList(
             pageCount: true,
             progress: { where: { userId }, select: { completed: true, page: true } }
           }
-        }
+        },
+        _count: { select: { volumes: true } }
       }
     })
   ]);

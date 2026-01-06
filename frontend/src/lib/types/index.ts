@@ -84,6 +84,7 @@ export interface Series {
   status: number; // 0=Unread, 1=Reading, 2=Finished
   updatedAt: string;
   lastReadAt?: string | null;
+  canEdit?: boolean; // True if user owns this series (not admin-owned)
 
   // Relations
   volumes?: Volume[]; // Optional, present in Detail View
@@ -172,3 +173,59 @@ export type PatchOperation =
   | { op: 'add'; path: string; value: PatchValue }
   | { op: 'remove'; path: string; old_value: PatchValue }
   | { op: 'reorder'; path: string; new_order: number[] };
+
+// --- Submission & Contribution Types ---
+
+export interface SubmissionVolume {
+  id: string;
+  submissionId: string;
+  volumeId: string;
+}
+
+export interface Submission {
+  id: string;
+  userId: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  targetSeriesId: string | null;
+  sourceSeriesId: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+
+  // Relations
+  volumes?: SubmissionVolume[];
+  user?: { id: string; username: string };
+  targetSeries?: { id: string; title: string; folderName: string };
+  sourceSeries?: { id: string; title: string; folderName: string };
+  _count?: { volumes: number };
+}
+
+export interface SubmitVolumesRequest {
+  volumeIds: string[];
+  targetSeriesId?: string;
+}
+
+export interface RejectSubmissionRequest {
+  reason: string;
+}
+
+export interface BulkAcceptRequest {
+  submissionIds: string[];
+}
+
+export interface BulkRejectRequest {
+  submissionIds: string[];
+  reason: string;
+}
+
+export interface BulkOperationResult {
+  success: number;
+  failed: number;
+  errors: Array<{ id: string; error: string }>;
+}
+
+export interface ContributionsSummary {
+  ahead: number;
+  behind: number;
+  pendingSubmissionsCount: number;
+}

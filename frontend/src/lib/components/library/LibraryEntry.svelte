@@ -31,8 +31,10 @@
 		onSelect,
 		onLongPress,
 		circleAction,
+		secondaryCircleAction,
 		titleAction,
-		listActions
+		listActions,
+		isPrivate = false
 	} = $props<{
 		entry: EntryData;
 		type?: 'series' | 'volume';
@@ -46,8 +48,10 @@
 		onSelect?: (e: MouseEvent) => void;
 		onLongPress?: () => void;
 		circleAction?: Snippet;
+		secondaryCircleAction?: Snippet;
 		titleAction?: Snippet;
 		listActions?: Snippet;
+		isPrivate?: boolean;
 	}>();
 
 	// Determine read status for badge
@@ -111,6 +115,19 @@
 			<div
 				class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent opacity-40 h-20"
 			></div>
+
+			<!-- P/S Badge -->
+			<div class="absolute top-2 left-2 z-20">
+				<span
+					class="px-2 py-1 rounded-md text-[10px] font-bold backdrop-blur-sm {isPrivate
+						? 'bg-blue-500/80 text-white border border-blue-400/50'
+						: 'bg-emerald-500/80 text-white border border-emerald-400/50'}"
+					title={isPrivate ? 'Private Library' : 'Shared Library'}
+				>
+					{isPrivate ? 'P' : 'S'}
+				</span>
+			</div>
+
 			<div
 				class="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10"
 			></div>
@@ -146,43 +163,50 @@
 				</div>
 			</div>
 
-			<div class="relative grid place-items-center w-11 h-11 flex-shrink-0">
-				{#if circleAction}
-					<div class="z-30 col-start-1 row-start-1 pointer-events-auto">
-						{@render circleAction()}
+			<div class="flex items-center gap-1">
+				{#if secondaryCircleAction}
+					<div class="z-30 pointer-events-auto opacity-60 hover:opacity-100 transition-opacity duration-200">
+						{@render secondaryCircleAction()}
 					</div>
 				{/if}
+				<div class="relative grid place-items-center w-11 h-11 flex-shrink-0">
+					{#if circleAction}
+						<div class="z-30 col-start-1 row-start-1 pointer-events-auto">
+							{@render circleAction()}
+						</div>
+					{/if}
 
-				<svg
-					class="col-start-1 row-start-1 w-11 h-11 transform -rotate-90 overflow-visible pointer-events-none"
-					viewBox="0 0 44 44"
-				>
-					<circle
-						cx="22"
-						cy="22"
-						r="18"
-						stroke="currentColor"
-						stroke-width="3.5"
-						fill="none"
-						class="text-theme-border-light"
-					/>
-					<circle
-						cx="22"
-						cy="22"
-						r="18"
-						stroke="currentColor"
-						stroke-width="3.5"
-						fill="none"
-						class="neon-glow transition-all duration-700 {status.color === 'bg-status-success'
-							? 'text-status-success'
-							: status.color === 'bg-accent'
-								? 'text-accent'
-								: 'text-status-unread'}"
-						stroke-dasharray="113.10"
-						stroke-dashoffset={113.1 - (113.1 * (progress.isRead ? 100 : progress.percent)) / 100}
-						stroke-linecap="round"
-					/>
-				</svg>
+					<svg
+						class="col-start-1 row-start-1 w-11 h-11 transform -rotate-90 overflow-visible pointer-events-none"
+						viewBox="0 0 44 44"
+					>
+						<circle
+							cx="22"
+							cy="22"
+							r="18"
+							stroke="currentColor"
+							stroke-width="3.5"
+							fill="none"
+							class="text-theme-border-light"
+						/>
+						<circle
+							cx="22"
+							cy="22"
+							r="18"
+							stroke="currentColor"
+							stroke-width="3.5"
+							fill="none"
+							class="neon-glow transition-all duration-700 {status.color === 'bg-status-success'
+								? 'text-status-success'
+								: status.color === 'bg-accent'
+									? 'text-accent'
+									: 'text-status-unread'}"
+							stroke-dasharray="113.10"
+							stroke-dashoffset={113.1 - (113.1 * (progress.isRead ? 100 : progress.percent)) / 100}
+							stroke-linecap="round"
+						/>
+					</svg>
+				</div>
 			</div>
 		</div>
 	</div>

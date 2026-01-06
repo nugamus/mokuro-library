@@ -205,7 +205,7 @@ class ReaderState {
   /**
    * Initialize the reader with a volume ID.
    */
-  async mount(volumeId: string) {
+  async mount(volumeId: string, options?: { isPreview?: boolean }) {
     await this.cleanup(); // Reset volume data
     this.isLoading = true;
     this.error = null;
@@ -217,8 +217,8 @@ class ReaderState {
       document.documentElement.requestFullscreen().catch(handleError);
 
     try {
-      await this.loadVolumeData(volumeId);
-      this.setupVolumeWatchers(volumeId);
+      await this.loadVolumeData(volumeId, options?.isPreview);
+      this.setupVolumeWatchers(volumeId, options?.isPreview);
     } catch (e) {
       console.error('Reader Load Error:', e);
       this.error = (e as Error).message;
@@ -259,18 +259,22 @@ class ReaderState {
       document.exitFullscreen().catch(handleError);
   }
 
-  private async loadVolumeData(volumeId: string) {
-    const [volData, progressData] = await Promise.all([
+  private async loadVolumeData(volumeId: string, isPreview = false) {
+    const promises: [Promise<VolumeReaderResponse>, Promise<UserProgress | undefined>] = [
       apiFetch(`/api/library/volume/${volumeId}`, {
         cache: true, onStaleRefetch: (data) => {
           if (this.canLazyServe) this.volume = data;
         }
       }) as Promise<VolumeReaderResponse>,
-      apiFetch(`/api/metadata/volume/${volumeId}/progress`) as Promise<UserProgress>
-    ]);
+      isPreview
+        ? Promise.resolve(undefined)
+        : apiFetch(`/api/metadata/volume/${volumeId}/progress`) as Promise<UserProgress>
+    ];
+
+    const [volData, progressData] = await Promise.all(promises);
 
     let startPage = 0;
-    if (progressData && typeof progressData.page === 'number') {
+    if (!isPreview && progressData && typeof progressData.page === 'number') {
       startPage = Math.max(0, progressData.page - 1);
     }
 
@@ -281,18 +285,21 @@ class ReaderState {
     this.initialPageIndex = startPage;
   }
 
-  private setupVolumeWatchers(volumeId: string) {
+  private setupVolumeWatchers(volumeId: string, isPreview = false) {
     // scoped to this mount instance
     this.cleanupEffectRoot = $effect.root(() => {
-      $effect(() => {
-        const currentPage = this.currentPageIndex;
-        if (currentPage !== this.initialPageIndex && this.volume?.id === volumeId) {
-          if (this.progressSaveTimer) clearTimeout(this.progressSaveTimer);
-          this.progressSaveTimer = setTimeout(() => {
-            this.saveProgress(volumeId);
-          }, 2000);
-        }
-      });
+      // Don't save progress in preview mode
+      if (!isPreview) {
+        $effect(() => {
+          const currentPage = this.currentPageIndex;
+          if (currentPage !== this.initialPageIndex && this.volume?.id === volumeId) {
+            if (this.progressSaveTimer) clearTimeout(this.progressSaveTimer);
+            this.progressSaveTimer = setTimeout(() => {
+              this.saveProgress(volumeId);
+            }, 2000);
+          }
+        });
+      }
 
       $effect(() => {
         const b = this.isNightModeActive ? this.nightMode.intensity : 100;

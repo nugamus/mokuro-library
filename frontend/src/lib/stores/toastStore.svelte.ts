@@ -23,6 +23,10 @@ class ToastStore {
 		this.toasts = this.toasts.filter((t) => t.id !== id);
 	}
 
+	addToast(message: string, type: Toast['type'] = 'info', duration?: number) {
+		this.show({ type, message, duration });
+	}
+
 	success(message: string, duration?: number) {
 		this.show({ type: 'success', message, duration });
 	}

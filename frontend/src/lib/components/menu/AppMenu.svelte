@@ -4,6 +4,7 @@
 	import { apiFetch, triggerDownload } from '$lib/services/api';
 	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import { goto } from '$app/navigation';
+	import { apiCache } from '$lib/utils/caching/apiCache';
 	import MenuWrapper from '$lib/components/menu/MenuWrapper.svelte';
 	import MenuItem from '$lib/components/menu/MenuItem.svelte';
 	import MenuSeparator from '$lib/components/menu/MenuSeparator.svelte';
@@ -13,6 +14,7 @@
 	import { contributionsStore } from '$lib/stores/contributionsStore';
 
 	let isDownloadOpen = $state(false);
+	let isAdmin = $derived($user?.role === 'admin');
 
 	const handleLogout = async () => {
 		try {
@@ -21,6 +23,7 @@
 			console.error('Logout failed:', e);
 		}
 		user.set(null);
+		apiCache.setUserId(null);
 		contextMenu.close();
 	};
 
@@ -257,14 +260,27 @@
 				>
 			{/snippet}
 			{#snippet badge()}
-				<!-- Badge showing count of series with conflicts to resolve -->
-				{#if $contributionsStore.behind > 0}
-					<span
-						class="ml-auto px-2 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center"
-					>
-						{$contributionsStore.behind}
-					</span>
-				{/if}
+				<div class="ml-auto flex items-center gap-1.5">
+					<!-- Submissions Badge (admin-only) -->
+					{#if isAdmin && $contributionsStore.pendingSubmissionsCount > 0}
+						<span
+							class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-orange-500 text-white min-w-[20px] text-center"
+							title={`${$contributionsStore.pendingSubmissionsCount} pending submissions`}
+						>
+							{$contributionsStore.pendingSubmissionsCount}
+						</span>
+					{/if}
+
+					<!-- OCR Edits Badge -->
+					{#if $contributionsStore.behind > 0}
+						<span
+							class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center"
+							title={`${$contributionsStore.behind} volumes need rebasing`}
+						>
+							{$contributionsStore.behind}
+						</span>
+					{/if}
+				</div>
 			{/snippet}
 		</MenuItem>
 

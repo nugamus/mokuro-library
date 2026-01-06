@@ -11,6 +11,7 @@ export interface LibraryQuery {
   bookmarked?: string;
   filter_missing?: 'cover' | 'description' | 'title' | 'any' | 'none';
   is_organized?: 'true' | 'false';
+  owner?: 'admin' | 'user' | 'all';
 }
 
 export interface LibraryEntry {

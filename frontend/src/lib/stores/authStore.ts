@@ -1,5 +1,6 @@
 import { writable } from 'svelte/store';
 import { apiFetch } from '$lib/services/api';
+import { apiCache } from '$lib/utils/caching/apiCache';
 import type { KeybindsConfig } from '$lib/keybinds';
 
 // Define the shape of user settings
@@ -57,10 +58,15 @@ export async function checkAuth() {
     if (!userData.settings) {
       userData.settings = {};
     }
-    user.set(userData as AuthUser);
+    const authUser = userData as AuthUser;
+    user.set(authUser);
+
+    // Clear cache if user changed
+    apiCache.setUserId(authUser.id);
   } catch (error) {
     // If it fails (e.g., 401), we're not logged in
     user.set(null);
+    apiCache.setUserId(null);
   }
 }
 

@@ -125,8 +125,24 @@ export async function deleteVolumeById(
   // 5. Delete from DB
   await fastify.prisma.volume.delete({ where: { id: volumeId } });
 
-  // 6. Recalculate series status
-  await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
+  // 6. Check if this was the last volume - if so, delete the series
+  const remainingVolumes = volume.series._count.volumes - 1; // Subtract the one we just deleted
+  if (remainingVolumes === 0) {
+    // Delete the series and its directory
+    const seriesDirRelative = path.join('uploads', volume.series.ownerId, volume.series.folderName);
+    const seriesDirAbsolute = path.join(fastify.projectRoot, seriesDirRelative);
+
+    try {
+      await fs.promises.rm(seriesDirAbsolute, { recursive: true, force: true });
+    } catch (e) {
+      fastify.log.warn(`Failed to delete empty series directory: ${seriesDirAbsolute}. ${e}`);
+    }
+
+    await fastify.prisma.series.delete({ where: { id: volume.seriesId } });
+  } else {
+    // 7. Recalculate series status if series still exists
+    await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
+  }
 
   return volume.title || volume.folderName;
 }

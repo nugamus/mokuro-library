@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { apiFetch } from '$lib/services/api';
 	import { user, type AuthUser } from '$lib/stores/authStore';
+	import { apiCache } from '$lib/utils/caching/apiCache';
 	import AuthBackground from './AuthBackground.svelte';
 	import AuthHeader from './AuthHeader.svelte';
 	import AuthForm from './AuthForm.svelte';
@@ -68,7 +69,11 @@
 				body: { username, password }
 			});
 
-			user.set(userData as AuthUser);
+			const authUser = userData as AuthUser;
+			user.set(authUser);
+
+			// Clear cache if user changed
+			apiCache.setUserId(authUser.id);
 
 			if (redirectOnAuth) {
 				await goto('/');
@@ -108,7 +113,12 @@
 					body: { username, password }
 				});
 
-				user.set(userData as AuthUser);
+				const authUser = userData as AuthUser;
+				user.set(authUser);
+
+				// Clear cache if user changed
+				apiCache.setUserId(authUser.id);
+
 				if (redirectOnAuth) {
 					await goto('/');
 				}

@@ -39,7 +39,7 @@
 
 	// State
 	let activeCategory = $state('reader');
-	let loadedComponent = $state<ComponentType | null>(null);
+	let LoadedComponent = $state<ComponentType | null>(null);
 	let isLoadingComponent = $state(false);
 
 	// Load component when category changes
@@ -50,7 +50,7 @@
 			category
 				.loader()
 				.then((module) => {
-					loadedComponent = module.default;
+					LoadedComponent = module.default;
 					isLoadingComponent = false;
 				})
 				.catch((err) => {
@@ -219,8 +219,8 @@
 			<div class="flex items-center justify-center p-12">
 				<div class="text-theme-secondary">Loading...</div>
 			</div>
-		{:else if loadedComponent}
-			<svelte:component this={loadedComponent} />
+		{:else if LoadedComponent}
+			<LoadedComponent />
 		{/if}
 	</main>
 </div>

@@ -28,6 +28,7 @@ model User {
   authoredPatches  Patch[]
   seriesSettings   UserSeriesSettings[]
   submissions      Submission[]
+  submissionComments SubmissionComment[]
 }
 
 
@@ -256,8 +257,26 @@ model Submission {
   // Volumes in this submission (1-to-many: each volume tracks its last submission)
   volumes         Volume[]
 
+  // Comments on this submission
+  comments        SubmissionComment[]
+
   @@index([userId])
   @@index([status])
+}
+
+model SubmissionComment {
+  id           String     @id @default(cuid())
+  content      String
+  createdAt    DateTime   @default(now())
+
+  submission   Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId String
+
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       String
+
+  @@index([submissionId])
+  @@index([userId])
 }
 
 model RebaseSession {

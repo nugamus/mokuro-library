@@ -1,5 +1,5 @@
 import { apiFetch } from '$lib/services/api';
-import { toastStore } from '$lib/stores/toastStore.svelte';
+import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 import { apiCache } from '$lib/utils/caching/apiCache';
 
 type RevertCallback = () => void;

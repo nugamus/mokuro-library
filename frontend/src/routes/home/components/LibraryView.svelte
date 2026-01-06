@@ -12,12 +12,14 @@
 	import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
 	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 	import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
+	import SubmitVolumesModal from '../../../routes/contributions/components/modals/SubmitVolumesModal.svelte';
 	import type {
 		FilterStatus,
 		FilterMissing,
 		FilterOrganization
 	} from '$lib/states/ui/uiState.svelte.ts';
 	import { formatLastReadDate } from '$lib/utils/helpers/date';
+	import { apiCache } from '$lib/utils/caching/apiCache';
 
 	interface UserProgress {
 		page: number;
@@ -37,6 +39,8 @@
 
 	let isEditModalOpen = $state(false);
 	let editModalTarget: Series | null = $state(null);
+	let isSubmitModalOpen = $state(false);
+	let preSelectedSeriesIds = $state<string[]>([]);
 	let pullDistance = $state(0);
 	let touchStartY = $state(0);
 	let isRefreshing = $state(false);
@@ -82,6 +86,10 @@
 			{ key: 'updated', label: 'Last Updated' },
 			{ key: 'lastRead', label: 'Recent' }
 		]);
+
+		// Soft invalidate library cache to ensure fresh data on mount
+		// This ensures we get updated series list when switching users or new content is added
+		apiCache.invalidateLibraryCache(false);
 	});
 
 	onMount(() => {
@@ -239,6 +247,13 @@
 		}
 	};
 
+	const handleOpenSubmit = () => {
+		// Get all selected series IDs
+		const selectedSeriesIds = Array.from(uiState.selection.keys());
+		preSelectedSeriesIds = selectedSeriesIds;
+		isSubmitModalOpen = true;
+	};
+
 	const handleCardClick = (e: MouseEvent, series: Series) => {
 		if (uiState.isSelectionMode) {
 			e.preventDefault();
@@ -391,6 +406,7 @@
 							viewMode={uiState.viewMode}
 							{isSelected}
 							isSelectionMode={uiState.isSelectionMode}
+							isPrivate={series.canEdit ?? false}
 							progress={{
 								percent: percent,
 								isRead: isRead,
@@ -466,6 +482,7 @@
 			onRefresh={handleRefresh}
 			onSelectAll={() => uiState.selectAll(library as GlobalSeries[])}
 			onRename={handleOpenEdit}
+			onSubmit={handleOpenSubmit}
 		/>
 
 		<EditSeriesModal
@@ -476,6 +493,15 @@
 				uiState.exitSelectionMode();
 			}}
 			onRefresh={handleRefresh}
+		/>
+
+		<SubmitVolumesModal
+			bind:isOpen={isSubmitModalOpen}
+			{preSelectedSeriesIds}
+			onClose={() => {
+				isSubmitModalOpen = false;
+				uiState.exitSelectionMode();
+			}}
 		/>
 	{/if}
 </div>

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { fade, scale } from 'svelte/transition';
 	import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
-	import { toastStore } from '$lib/stores/toastStore.svelte';
+	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	import MenuInput from '$lib/components/menu/MenuInput.svelte';
 
 	interface Series {

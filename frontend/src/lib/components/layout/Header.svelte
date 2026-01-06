@@ -6,10 +6,14 @@
 	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import { fade, scale } from 'svelte/transition';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
+	import { user } from '$lib/stores/authStore';
 
 	// Import your new Menu Components
 	import FilterMenu from '$lib/components/menu/FilterMenu.svelte';
 	import AppMenu from '$lib/components/menu/AppMenu.svelte';
+
+	let isAdmin = $derived($user?.role === 'admin');
+
 
 	// --- Local State ---
 	let isMobileSearchOpen = $state(false);
@@ -464,24 +468,35 @@
 					stroke-width="2"
 					stroke-linecap="round"
 					stroke-linejoin="round"
-					><line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line
-						x1="4"
-						x2="20"
-						y1="18"
-						y2="18"
-					/></svg
-				>
-				{#if $contributionsStore.behind > 0}
-					<span
-						class="absolute -top-1 -right-1 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center shadow-lg"
-						in:scale={{ duration: 200, start: 0.5 }}
-					>
-						{$contributionsStore.behind}
-					</span>
-				{/if}
-			</button>
-		</div>
-	</div>
+									>
+										<line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line
+											x1="4"
+											x2="20"
+											y1="18"
+											y2="18"
+										/></svg
+									>
+									{#if $contributionsStore.behind > 0}
+										<span
+											class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
+											in:scale={{ duration: 200, start: 0.5 }}
+											title={$contributionsStore.behind > 1 ? `${$contributionsStore.behind} volumes need rebasing` : `${$contributionsStore.behind} volume needs rebasing`}
+										>
+											{$contributionsStore.behind}
+										</span>
+									{/if}
+									{#if isAdmin && $contributionsStore.pendingSubmissionsCount > 0}
+										<span
+											class="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-orange-500 text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
+											in:scale={{ duration: 200, start: 0.5 }}
+											title={`${$contributionsStore.pendingSubmissionsCount} pending submissions`}
+										>
+											{$contributionsStore.pendingSubmissionsCount}
+										</span>
+									{/if}
+								</button>
+							</div>
+						</div>
 
 	{#if isMobileSearchOpen}
 		<div

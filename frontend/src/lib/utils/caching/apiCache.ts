@@ -14,6 +14,7 @@ class APICache {
   private cache = new Map<string, CacheEntry<any>>();
   private maxAge = 60 * 60 * 1000; // 60 minutes default
   private staleTime = 30 * 1000; // 30 seconds - serve stale while revalidating
+  private currentUserId: string | null = null;
 
   /**
    * Get cached data or fetch fresh
@@ -167,6 +168,25 @@ class APICache {
    */
   clear(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Set current user ID and clear cache if user changed
+   * Called after login/auth check to ensure cache is user-specific
+   */
+  setUserId(userId: string | null): void {
+    if (this.currentUserId !== userId) {
+      // User changed - clear all cache
+      this.clear();
+      this.currentUserId = userId;
+    }
+  }
+
+  /**
+   * Get current user ID
+   */
+  getUserId(): string | null {
+    return this.currentUserId;
   }
 
   /**
