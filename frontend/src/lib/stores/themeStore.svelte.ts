@@ -82,7 +82,7 @@ class ThemeStore {
       id: 'catppuccin',
       name: 'Catppuccin',
       previewColors: {
-        dark: ['#1e1e2e', '#181825', '#313244', '#587dbd', '#242f4a'],
+        dark: ['#1e1e2e', '#181825', '#313244', '#89b4fa', '#242f4a'], // Updated preview dot
         light: ['#eff1f5', '#e6e9ef', '#ccd0da', '#1e66f5', '#bcc0cc']
       },
       colors: {
@@ -91,12 +91,12 @@ class ThemeStore {
           'card-background': '#181825',    // Mocha Mantle
           'card-highlight': '#313244',     // Mocha Surface0
           'border-color': '#313244',       // Mocha Surface0
-          'primary-color': '#587dbd',      // Accessible Blue (4.58:1 Contrast)
-          'primary-hover': '#4c6fb8',      // Darkened Blue for interaction
-          'primary-surface': '#242f4a',    // Deep Blue Surface (Mocha Overlay0/1 mix)
+          'primary-color': '#89b4fa',      // Mocha Blue (Vibrant & Classic)
+          'primary-hover': '#b4befe',      // Mocha Lavender (Lighter/Glowing hover)
+          'primary-surface': '#242f4a',    // Deep Blue Surface
           'main-text': '#cdd6f4',          // Mocha Text
           'muted-text': '#bac2de',         // Mocha Subtext1
-          'reading-color': '#587dbd'       // Accessible Blue
+          'reading-color': '#89b4fa'       // Mocha Blue
         },
         light: {
           'main-background': '#eff1f5',    // Latte Base
@@ -106,8 +106,8 @@ class ThemeStore {
           'primary-color': '#1e66f5',      // Latte Blue
           'primary-hover': '#179299',      // Latte Teal
           'primary-surface': '#dce0e8',    // Latte Crust
-          'main-text': '#181825',          // Mantle (for high contrast text)
-          'muted-text': '#4c4f69',         // Latte Text (muted)
+          'main-text': '#181825',          // Mantle
+          'muted-text': '#4c4f69',         // Latte Text
           'reading-color': '#1e66f5'       // Latte Blue
         }
       }

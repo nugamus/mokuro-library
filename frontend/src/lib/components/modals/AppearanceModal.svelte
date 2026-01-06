@@ -288,6 +288,7 @@
 					}))}
 				>
 					{#snippet children(option, isSelected)}
+						{@const colors = option.colors as string[]}
 						<div class="flex flex-1 flex-col items-center sm:flex-row sm:justify-between gap-2">
 							<span
 								class="font-medium flex-shrink-0 text-left {isSelected
@@ -295,7 +296,7 @@
 									: 'text-theme-primary'}">{option.label}</span
 							>
 							<div class="flex gap-0 sm:gap-1 flex-shrink-0">
-								{#each option.colors as color}
+								{#each colors as color}
 									<div
 										class="w-3 h-4 sm:w-4 sm:rounded sm:border border-theme-border-light"
 										style="background-color: {color};"
@@ -589,6 +590,3 @@
 			handleCustomColorChange(openColorPickerMode!, openColorPicker!, color)}
 	/>
 {/if}
-
-
-
