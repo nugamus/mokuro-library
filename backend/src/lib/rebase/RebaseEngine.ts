@@ -1,10 +1,7 @@
 import { ulid } from 'ulid';
 import { FastifyInstance } from 'fastify';
-import path from 'path';
-import fs from 'fs';
 import {
   RebaseResult,
-  Resolution,
   ExtendedPatch,
   ResolutionType,
   Effect
@@ -12,8 +9,8 @@ import {
 import { PatchOperation } from '../../types/history';
 import { PatchTransformer } from './PatchTransformer';
 import { EffectFactory } from './Effect';
-import { fetchAncestryChain, inheritAdminSnapshot, saveSnapshot, syncSnapshot } from '../../utils/ocrHelpers';
-import { OcrBranch, Prisma } from '../../generated/prisma/client';
+import { fetchAncestryChain, inheritAdminSnapshot, OcrBranchWithTimestamps } from '../../utils/ocrHelpers';
+import { Prisma } from '../../generated/prisma/client';
 
 interface RebaseContext {
   sessionId: string;
@@ -50,12 +47,21 @@ export class RebaseEngine {
   async start(volumeId: string, userId: string): Promise<RebaseResult> {
     const branch = await this.prisma.ocrBranch.findUnique({
       where: { volumeId_userId: { volumeId, userId } },
-      include: { rootPatch: true, headPatch: true }
+      include: {
+        headPatch: { select: { id: true, createdAt: true } },
+        rootPatch: { select: { id: true, createdAt: true } },
+        snapshotPatch: { select: { id: true, createdAt: true } }
+      }
     });
     if (!branch) throw new Error('Branch not found');
 
     const adminBranch = await this.prisma.ocrBranch.findUnique({
-      where: { volumeId_userId: { volumeId, userId: 'admin' } }
+      where: { volumeId_userId: { volumeId, userId: 'admin' } },
+      include: {
+        headPatch: { select: { id: true, createdAt: true } },
+        rootPatch: { select: { id: true, createdAt: true } },
+        snapshotPatch: { select: { id: true, createdAt: true } }
+      }
     });
     if (!adminBranch) throw new Error('Admin branch not found');
 
@@ -258,12 +264,19 @@ export class RebaseEngine {
     let prevId = ctx.targetHeadId;
 
 
-    const currentBranch = await this.prisma.ocrBranch.findUnique({ where: { id: ctx.branchId } });
-    if (!currentBranch || currentBranch.headPatchId !== ctx.originalBranchHeadId) {
+    const userBranch = await this.prisma.ocrBranch.findUnique({
+      where: { id: ctx.branchId },
+    });
+    if (!userBranch || userBranch.headPatchId !== ctx.originalBranchHeadId) {
       throw new Error('Branch was modified during rebase. Please retry.');
     }
     const adminBranch = await this.prisma.ocrBranch.findUnique({
-      where: { volumeId_userId: { volumeId: currentBranch.volumeId, userId: 'admin' } }
+      where: { volumeId_userId: { volumeId: userBranch.volumeId, userId: 'admin' } },
+      include: {
+        headPatch: { select: { id: true, createdAt: true } },
+        rootPatch: { select: { id: true, createdAt: true } },
+        snapshotPatch: { select: { id: true, createdAt: true } }
+      }
     });
     if (!adminBranch) throw new Error('Admin branch not found');
 
@@ -272,7 +285,7 @@ export class RebaseEngine {
       newPatchesData.push({
         id: newId,
         parentId: prevId,
-        volumeId: currentBranch.volumeId,
+        volumeId: userBranch.volumeId,
         userId: ctx.userId,
         operation: JSON.stringify(op),
         createdAt: new Date(),
@@ -280,7 +293,7 @@ export class RebaseEngine {
       prevId = newId;
     }
 
-    await this.prisma.$transaction(async (tx: any) => {
+    const newUserBranch = await this.prisma.$transaction(async (tx: any) => {
       if (newPatchesData.length > 0) {
         await tx.patch.createMany({ data: newPatchesData });
       }
@@ -293,44 +306,53 @@ export class RebaseEngine {
         ? newPatchesData[0].id
         : null;
 
-      await tx.ocrBranch.update({
+      await tx.rebaseSession.delete({ where: { id: ctx.sessionId } });
+
+      if (ctx.originalUserChain.length > 0) {
+        const oldRootId = userBranch.rootPatchId!;
+        const exists = await tx.patch.findUnique({ where: { id: oldRootId } });
+        if (exists) await tx.patch.delete({ where: { id: oldRootId } });
+      }
+
+      return await tx.ocrBranch.update({
         where: { id: ctx.branchId },
         data: {
           headPatchId: newHeadId,
           rootPatchId: newRootId,
           version: { increment: 1 },
-          snapshotPatchId: adminBranch.snapshotPatchId
+          snapshotPatchId: null
+        },
+        include: {
+          headPatch: { select: { id: true, createdAt: true } },
+          rootPatch: { select: { id: true, createdAt: true } },
+          snapshotPatch: { select: { id: true, createdAt: true } }
         }
       });
-
-
-      await tx.rebaseSession.delete({ where: { id: ctx.sessionId } });
-
-      if (ctx.originalUserChain.length > 0) {
-        const oldRootId = ctx.originalUserChain[0].id;
-        const exists = await tx.patch.findUnique({ where: { id: oldRootId } });
-        if (exists) await tx.patch.delete({ where: { id: oldRootId } });
-      }
     });
 
     // Copy admin snapshot to user
-    await inheritAdminSnapshot(this.fastify, currentBranch, adminBranch);
+    await inheritAdminSnapshot(this.fastify, newUserBranch, adminBranch);
     sessionCache.delete(ctx.sessionId);
   }
 
-  private async fastForward(userBranch: OcrBranch, adminBranch: OcrBranch) {
-    await this.prisma.ocrBranch.update({
+  private async fastForward(userBranch: OcrBranchWithTimestamps, adminBranch: OcrBranchWithTimestamps) {
+    const newUserBranch = await this.prisma.ocrBranch.update({
       where: { id: userBranch.id },
       data: {
         headPatchId: adminBranch.headPatchId,
         rootPatchId: null,
-        snapshotPatchId: adminBranch.snapshotPatchId,
+        snapshotPatchId: null,
         version: { increment: 1 }
+      },
+      include: {
+        headPatch: { select: { id: true, createdAt: true } },
+        rootPatch: { select: { id: true, createdAt: true } },
+        snapshotPatch: { select: { id: true, createdAt: true } }
       }
     });
 
     // Copy admin snapshot to user
-    await inheritAdminSnapshot(this.fastify, userBranch, adminBranch);
+    await inheritAdminSnapshot(this.fastify, newUserBranch, adminBranch);
   }
 
   private async restoreSession(sessionId: string): Promise<RebaseContext> {

@@ -8,6 +8,12 @@ import { OcrBranch, Patch } from '../generated/prisma/client';
 import { ExtendedPrismaClient } from '../lib/prisma';
 import { HttpError } from '../types/error';
 
+export type OcrBranchWithTimestamps = OcrBranch & {
+  headPatch: Pick<Patch, 'id' | 'createdAt'>;
+  rootPatch: Pick<Patch, 'id' | 'createdAt'> | null;
+  snapshotPatch: Pick<Patch, 'id' | 'createdAt'> | null;
+};
+
 // ============================================================================
 // LOW-LEVEL HELPERS
 // ============================================================================
@@ -36,14 +42,19 @@ export async function loadOriginalMokuro(fastify: FastifyInstance, mokuroPath: s
 }
 
 // --- Helper: Persist Snapshot ---
-export async function saveSnapshot(fastify: FastifyInstance, branchId: string, data: MokuroData, dataPatchId: string): Promise<OcrBranch> {
+export async function saveSnapshot(fastify: FastifyInstance, branchId: string, data: MokuroData, dataPatchId: string): Promise<OcrBranchWithTimestamps> {
   const snapshotPath = path.join(fastify.projectRoot, 'uploads', 'cache', 'snapshots', `${branchId}.json`);
   if (!data.patch_id) throw Error(`Patch data has no associated patchId.`);
   if (data.patch_id !== dataPatchId) throw Error(`PatchId mismatch. Make sure you have the correct version and set data.patch_id.`);
 
   let updatedBranch = await fastify.prisma.ocrBranch.update({
     where: { id: branchId },
-    data: { snapshotPatchId: dataPatchId }
+    data: { snapshotPatchId: dataPatchId },
+    include: {
+      headPatch: { select: { id: true, createdAt: true } },
+      rootPatch: { select: { id: true, createdAt: true } },
+      snapshotPatch: { select: { id: true, createdAt: true } }
+    }
   });
   await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
   await fs.promises.writeFile(snapshotPath, JSON.stringify(data));
@@ -120,37 +131,38 @@ export async function loadSnapshot(
 // Loads snapshot, syncs if stale, regenerates if corrupt/missing.
 export async function syncSnapshot(
   fastify: FastifyInstance,
-  branch: OcrBranch,
-  targetPatchId: string = branch.headPatchId
+  branch: OcrBranchWithTimestamps,
+  targetPatch: Pick<Patch, 'id' | 'createdAt'> = branch.headPatch
 ): Promise<{ data: MokuroData, branch: OcrBranch }> {
 
-  if (targetPatchId > branch.headPatchId) throw Error("Cannot sync to target that is in the future of HEAD");
+  if (targetPatch.createdAt > branch.headPatch.createdAt) throw Error("Cannot sync to target that is in the future of HEAD");
 
   let data: MokuroData;
   try {
     data = await loadSnapshot(fastify, branch);
   } catch (e) {
     fastify.log.warn(`Load snapshot for sync failed: ${e}`);
-    return regenerateFromGenesis(fastify, targetPatchId, branch.id);
+    return regenerateFromGenesis(fastify, targetPatch.id, branch.id);
   }
 
   const startPatchId = branch.snapshotPatchId!;
+  const startPatchCreatedAt = branch.snapshotPatch!.createdAt;
 
   // Already up to date
-  if (startPatchId === targetPatchId) {
+  if (startPatchId === targetPatch.id) {
     return { data, branch };
   }
 
-  const isForward = targetPatchId > startPatchId;
-  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${targetPatchId} (${isForward ? 'forward' : 'backward'})`);
+  const isForward = targetPatch.createdAt > startPatchCreatedAt;
+  fastify.log.info(`Syncing snapshot ${startPatchId} -> ${targetPatch.id} (${isForward ? 'forward' : 'backward'})`);
 
   if (isForward) {
-    const chain = await fetchAncestryChain(fastify.prisma, targetPatchId, startPatchId);
+    const chain = await fetchAncestryChain(fastify.prisma, targetPatch.id, startPatchId);
 
     const last = chain[chain.length - 1];
     if (!last || last.parentId !== startPatchId) {
       fastify.log.warn(`Forward chain broken, regenerating from genesis`);
-      return regenerateFromGenesis(fastify, targetPatchId, branch.id);
+      return regenerateFromGenesis(fastify, targetPatch.id, branch.id);
     }
 
     // Apply in chronological order (reverse of ancestry)
@@ -164,12 +176,12 @@ export async function syncSnapshot(
       }
     }
   } else {
-    const chain = await fetchAncestryChain(fastify.prisma, startPatchId, targetPatchId);
+    const chain = await fetchAncestryChain(fastify.prisma, startPatchId, targetPatch.id);
 
     const last = chain[chain.length - 1];
-    if (!last || last.parentId !== targetPatchId) {
+    if (!last || last.parentId !== targetPatch.id) {
       fastify.log.warn(`Backward chain broken, regenerating from genesis`);
-      return regenerateFromGenesis(fastify, targetPatchId, branch.id);
+      return regenerateFromGenesis(fastify, targetPatch.id, branch.id);
     }
 
     // Invert in reverse chronological order
@@ -183,8 +195,8 @@ export async function syncSnapshot(
     }
   }
 
-  data.patch_id = targetPatchId;
-  branch = await saveSnapshot(fastify, branch.id, data, targetPatchId);
+  data.patch_id = targetPatch.id;
+  branch = await saveSnapshot(fastify, branch.id, data, targetPatch.id);
 
   // if the branch is admin, that means any dangling patches should not have any more dependencies
   // this is lazy clean up for undo operations
@@ -202,24 +214,31 @@ export async function syncSnapshot(
   return { data, branch };
 }
 
-export async function inheritAdminSnapshot(fastify: FastifyInstance, userBranch: OcrBranch, adminBranch: OcrBranch) {
+export async function inheritAdminSnapshot(fastify: FastifyInstance, userBranch: OcrBranchWithTimestamps, adminBranch: OcrBranchWithTimestamps) {
   if (userBranch.volumeId !== adminBranch.volumeId) throw new HttpError(400, `Failed to inherit admin snapshot: branch volume mismatch.`);
-  if (userBranch.rootPatchId && userBranch.rootPatchId <= adminBranch.headPatchId) throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`)
-  if (userBranch.headPatchId < adminBranch.headPatchId) throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`)
+  if (userBranch.rootPatch?.createdAt && userBranch.rootPatch.createdAt <= adminBranch.headPatch.createdAt)
+    throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`);
+  if (userBranch.headPatch.createdAt < adminBranch.headPatch.createdAt)
+    throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`);
 
   const { data: new_data } = await syncSnapshot(fastify, adminBranch);
   return await saveSnapshot(fastify, userBranch.id, new_data, new_data.patch_id ?? '');
 }
 
 // --- Helper: Ensure Admin Branch ---
-export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: string, mokuroPath: string): Promise<OcrBranch> {
+export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: string, mokuroPath: string): Promise<OcrBranchWithTimestamps> {
   let adminBranch = await fastify.prisma.ocrBranch.findUnique({
-    where: { volumeId_userId: { volumeId, userId: 'admin' } }
+    where: { volumeId_userId: { volumeId, userId: 'admin' } },
+    include: {
+      headPatch: { select: { id: true, createdAt: true } },
+      rootPatch: { select: { id: true, createdAt: true } },
+      snapshotPatch: { select: { id: true, createdAt: true } }
+    }
   });
   if (adminBranch) return adminBranch;
 
   const data = await loadOriginalMokuro(fastify, mokuroPath);
-  adminBranch = await fastify.prisma.$transaction(async (tx: any) => {
+  adminBranch = await fastify.prisma.$transaction(async (tx) => {
     const genesisPatch = await tx.patch.create({
       data: {
         volumeId,
@@ -236,6 +255,11 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
         headPatchId: genesisPatch.id,
         rootPatchId: genesisPatch.id,
         snapshotPatchId: genesisPatch.id
+      },
+      include: {
+        headPatch: { select: { id: true, createdAt: true } },
+        rootPatch: { select: { id: true, createdAt: true } },
+        snapshotPatch: { select: { id: true, createdAt: true } }
       }
     });
 
@@ -251,10 +275,15 @@ export async function ensureUserBranch(
   fastify: FastifyInstance,
   volumeId: string,
   userId: string,
-  adminBranch: OcrBranch
+  adminBranch: OcrBranchWithTimestamps
 ) {
   let userBranch = await fastify.prisma.ocrBranch.findUnique({
-    where: { volumeId_userId: { volumeId, userId } }
+    where: { volumeId_userId: { volumeId, userId } },
+    include: {
+      headPatch: { select: { id: true, createdAt: true } },
+      rootPatch: { select: { id: true, createdAt: true } },
+      snapshotPatch: { select: { id: true, createdAt: true } }
+    }
   });
   if (userBranch) return userBranch;
 
@@ -265,6 +294,11 @@ export async function ensureUserBranch(
       headPatchId: adminBranch.headPatchId,
       rootPatchId: null,
       snapshotPatchId: adminBranch.snapshotPatchId
+    },
+    include: {
+      headPatch: { select: { id: true, createdAt: true } },
+      rootPatch: { select: { id: true, createdAt: true } },
+      snapshotPatch: { select: { id: true, createdAt: true } }
     }
   });
 

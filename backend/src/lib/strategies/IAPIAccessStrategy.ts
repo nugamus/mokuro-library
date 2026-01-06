@@ -57,7 +57,7 @@ export interface IAPIAccessStrategy {
    * Admin: Fast-forward merge a user's branch into master.
    * User: Throws 403.
    */
-  merge(volumeId: string, sourceUserId: string): Promise<void>;
+  officialize(volumeId: string, sourceUserId: string): Promise<void>;
 
   /**
    * Admin: Non-destructive undo (inverse patch).

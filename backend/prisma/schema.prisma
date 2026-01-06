@@ -129,6 +129,7 @@ model Patch {
   // Pointers from Branch
   asHeadOf    OcrBranch[]   @relation("BranchHead")
   asRootOf    OcrBranch[]   @relation("BranchRoot")
+  asSnShOf    OcrBranch[]   @relation("BranchSnapshot")
 
   // Pointers from rebase session
   rebaseSessionsAsTarget   RebaseSession[] @relation("RebaseTarget")
@@ -160,7 +161,8 @@ model OcrBranch {
   // The patch ID that the cached snapshot represents.
   // IF SET: Snapshot file exists at cache/snapshots/{branchId}.json
   // Stale check: snapshotPatchId !== headPatchId means snapshot is outdated.
-  snapshotPatchId String
+  snapshotPatchId String?
+  snapshotPatch   Patch?    @relation("BranchSnapshot", fields: [snapshotPatchId], references: [id], onDelete: SetNull)
 
   // --- Concurrency ---
   version     Int      @default(0)     // Optimistic Locking Counter

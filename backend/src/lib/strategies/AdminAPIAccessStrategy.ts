@@ -11,6 +11,8 @@ import {
 import { IAPIAccessStrategy } from './IAPIAccessStrategy';
 import {
   ensureAdminBranch,
+  ensureUserBranch,
+  fetchAncestryChain,
   loadSnapshot,
   saveSnapshot,
   syncSnapshot
@@ -26,6 +28,7 @@ import {
   revertMoves
 } from '../../utils/submissionHelper';
 import { HttpError } from '../../types/error';
+import { ExtendedPrismaClient } from '../prisma';
 
 /**
  * Strategy for the Administrator.
@@ -125,11 +128,11 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
       throw new HttpError(409, 'Version mismatch. Please refresh.');
     }
 
-    const headPatchId = adminBranch.headPatchId;
-    const snapshotPatchId = adminBranch.snapshotPatchId; // Non-nullable per schema
+    const headPatch = adminBranch.headPatch;
+    const snapshotPatch = adminBranch.snapshotPatch; // Non-nullable per schema
 
     const patch = await this.fastify.prisma.patch.findUnique({
-      where: { id: headPatchId },
+      where: { id: headPatch.id },
       select: { nextPatchId: true }
     });
     if (!patch) throw new HttpError(500, 'Branch HEAD patch not found.');
@@ -137,7 +140,8 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     // 3. Snapshot Integrity Check
     // If the snapshot is chronologically ahead of the current HEAD (due to previous undos),
     // we must sync the file back to the current HEAD state before writing new changes.
-    if (snapshotPatchId > headPatchId) {
+    const isSnapshotAhead = snapshotPatch && snapshotPatch.createdAt > headPatch.createdAt;
+    if (isSnapshotAhead) {
       this.fastify.log.info(`[AdminStrategy] Snapshot ahead of HEAD. Syncing back before write.`);
       await syncSnapshot(this.fastify, adminBranch);
     }
@@ -154,14 +158,14 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
         data: {
           volumeId,
           userId: 'admin',
-          parentId: headPatchId,
+          parentId: headPatch.id,
           operation: JSON.stringify(op),
         }
       });
 
       // Maintain 2 way relations
       await tx.patch.update({
-        where: { id: headPatchId },
+        where: { id: headPatch.id },
         data: { nextPatchId: newPatch.id }
       });
 
@@ -187,12 +191,12 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
   }
 
   /**
-     * Reverts the Master Branch HEAD.
-     * Divergence: Implements "Branch Drag".
-     * 1. Checks if any User branches depend on the current Admin HEAD.
-     * 2. If Yes: "Drags" the patch into their private history (sets their root to this patch).
-     * 3. If No: Hard deletes the patch (rewriting history).
-     */
+   * Reverts the Master Branch HEAD.
+   * Divergence: Implements "Branch Drag".
+   * 1. Checks if any User branches depend on the current Admin HEAD.
+   * 2. If Yes: "Drags" the patch into their private history (sets their root to this patch).
+   * 3. If No: Hard deletes the patch (rewriting history).
+   */
   async undo(volumeId: string, version: number): Promise<UndoResponse> {
     // 1. Authorization & Setup
     const volume = await this.fastify.prisma.volume.findUnique({
@@ -228,29 +232,31 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
 
     // 3. Dependency Check ("In the Way")
     // Check for direct Head dependents or Root dependents (forks)
-    const danglingChild = currentPatch.children.find((p) => p.id === currentPatch.nextPatchId);
     const rootDependents = currentPatch.children
-      .map((p) => p.asRootOf[0])
-      .filter(Boolean);
+      .map((p) => p.asRootOf[0] ? { ...p.asRootOf[0], rootId: p.id } : undefined)
+      .filter((p) => p !== undefined);
     const headDependents = await this.fastify.prisma.ocrBranch.findMany({
       where: { headPatchId: currentHeadId, rootPatchId: null, userId: { not: 'admin' } },
       select: { id: true }
     });
 
 
-    let dependentId: string | undefined;
+    let dependentBranchId: string | undefined;
+    let dependentPatchId: string | undefined;
     if (headDependents.length + rootDependents.length > 1) {
       throw new HttpError(409, 'Cannot undo: too many dependents, history solidified.');
     }
     if (headDependents.length === 1) {
-      dependentId = headDependents[0].id;
+      dependentBranchId = headDependents[0].id;
+      dependentPatchId = currentHeadId;
     }
     if (rootDependents.length === 1) {
-      dependentId = rootDependents[0].id;
+      dependentBranchId = rootDependents[0].id;
+      dependentPatchId = rootDependents[0].rootId;
     }
 
     // 4. Transactional Updates (Database Only)
-    const patchClone = await this.fastify.prisma.$transaction(async (tx) => {
+    const { patchClone, newUserBranch } = await this.fastify.prisma.$transaction(async (tx) => {
       // Move Admin Pointer Back
       await tx.ocrBranch.update({
         where: { id: adminBranch.id },
@@ -261,58 +267,54 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
       });
 
       let patchClone;
-      if (dependentId) {
-        // let the user branch claim the original patch
-        await tx.ocrBranch.update({
-          where: { id: dependentId },
-          data: { rootPatchId: currentHeadId }
-        });
-
-        // break doubly linked list relation for new root
-        await tx.patch.update({
-          where: { id: currentPatch.id },
-          data: {
-            nextPatchId: null
-          }
-        })
-
-        // Since the dangling patches are effectively trash,
-        // we don't have to worry about strict time-id ordering here
-        // only snapshotPatchId has to be valid time-wise
+      let newUserBranch;
+      if (dependentBranchId) {
         patchClone = await tx.patch.create({
           data: {
             volumeId,
-            userId: 'admin',
             parentId: newHeadId,
-            nextPatchId: danglingChild?.id,
+            userId: currentPatch.userId,
             operation: currentPatch.operation,
+            createdAt: currentPatch.createdAt
           }
         });
 
+        if (headDependents.length === 1) {
+          // let the user branch claim the clone patch
+          newUserBranch = await tx.ocrBranch.update({
+            where: { id: dependentBranchId },
+            data: {
+              headPatchId: patchClone.id,
+              rootPatchId: patchClone.id
+            }
+          });
+        }
 
-        // point new HEAD's nextPatchId to clone
-        await tx.patch.update({
-          where: { id: newHeadId },
-          data: { nextPatchId: patchClone.id }
-        });
-
-        // point old
-        if (danglingChild) {
+        if (rootDependents.length === 1) {
+          newUserBranch = await tx.ocrBranch.update({
+            where: { id: dependentBranchId },
+            data: {
+              rootPatchId: patchClone.id
+            }
+          });
           await tx.patch.update({
-            where: { id: danglingChild.id },
-            data: { parentId: patchClone.id }
+            where: { id: dependentPatchId },
+            data: {
+              parentId: patchClone.id
+            }
           })
         }
       }
 
-      return patchClone;
+      return { patchClone, newUserBranch };
     });
 
-    if (patchClone && adminBranch.snapshotPatchId === currentHeadId) {
+    // Migrate if user snapshot was pointing at the cloned patch's original
+    if (patchClone && newUserBranch && newUserBranch.snapshotPatchId === currentHeadId) {
       try {
-        let data = await loadSnapshot(this.fastify, adminBranch);
+        let data = await loadSnapshot(this.fastify, newUserBranch);
         data.patch_id = patchClone.id;
-        await saveSnapshot(this.fastify, adminBranch.id, data, patchClone.id);
+        await saveSnapshot(this.fastify, newUserBranch.id, data, patchClone.id);
       } catch (e) {
         this.fastify.log.warn(`Snapshot adjustment failed, future sync might take longer. ${e}`)
       }
@@ -511,9 +513,96 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     });
   }
 
-  async merge(volumeId: string, sourceUserId: string): Promise<void> {
-    throw new Error('Pending Implementation: Fast-forward merge');
+  async officialize(volumeId: string, sourceUserId: string): Promise<void> {
+    const volume = await this.fastify.prisma.volume.findUnique({
+      where: { id: volumeId, series: { ownerId: 'admin' } }, // Ensure admin owns it
+      select: { mokuroPath: true }
+    });
+    if (!volume) throw new HttpError(404, 'Volume not found');
+
+    const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
+    const userBranch = await ensureUserBranch(this.fastify, volumeId, sourceUserId, adminBranch);
+
+    if (!userBranch.rootPatchId) {
+      throw new HttpError(400, 'User branch is clean, nothing to officialize.');
+    }
+
+    // Check if fast-forward is possible
+    const [userRootPatch, userHeadPatch] = await Promise.all([
+      this.fastify.prisma.patch.findUnique({
+        where: { id: userBranch.rootPatchId }
+      }),
+      this.fastify.prisma.patch.findUnique({
+        where: { id: userBranch.headPatchId },
+        include: { children: { select: { id: true } } }
+      })
+    ]);
+    if (!userRootPatch) throw new HttpError(500, 'User root patch not found.');
+    if (!userHeadPatch) throw new HttpError(500, 'User head patch not found.');
+    if (userRootPatch.createdAt > userHeadPatch.createdAt) throw new HttpError(400, 'Cannot fast-forward: User head is not ahead of admin');
+    if (userHeadPatch.children.length > 1) throw new HttpError(500, 'Database corrupted: user head patch cannot have more than one children.');
+    if (userRootPatch.parentId !== adminBranch.headPatchId) {
+      throw new HttpError(409, 'Cannot fast-forward: User branch is not based on current Admin HEAD. User must Rebase first.');
+    }
+
+
+    // Execute Fast-Forward
+    const newUserRootId = userHeadPatch.children.length === 1 ? userHeadPatch.children[0].id : null;
+    await this.fastify.prisma.$transaction(async (tx) => {
+      // 1. Link the chain (Doubly Linked List)
+      // fetchAncestryChain walks UP from Head to (but excluding) the Admin Head (rootPatch.parentId)
+      // Result: [Head, ..., Root]
+      // We cast tx to any because it shares the QueryDelegate interface required by the helper
+      const ancestry = await fetchAncestryChain(tx as ExtendedPrismaClient, userBranch.headPatchId, userRootPatch.parentId);
+
+      // Reverse to get [Root, ..., Head] for forward linking
+      const patchesToLink = ancestry.map(p => p.id).reverse();
+
+      // Validate chain integrity
+      if (patchesToLink.length === 0 || patchesToLink[0] !== userBranch.rootPatchId) {
+        throw new HttpError(500, "Chain traversal failed to match root patch.");
+      }
+
+      // Update nextPatchIds
+      for (let i = 0; i < patchesToLink.length; i++) {
+        const current = patchesToLink[i];
+        const next = patchesToLink[i + 1]; // undefined for head
+        if (next) {
+          await tx.patch.update({
+            where: { id: current },
+            data: { nextPatchId: next }
+          });
+        }
+      }
+
+      // Link Admin Head to Root
+      await tx.patch.update({
+        where: { id: adminBranch.headPatchId },
+        data: { nextPatchId: userBranch.rootPatchId }
+      });
+
+      // 2. Move Admin Head
+      await tx.ocrBranch.update({
+        where: { id: adminBranch.id },
+        data: {
+          headPatchId: userBranch.headPatchId,
+          version: { increment: 1 }
+        }
+      });
+
+      // 3. Reset User Branch (Clean state)
+      // It stays at the same head, but root becomes pushed up the the immediate child of head.
+      await tx.ocrBranch.update({
+        where: { id: userBranch.id },
+        data: {
+          rootPatchId: newUserRootId,
+          // headPatchId remains userBranch.headPatchId (which is now same as Admin Head)
+          version: { increment: 1 }
+        }
+      });
+    });
   }
+
 
   async revert(volumeId: string, patchId: string): Promise<void> {
     throw new Error('Pending Implementation: Revert');

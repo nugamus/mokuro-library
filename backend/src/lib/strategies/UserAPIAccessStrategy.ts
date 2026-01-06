@@ -11,12 +11,9 @@ import {
   ensureAdminBranch,
   ensureUserBranch,
   inheritAdminSnapshot,
-  saveSnapshot,
   syncSnapshot
 } from '../../utils/ocrHelpers';
 import { PatchInverter } from '../PatchInverter';
-import fs from 'fs';
-import path from 'path';
 import { MokuroData } from '../../types/mokuro';
 import { OcrBranch } from '../../generated/prisma/client';
 import { validateAndPlanSubmission } from '../../utils/submissionHelper';
@@ -162,15 +159,15 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       throw new HttpError(409, 'Version mismatch. Please refresh.');
     }
 
-    const headPatchId = userBranch.headPatchId;
-    const rootPatchId = userBranch.rootPatchId;
-    const snapshotPatchId = userBranch.snapshotPatchId;
+    const headPatch = userBranch.headPatch;
+    const rootPatch = userBranch.rootPatch;
+    const snapshotPatch = userBranch.snapshotPatch;
 
     // 3. Snapshot Sync (outside transaction)
     // If the snapshot is in the "future" (ahead of HEAD), sync it back before writing.
-    const isSnapshotAhead = snapshotPatchId && snapshotPatchId > headPatchId;
+    const isSnapshotAhead = snapshotPatch && snapshotPatch.createdAt > headPatch.createdAt;
     if (isSnapshotAhead) {
-      this.fastify.log.info(`[Strategy] Snapshot ahead of HEAD (${snapshotPatchId} > ${headPatchId}). Syncing back before write.`);
+      this.fastify.log.info(`[Strategy] Snapshot ahead of HEAD (${snapshotPatch.createdAt} > ${headPatch.createdAt}). Syncing back before write.`);
       await syncSnapshot(this.fastify, userBranch);
     }
 
@@ -181,15 +178,15 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
       // CASE 2: Root > Head (User undid past their own root -> Re-fork)
       // We delete the old root, which cascades and deletes the now-abandoned branch history.
-      if (rootPatchId && rootPatchId > headPatchId) {
-        await tx.patch.delete({ where: { id: rootPatchId } });
+      if (rootPatch && rootPatch.createdAt > headPatch.createdAt) {
+        await tx.patch.delete({ where: { id: rootPatch.id } });
       }
 
       // CASE 3: Head has children (User undid within branch -> Wipe Future)
       // If we are adding a new patch from a middle point, we must prune the 'Redo' path.
-      else if (rootPatchId) {
+      else if (rootPatch) {
         const children = await tx.patch.findMany({
-          where: { parentId: headPatchId },
+          where: { parentId: headPatch.id },
           select: { id: true }
         });
         if (children.length > 1) this.fastify.log.warn(`User branch shouldn't have multiple leaves: ${userBranch.id}`);
@@ -204,15 +201,15 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
         data: {
           volumeId,
           userId,
-          parentId: headPatchId,
+          parentId: headPatch.id,
           operation: JSON.stringify(op),
         }
       });
 
       // Update Branch Pointers
       // Determine if we need to set a new branch root (first fork or after a re-fork).
-      const shouldSetNewRoot = !rootPatchId || (rootPatchId > headPatchId);
-      const finalRootId = shouldSetNewRoot ? newPatch.id : rootPatchId;
+      const shouldSetNewRoot = !rootPatch || (rootPatch.createdAt > headPatch.createdAt);
+      const finalRootId = shouldSetNewRoot ? newPatch.id : rootPatch.id;
 
       const updatedBranch = await tx.ocrBranch.update({
         where: { id: userBranch.id },
@@ -402,27 +399,32 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     const adminBranch = await ensureAdminBranch(this.fastify, volumeId, volume.mokuroPath);
     const userBranch = await ensureUserBranch(this.fastify, volumeId, this.userId, adminBranch);
 
-    if (userBranch.rootPatchId === null) return;
+    if (userBranch.headPatch.id === adminBranch.headPatch.id) return;
 
     // 1. Database State Transition
-    await this.fastify.prisma.$transaction(async (tx: any) => {
+    const newUserBranch = await this.fastify.prisma.$transaction(async (tx) => {
       // Cascade delete the private patch tree
-      await tx.patch.delete({ where: { id: userBranch.rootPatchId! } });
+      if (userBranch.rootPatchId !== null) await tx.patch.delete({ where: { id: userBranch.rootPatchId } });
 
-      await tx.ocrBranch.update({
+      return await tx.ocrBranch.update({
         where: { id: userBranch.id },
         data: {
           headPatchId: adminBranch.headPatchId,
           rootPatchId: null,
-          snapshotPatchId: adminBranch.snapshotPatchId,
+          snapshotPatchId: null,
           version: { increment: 1 }
+        },
+        include: {
+          headPatch: { select: { id: true, createdAt: true } },
+          rootPatch: { select: { id: true, createdAt: true } },
+          snapshotPatch: { select: { id: true, createdAt: true } }
         }
       });
     });
 
     // 2. Physical File Sync (Post-Transaction)
     // Since the DB is committed, we now align the disk state.
-    await inheritAdminSnapshot(this.fastify, userBranch, adminBranch);
+    await inheritAdminSnapshot(this.fastify, newUserBranch, adminBranch);
   }
 
   /**
@@ -507,7 +509,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     throw new HttpError(403, 'Forbidden: Only admins can reject submissions.');
   }
 
-  async merge(volumeId: string, sourceUserId: string): Promise<void> {
+  async officialize(volumeId: string, sourceUserId: string): Promise<void> {
     throw new HttpError(403, 'Forbidden: Only admins can merge branches.');
   }
 

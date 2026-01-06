@@ -1,8 +1,7 @@
 import { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { ensureAdminBranch, ensureUserBranch, saveSnapshot, syncSnapshot } from '../utils/ocrHelpers';
+import { ensureAdminBranch, ensureUserBranch } from '../utils/ocrHelpers';
 import { RebaseEngine } from '../lib/rebase/RebaseEngine';
-import { libraryCache } from '../lib/caches/libraryCache';
 import { HttpError } from '../types/error';
 
 // --- Zod Schemas ---
@@ -177,6 +176,30 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         }
         request.log.error(err);
         return reply.code(500).send({ error: 'Failed to synchronize OCR snapshot' });
+      }
+    }
+  );
+
+  /**
+     * POST /api/library/volume/:id/officialize
+     * Fast-forward merges a user's branch into the official admin branch.
+     */
+  fastify.post<{ Params: { id: string }, Body: { sourceBranchUserId: string } }>(
+    '/volume/:id/officialize',
+    async (request, reply) => {
+      const { id } = request.params;
+      const { sourceBranchUserId } = request.body;
+
+      try {
+        await request.accessStrategy.officialize(id, sourceBranchUserId);
+        return { success: true };
+      } catch (err: any) {
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ error: err.message });
+        }
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Internal Server Error';
+        return reply.code(500).send({ error: message });
       }
     }
   );
