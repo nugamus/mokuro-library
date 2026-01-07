@@ -5,12 +5,14 @@ import { createTestContext, registerAndLogin } from './helpers/testContext';
 describe('settings routes', () => {
   let ctx: TestContext;
   let cookieHeader: string;
+  let deviceFingerprint: string;
   let csrfToken: string;
 
   beforeAll(async () => {
     ctx = await createTestContext();
     const auth = await registerAndLogin(ctx.app);
     cookieHeader = auth.cookieHeader;
+    deviceFingerprint = auth.deviceFingerprint;
     csrfToken = auth.csrfToken;
   });
 
@@ -22,7 +24,10 @@ describe('settings routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: '/api/settings',
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -33,7 +38,11 @@ describe('settings routes', () => {
     const response = await ctx.app.inject({
       method: 'PUT',
       url: '/api/settings',
-      headers: { cookie: cookieHeader, 'x-csrf-token': csrfToken },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint,
+        'x-csrf-token': csrfToken
+      },
       payload: { theme: 'midnight', reader: { zoom: 1.25 } },
     });
 

@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import { apiFetch } from '$lib/services/api';
+import { apiFetch, apiFetchWithRefresh } from '$lib/services/api';
 import { apiCache } from '$lib/utils/caching/apiCache';
 import type { KeybindsConfig } from '$lib/keybinds';
 
@@ -43,6 +43,9 @@ export interface AuthUser {
 // Create a writable store that holds an AuthUser or null
 export const user = writable<AuthUser | null | undefined>();
 
+// Track if user was previously authenticated to detect session expiration
+let wasAuthenticated = false;
+
 /**
  * Checks the /api/auth/me endpoint to see if a valid
  * session cookie exists.
@@ -50,9 +53,10 @@ export const user = writable<AuthUser | null | undefined>();
  */
 export async function checkAuth() {
   try {
-    // Try to get the current user
-    // If successful, update the store
-    const userData = await apiFetch('/api/auth/me');
+    // Try to get the current user - suppress error toast on initial check
+    const userData = await apiFetchWithRefresh('/api/auth/me', {
+      showErrorToast: false
+    });
 
     // Ensure settings is an object, even if it's null from the DB
     if (!userData.settings) {
@@ -63,11 +67,45 @@ export async function checkAuth() {
 
     // Clear cache if user changed
     apiCache.setUserId(authUser.id);
+
+    // Track successful auth
+    wasAuthenticated = true;
   } catch (error) {
+    // Log to console for debugging
+    if (error instanceof Error) {
+      console.debug('Auth check failed:', error.message);
+    }
+
+    // If user WAS authenticated but now isn't, show error and clear cache (session expired)
+    if (wasAuthenticated) {
+      console.debug('Session expired, clearing cache');
+
+      // Show user-friendly message about session expiration
+      const { toastStore } = await import('./toastStore.svelte');
+      toastStore.error('Your session has expired. Please sign in again.');
+
+      apiCache.clearAllCache();
+      wasAuthenticated = false;
+    }
+
     // If it fails (e.g., 401), we're not logged in
     user.set(null);
     apiCache.setUserId(null);
   }
+}
+
+/**
+ * Start periodic auth monitoring to detect session expiration
+ * Returns cleanup function to stop monitoring
+ */
+export function startAuthMonitoring() {
+  // Check auth every 5 minutes
+  const interval = setInterval(async () => {
+    await checkAuth();
+  }, 5 * 60 * 1000);
+
+  // Cleanup function
+  return () => clearInterval(interval);
 }
 
 /**

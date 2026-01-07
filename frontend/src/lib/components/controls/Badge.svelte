@@ -1,6 +1,9 @@
 <script lang="ts">
-	let { class: className = '' } = $props<{
+	import type { Snippet } from 'svelte';
+
+	let { class: className = '', children } = $props<{
 		class?: string;
+		children?: Snippet;
 	}>();
 
 	let badgeClass = $derived(
@@ -10,5 +13,5 @@
 </script>
 
 <span class={badgeClass}>
-	<slot />
+	{@render children?.()}
 </span>

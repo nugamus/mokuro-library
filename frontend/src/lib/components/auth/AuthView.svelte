@@ -4,6 +4,7 @@
 	import { apiFetch } from '$lib/services/api';
 	import { user, type AuthUser } from '$lib/stores/authStore';
 	import { apiCache } from '$lib/utils/caching/apiCache';
+	import { getStoredFingerprint } from '$lib/services/deviceFingerprint';
 	import AuthBackground from './AuthBackground.svelte';
 	import AuthHeader from './AuthHeader.svelte';
 	import AuthForm from './AuthForm.svelte';
@@ -33,6 +34,7 @@
 	let username = $state('');
 	let password = $state('');
 	let confirmPassword = $state('');
+	let rememberMe = $state(false);
 	let error = $state<string | null>(null);
 	let successMessage = $state<string | null>(null);
 	let isLoading = $state(false);
@@ -64,9 +66,11 @@
 		error = null;
 
 		try {
+			const deviceFingerprint = await getStoredFingerprint();
+
 			const userData = await apiFetch('/api/auth/login', {
 				method: 'POST',
-				body: { username, password }
+				body: { username, password, rememberMe, deviceFingerprint }
 			});
 
 			const authUser = userData as AuthUser;
@@ -108,9 +112,10 @@
 				body: { username, password }
 			});
 			if (registerMode === 'auto-login') {
+				const deviceFingerprint = await getStoredFingerprint();
 				const userData = await apiFetch('/api/auth/login', {
 					method: 'POST',
-					body: { username, password }
+					body: { username, password, rememberMe, deviceFingerprint }
 				});
 
 				const authUser = userData as AuthUser;
@@ -187,6 +192,7 @@
 					bind:username
 					bind:password
 					bind:confirmPassword
+					bind:rememberMe
 					{isRegisterMode}
 					{isLoading}
 					{error}

@@ -1,8 +1,11 @@
 <script lang="ts">
-	let { title, description = '', class: className = '' } = $props<{
+	import type { Snippet } from 'svelte';
+
+	let { title, description = '', class: className = '', children } = $props<{
 		title: string;
 		description?: string;
 		class?: string;
+		children?: Snippet;
 	}>();
 
 	let wrapperClass = $derived(
@@ -19,6 +22,6 @@
 		{/if}
 	</div>
 	<div class="flex items-center gap-2">
-		<slot />
+		{@render children?.()}
 	</div>
 </div>

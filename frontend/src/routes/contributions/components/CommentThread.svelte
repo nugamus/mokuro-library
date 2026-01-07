@@ -60,18 +60,19 @@
   <div class="space-y-4 max-h-[500px] overflow-y-auto pr-2">
     {#each comments as comment (comment.id)}
       {@const isOwnComment = comment.user.id === $user?.id}
+      {@const bubbleClass = `p-3 rounded-lg ${isOwnComment ? 'bg-accent/20' : 'bg-white/10'}`}
       <div class="flex gap-3 items-start" class:flex-row-reverse={isOwnComment}>
         <div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center font-bold text-sm flex-shrink-0">
           {comment.user.username.charAt(0).toUpperCase()}
         </div>
         <div class="flex-1">
-            <div class="p-3 rounded-lg" class:bg-white/10={!isOwnComment} class:bg-accent/20={isOwnComment}>
-                <div class="flex justify-between items-center mb-1">
-                    <span class="font-bold text-sm">{comment.user.username}</span>
-                    <span class="text-xs text-white/50">{formatTime(comment.createdAt)}</span>
-                </div>
-                <p class="text-sm whitespace-pre-wrap">{comment.content}</p>
+          <div class={bubbleClass}>
+            <div class="flex justify-between items-center mb-1">
+              <span class="font-bold text-sm">{comment.user.username}</span>
+              <span class="text-xs text-white/50">{formatTime(comment.createdAt)}</span>
             </div>
+            <p class="text-sm whitespace-pre-wrap">{comment.content}</p>
+          </div>
         </div>
       </div>
     {:else}
@@ -94,7 +95,9 @@
     {/if}
     <div class="mt-2 flex justify-end">
       <Button onclick={postComment} is_loading={isPosting} disabled={!newComment.trim()}>
-        <Send slot="icon" class="w-4 h-4" />
+        {#snippet icon()}
+          <Send class="w-4 h-4" />
+        {/snippet}
         Post Comment
       </Button>
     </div>

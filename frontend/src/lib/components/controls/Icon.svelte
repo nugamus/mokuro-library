@@ -9,7 +9,7 @@
 	}>();
 </script>
 
-{@const IconComponent = icon}
-{#if IconComponent}
+{#if icon}
+	{@const IconComponent = icon}
 	<IconComponent class={className} size={size} strokeWidth={strokeWidth} />
 {/if}

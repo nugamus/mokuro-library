@@ -5,6 +5,7 @@ import { createTestContext, registerAndLogin, seedLibrary } from './helpers/test
 describe('metadata routes', () => {
   let ctx: TestContext;
   let cookieHeader: string;
+  let deviceFingerprint: string;
   let csrfToken: string;
   let seriesId: string;
   let volumeId: string;
@@ -14,6 +15,7 @@ describe('metadata routes', () => {
     ctx = await createTestContext();
     const auth = await registerAndLogin(ctx.app);
     cookieHeader = auth.cookieHeader;
+    deviceFingerprint = auth.deviceFingerprint;
     csrfToken = auth.csrfToken;
     userId = auth.user.id;
     const seeded = await seedLibrary(ctx.prisma, ctx.projectRoot, userId);
@@ -29,7 +31,10 @@ describe('metadata routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/metadata/volume/${volumeId}/progress`,
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -45,7 +50,11 @@ describe('metadata routes', () => {
     const response = await ctx.app.inject({
       method: 'PATCH',
       url: `/api/metadata/volume/${volumeId}/progress`,
-      headers: { cookie: cookieHeader, 'x-csrf-token': csrfToken },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint,
+        'x-csrf-token': csrfToken
+      },
       payload: { page: 1, completed: true },
     });
 
@@ -58,7 +67,11 @@ describe('metadata routes', () => {
     const response = await ctx.app.inject({
       method: 'PATCH',
       url: `/api/metadata/series/${seriesId}`,
-      headers: { cookie: cookieHeader, 'x-csrf-token': csrfToken },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint,
+        'x-csrf-token': csrfToken
+      },
       payload: { title: 'Updated Title', bookmarked: true, organized: true },
     });
 
@@ -78,7 +91,11 @@ describe('metadata routes', () => {
     const response = await ctx.app.inject({
       method: 'PATCH',
       url: `/api/metadata/volume/${volumeId}`,
-      headers: { cookie: cookieHeader, 'x-csrf-token': csrfToken },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint,
+        'x-csrf-token': csrfToken
+      },
       payload: { title: 'Updated Volume' },
     });
 

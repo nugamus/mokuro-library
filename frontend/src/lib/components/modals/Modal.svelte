@@ -1,9 +1,11 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { fade, scale } from 'svelte/transition';
 
-	let { title, on_close } = $props<{
+	let { title, on_close, children } = $props<{
 		title: string;
 		on_close: () => void;
+		children?: Snippet;
 	}>();
 </script>
 
@@ -32,7 +34,7 @@
 			</button>
 		</div>
 		<div class="max-h-[80vh] overflow-y-auto">
-			<slot />
+			{@render children?.()}
 		</div>
 	</div>
 </div>

@@ -77,6 +77,8 @@ export async function registerAndLogin(
   username = `tester-${randomUUID().slice(0, 8)}`,
   password = 'Test123!'
 ) {
+  const deviceFingerprint = 'test-device-fingerprint-12345';
+
   const register = await app.inject({
     method: 'POST',
     url: '/api/auth/register',
@@ -89,7 +91,12 @@ export async function registerAndLogin(
   const login = await app.inject({
     method: 'POST',
     url: '/api/auth/login',
-    payload: { username, password },
+    payload: {
+      username,
+      password,
+      deviceFingerprint,
+      rememberMe: false
+    },
   });
   if (login.statusCode !== 200) {
     throw new Error(`Login failed: ${login.statusCode} ${login.body}`);
@@ -103,6 +110,7 @@ export async function registerAndLogin(
     cookies,
     cookieHeader,
     csrfToken: cookies.csrfToken,
+    deviceFingerprint,
   };
 }
 

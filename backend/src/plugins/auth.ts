@@ -4,6 +4,7 @@ import { AuthUser } from '../types/fastify'; // Import our new type
 import { APIAccessStrategyFactory } from '../lib/strategies/APIAccessStrategyFactory';
 import { userAuthCache } from '../lib/caches/userAuthCache';
 import jwt from 'jsonwebtoken';
+import { createHash } from 'crypto';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
@@ -15,17 +16,22 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
     const token = request.unsignCookie(request.cookies.sessionId || '').value;
 
     if (!token) {
+      request.log.debug('Auth failed: No session token provided');
       return reply.status(401).send({
         statusCode: 401,
         error: 'Unauthorized',
-        message: 'No session token provided.',
+        message: 'Authentication required',
       });
     }
 
     // Verify JWT token
     let decoded;
     try {
-      decoded = jwt.verify(token, JWT_SECRET) as { userId: string; username: string };
+      decoded = jwt.verify(token, JWT_SECRET) as {
+        userId: string;
+        username: string;
+        deviceHash?: string;
+      };
     } catch (err) {
       reply.clearCookie('sessionId', {
         path: '/',
@@ -38,6 +44,37 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
         error: 'Unauthorized',
         message: 'Invalid or expired session token.',
       });
+    }
+
+    // Verify device fingerprint if present in token
+    if (decoded.deviceHash) {
+      const deviceFingerprint = request.headers['x-device-fingerprint'] as string;
+
+      if (!deviceFingerprint) {
+        return reply.status(401).send({
+          statusCode: 401,
+          error: 'Unauthorized',
+          message: 'Device fingerprint required',
+        });
+      }
+
+      const deviceHash = createHash('sha256')
+        .update(deviceFingerprint)
+        .digest('hex');
+
+      if (deviceHash !== decoded.deviceHash) {
+        request.log.warn({
+          userId: decoded.userId,
+          expectedDevice: decoded.deviceHash,
+          actualDevice: deviceHash,
+        }, 'Device fingerprint mismatch in auth');
+
+        return reply.status(403).send({
+          statusCode: 403,
+          error: 'Forbidden',
+          message: 'Device verification failed',
+        });
+      }
     }
 
 

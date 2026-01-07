@@ -19,6 +19,7 @@ const parseCookies = (setCookieHeader?: string | string[]): CookieMap => {
 
 describe('auth and csrf', () => {
 	let ctx: TestContext;
+	const testDeviceFingerprint = 'test-device-fingerprint-12345';
 
 	beforeAll(async () => {
 		ctx = await createTestContext();
@@ -38,20 +39,31 @@ describe('auth and csrf', () => {
     const response = await ctx.app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { username: 'tester', password: 'Test123!' },
+      payload: {
+        username: 'tester',
+        password: 'Test123!',
+        deviceFingerprint: testDeviceFingerprint,
+        rememberMe: false
+      },
     });
 
     const cookies = parseCookies(response.headers['set-cookie']);
     expect(response.statusCode).toBe(200);
     expect(cookies.sessionId).toBeTruthy();
     expect(cookies.csrfToken).toBeTruthy();
+    expect(cookies.refreshToken).toBeTruthy();
   });
 
 	it('blocks state-changing requests without csrf token', async () => {
 		const loginResponse = await ctx.app.inject({
 			method: 'POST',
 			url: '/api/auth/login',
-			payload: { username: 'tester', password: 'Test123!' },
+			payload: {
+        username: 'tester',
+        password: 'Test123!',
+        deviceFingerprint: testDeviceFingerprint,
+        rememberMe: false
+      },
     });
     const cookies = parseCookies(loginResponse.headers['set-cookie']);
     const cookieHeader = `sessionId=${cookies.sessionId}; csrfToken=${cookies.csrfToken}`;
@@ -60,7 +72,10 @@ describe('auth and csrf', () => {
       method: 'POST',
       url: '/api/library/check',
       payload: { series_folder_name: 'series', volume_folder_name: 'vol1' },
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': testDeviceFingerprint
+      },
     });
 
     expect(blocked.statusCode).toBe(403);
@@ -69,7 +84,11 @@ describe('auth and csrf', () => {
       method: 'POST',
       url: '/api/library/check',
       payload: { series_folder_name: 'series', volume_folder_name: 'vol1' },
-      headers: { cookie: cookieHeader, 'x-csrf-token': cookies.csrfToken },
+      headers: {
+        cookie: cookieHeader,
+        'x-csrf-token': cookies.csrfToken,
+        'x-device-fingerprint': testDeviceFingerprint
+      },
     });
 
     expect(allowed.statusCode).toBe(200);
@@ -80,14 +99,24 @@ describe('auth and csrf', () => {
 			await ctx.app.inject({
 				method: 'POST',
 				url: '/api/auth/login',
-        payload: { username: 'tester', password: 'WrongPass!' },
+        payload: {
+          username: 'tester',
+          password: 'WrongPass!',
+          deviceFingerprint: testDeviceFingerprint,
+          rememberMe: false
+        },
       });
     }
 
     const response = await ctx.app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { username: 'tester', password: 'WrongPass!' },
+      payload: {
+        username: 'tester',
+        password: 'WrongPass!',
+        deviceFingerprint: testDeviceFingerprint,
+        rememberMe: false
+      },
     });
 
     expect(response.statusCode).toBe(429);

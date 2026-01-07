@@ -5,6 +5,7 @@ import { createTestContext, registerAndLogin, seedLibrary } from './helpers/test
 describe('files routes', () => {
   let ctx: TestContext;
   let cookieHeader: string;
+  let deviceFingerprint: string;
   let seriesId: string;
   let volumeId: string;
   let imageName: string;
@@ -13,6 +14,7 @@ describe('files routes', () => {
     ctx = await createTestContext();
     const auth = await registerAndLogin(ctx.app);
     cookieHeader = auth.cookieHeader;
+    deviceFingerprint = auth.deviceFingerprint;
     const seeded = await seedLibrary(ctx.prisma, ctx.projectRoot, auth.user.id);
     seriesId = seeded.series.id;
     volumeId = seeded.volume.id;
@@ -27,7 +29,10 @@ describe('files routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/files/series/${seriesId}/cover`,
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -38,7 +43,10 @@ describe('files routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/files/volume/${volumeId}/image/${imageName}`,
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -49,7 +57,10 @@ describe('files routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/files/volume/${volumeId}/image/does-not-exist.png`,
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(404);

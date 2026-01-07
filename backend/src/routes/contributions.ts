@@ -194,17 +194,13 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
           sourceSeries: { select: { id: true, title: true } },
           targetSeries: { select: { id: true, title: true } },
           volumes: {
-            include: {
-              volume: {
-                select: {
-                  id: true,
-                  title: true,
-                  number: true,
-                  pages: true,
-                  coverFile: true,
-                  seriesId: true,
-                },
-              },
+            select: {
+              id: true,
+              title: true,
+              folderName: true,
+              pageCount: true,
+              coverImageName: true,
+              seriesId: true,
             },
           },
           comments: {
@@ -232,13 +228,7 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
         return reply.status(403).send({ error: 'Not authorized to view this submission' });
       }
 
-      // We need to shape the volumes a bit to be more convenient for the frontend
-      const reshapedSubmission = {
-        ...submission,
-        volumes: submission.volumes.map(sv => sv.volume),
-      };
-
-      return reply.send(reshapedSubmission);
+      return reply.send(submission);
     },
   );
 
@@ -484,7 +474,9 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
         const userVolumes = await fastify.prisma.volume.findMany({
           where: {
             id: { in: volumeIds },
-            ownerId: userId,
+            series: {
+              ownerId: userId,
+            },
           },
           select: {
             id: true,
@@ -495,7 +487,11 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
 
         // 2. Get all admin volumes to compare against
         const adminVolumes = await fastify.prisma.volume.findMany({
-          where: { ownerId: 'admin' },
+          where: {
+            series: {
+              ownerId: 'admin',
+            },
+          },
           select: {
             id: true,
             title: true,

@@ -54,7 +54,9 @@
 			Cancel
 		</Button>
 		<Button variant="success" onclick={handleAccept} is_loading={isLoading}>
-			<CheckCircle slot="icon" class="w-4 h-4" />
+			{#snippet icon()}
+				<CheckCircle class="w-4 h-4" />
+			{/snippet}
 			Accept Submission
 		</Button>
 	</div>

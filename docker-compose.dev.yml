@@ -39,6 +39,9 @@ services:
       # This polling setting is often required for file watching
       # to work correctly inside a Docker container.
       - CHOKIDAR_USEPOLLING=true
+      # Security secrets - Load from .env.secrets file or generate automatically
+      - JWT_SECRET=${JWT_SECRET:-}
+      - COOKIE_SECRET=${COOKIE_SECRET:-}
 
   frontend:
     container_name: mokuro-library-frontend-dev

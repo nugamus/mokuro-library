@@ -2,7 +2,7 @@ import { FastifyPluginAsync, FastifyReply } from 'fastify';
 import { Prisma } from '../generated/prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 
 // Schemas for request bodies for validation and safty
 const registerBodySchema = {
@@ -19,8 +19,18 @@ const loginBodySchema = {
   properties: {
     username: { type: 'string' },
     password: { type: 'string' },
+    rememberMe: { type: 'boolean', default: false },
+    deviceFingerprint: { type: 'string' },
   },
-  required: ['username', 'password'],
+  required: ['username', 'password', 'deviceFingerprint'],
+};
+
+const refreshBodySchema = {
+  type: 'object',
+  properties: {
+    deviceFingerprint: { type: 'string' },
+  },
+  required: ['deviceFingerprint'],
 };
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
@@ -72,16 +82,25 @@ const clearLockout = (key: string) => {
   loginAttempts.delete(key);
 };
 
-const setCsrfCookie = (reply: FastifyReply) => {
+const setCsrfCookie = (reply: FastifyReply, maxAge?: number) => {
   const token = randomBytes(32).toString('hex');
   reply.setCookie('csrfToken', token, {
     path: '/',
     httpOnly: false,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict',
-    maxAge: 60 * 60 * 24 * 7, // 7 days
+    maxAge: maxAge || 60 * 60 * 24 * 7, // Default 7 days
   });
   return token;
+};
+
+// Device fingerprinting utilities
+const hashDeviceFingerprint = (fingerprint: string): string => {
+  return createHash('sha256').update(fingerprint).digest('hex');
+};
+
+const generateRefreshToken = (): string => {
+  return randomBytes(64).toString('hex');
 };
 
 const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
@@ -161,9 +180,11 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       ...authRateLimit,
     },
     async (request, reply) => {
-      const { username, password } = request.body as {
+      const { username, password, rememberMe = false, deviceFingerprint } = request.body as {
         username: string;
         password: string;
+        rememberMe?: boolean;
+        deviceFingerprint: string;
       };
 
       try {
@@ -220,26 +241,63 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           });
         }
 
-        // Case 4: Success - Create JWT token
+        // Case 4: Success - Create short-lived access token and long-lived refresh token
         clearLockout(lockoutKey);
-        const token = jwt.sign(
+
+        // Generate short-lived access token (15 minutes)
+        const deviceHash = hashDeviceFingerprint(deviceFingerprint);
+        const accessToken = jwt.sign(
           {
             userId: user.id,
             username: user.username,
+            deviceHash,
           },
           JWT_SECRET,
-          { expiresIn: '7d' }
+          { expiresIn: '15m' }
         );
 
-        reply.setCookie('sessionId', token, {
+        // Generate refresh token for database
+        const refreshTokenValue = generateRefreshToken();
+        const refreshTokenExpiry = rememberMe
+          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
+          : new Date(Date.now() + 24 * 60 * 60 * 1000);     // 1 day
+
+        // Store refresh token in database
+        await fastify.prisma.refreshToken.create({
+          data: {
+            userId: user.id,
+            token: refreshTokenValue,
+            deviceHash,
+            expiresAt: refreshTokenExpiry,
+          },
+        });
+
+        // Set access token cookie (short-lived, 15 minutes)
+        reply.setCookie('sessionId', accessToken, {
           path: '/',
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          maxAge: 60 * 60 * 24 * 7, // 7 days
+          maxAge: 15 * 60, // 15 minutes
           signed: true,
         });
-        setCsrfCookie(reply);
+
+        // Set refresh token cookie (long-lived)
+        const refreshCookieMaxAge = rememberMe
+          ? 60 * 60 * 24 * 30  // 30 days
+          : 60 * 60 * 24;       // 1 day
+
+        reply.setCookie('refreshToken', refreshTokenValue, {
+          path: '/api/auth/refresh', // Only sent to refresh endpoint
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: refreshCookieMaxAge,
+          signed: true,
+        });
+
+        // Set CSRF token (match access token expiration)
+        setCsrfCookie(reply, 15 * 60);
         // only send back non-sensitive fields
         const user_response = {
           id: user.id,
@@ -260,12 +318,165 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     }
   );
 
+  // POST /api/auth/refresh
+  fastify.post(
+    '/refresh',
+    {
+      schema: { body: refreshBodySchema },
+      ...authRateLimit,
+    },
+    async (request, reply) => {
+      const { deviceFingerprint } = request.body as { deviceFingerprint: string };
+
+      try {
+        // Get refresh token from cookie
+        const refreshTokenValue = request.unsignCookie(
+          request.cookies.refreshToken || ''
+        ).value;
+
+        if (!refreshTokenValue) {
+          return reply.status(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: 'No refresh token provided',
+          });
+        }
+
+        // Find refresh token in database
+        const refreshToken = await fastify.prisma.refreshToken.findUnique({
+          where: { token: refreshTokenValue },
+          include: { user: true },
+        });
+
+        if (!refreshToken) {
+          return reply.status(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: 'Invalid refresh token',
+          });
+        }
+
+        // Check expiration
+        if (refreshToken.expiresAt < new Date()) {
+          await fastify.prisma.refreshToken.delete({
+            where: { id: refreshToken.id },
+          });
+          return reply.status(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: 'Refresh token expired',
+          });
+        }
+
+        // Verify device fingerprint
+        const deviceHash = hashDeviceFingerprint(deviceFingerprint);
+        if (refreshToken.deviceHash !== deviceHash) {
+          // Device mismatch - possible token theft!
+          fastify.log.warn({
+            userId: refreshToken.userId,
+            expectedDevice: refreshToken.deviceHash,
+            actualDevice: deviceHash,
+          }, 'Device fingerprint mismatch - possible token theft');
+
+          // Invalidate this refresh token
+          await fastify.prisma.refreshToken.delete({
+            where: { id: refreshToken.id },
+          });
+
+          return reply.status(403).send({
+            statusCode: 403,
+            error: 'Forbidden',
+            message: 'Device verification failed',
+          });
+        }
+
+        // Generate new access token
+        const accessToken = jwt.sign(
+          {
+            userId: refreshToken.user.id,
+            username: refreshToken.user.username,
+            deviceHash,
+          },
+          JWT_SECRET,
+          { expiresIn: '15m' }
+        );
+
+        // Update last used timestamp
+        await fastify.prisma.refreshToken.update({
+          where: { id: refreshToken.id },
+          data: { lastUsedAt: new Date() },
+        });
+
+        // Set new access token cookie
+        reply.setCookie('sessionId', accessToken, {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+          maxAge: 15 * 60,
+          signed: true,
+        });
+
+        // Regenerate CSRF token
+        setCsrfCookie(reply, 15 * 60);
+
+        return {
+          id: refreshToken.user.id,
+          username: refreshToken.user.username,
+          settings: refreshToken.user.settings,
+        };
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'An unexpected error occurred.',
+        });
+      }
+    }
+  );
+
   // POST /api/auth/logout
   fastify.post('/logout', async (request, reply) => {
     try {
-      // Clear the session cookie
+      // Get user ID from access token if available
+      const token = request.unsignCookie(request.cookies.sessionId || '').value;
+      let userId: string | null = null;
+
+      if (token) {
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+          userId = decoded.userId;
+        } catch (e) {
+          // Token invalid, that's ok
+        }
+      }
+
+      // Get refresh token
+      const refreshTokenValue = request.unsignCookie(
+        request.cookies.refreshToken || ''
+      ).value;
+
+      // Delete refresh token from database
+      if (refreshTokenValue) {
+        try {
+          await fastify.prisma.refreshToken.delete({
+            where: { token: refreshTokenValue },
+          });
+        } catch (e) {
+          // Token not found, that's ok
+        }
+      }
+
+      // Clear cookies
       reply.clearCookie('sessionId', {
         path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+      });
+      reply.clearCookie('refreshToken', {
+        path: '/api/auth/refresh',
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
@@ -289,6 +500,55 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
     }
   });
 
+  // POST /api/auth/logout-all
+  fastify.post(
+    '/logout-all',
+    {
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      try {
+        const user = request.user!;
+
+        // Delete all refresh tokens for this user
+        await fastify.prisma.refreshToken.deleteMany({
+          where: { userId: user.id },
+        });
+
+        // Clear current cookies
+        reply.clearCookie('sessionId', {
+          path: '/',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+        });
+        reply.clearCookie('refreshToken', {
+          path: '/api/auth/refresh',
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+        });
+        reply.clearCookie('csrfToken', {
+          path: '/',
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'strict',
+        });
+
+        return {
+          message: 'Logged out from all devices successfully',
+        };
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'An unexpected error occurred.',
+        });
+      }
+    }
+  );
+
   // GET /api/auth/me ---
   fastify.get('/me', async (request, reply) => {
     try {
@@ -297,10 +557,11 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
       // Case 1: No session cookie or invalid signature
       if (!token) {
+        request.log.debug('Auth check failed: No session token provided');
         return reply.status(401).send({
           statusCode: 401,
           error: 'Unauthorized',
-          message: 'No session token provided.',
+          message: 'Authentication required',
         });
       }
 

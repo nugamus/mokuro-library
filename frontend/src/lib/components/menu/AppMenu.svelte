@@ -23,8 +23,9 @@
 			console.error('Logout failed:', e);
 		}
 		user.set(null);
-		apiCache.setUserId(null);
+		apiCache.clearAllCache();
 		contextMenu.close();
+		goto('/login');
 	};
 
 	const handleDownload = (type: 'zip' | 'meta' | 'pdf') => {

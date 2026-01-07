@@ -3,10 +3,10 @@
   import { Shield, GitMerge, User, Calendar, Hash } from 'lucide-svelte';
 
   // Components
-  import CommentThread from '../components/CommentThread.svelte';
+  import CommentThread from '../../components/CommentThread.svelte';
   import AcceptSubmissionModal from '../../components/modals/AcceptSubmissionModal.svelte';
   import RejectSubmissionModal from '../../components/modals/RejectSubmissionModal.svelte';
-  import SubmissionReader from '../components/SubmissionReader.svelte';
+  import SubmissionReader from '../../components/SubmissionReader.svelte';
   import Badge from '$lib/components/controls/Badge.svelte';
   import Button from '$lib/components/controls/Button.svelte';
   import Icon from '$lib/components/controls/Icon.svelte';

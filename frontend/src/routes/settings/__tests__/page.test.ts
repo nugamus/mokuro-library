@@ -83,19 +83,19 @@ afterEach(() => {
 });
 
 describe('settings page', () => {
-  it('renders reader settings by default', () => {
+  it('renders reader settings by default', async () => {
     pageState.url = new URL('http://localhost/settings');
 
     render(Page);
 
-    expect(screen.getByTestId('reader-settings')).toBeTruthy();
+    expect(await screen.findByTestId('reader-settings')).toBeTruthy();
   });
 
-  it('honors category query param', () => {
+  it('honors category query param', async () => {
     pageState.url = new URL('http://localhost/settings?category=keybinds');
 
     render(Page);
 
-    expect(screen.getByTestId('keybind-settings')).toBeTruthy();
+    expect(await screen.findByTestId('keybind-settings')).toBeTruthy();
   });
 });

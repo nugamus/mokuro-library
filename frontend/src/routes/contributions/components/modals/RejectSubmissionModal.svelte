@@ -109,7 +109,9 @@
 			is_loading={isLoading}
 			disabled={!reason.trim()}
 		>
-			<XCircle slot="icon" class="w-4 h-4" />
+			{#snippet icon()}
+				<XCircle class="w-4 h-4" />
+			{/snippet}
 			Reject Submission
 		</Button>
 	</div>

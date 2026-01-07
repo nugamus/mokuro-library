@@ -3,7 +3,7 @@
 	import '../app.css';
 
 	import { onMount } from 'svelte';
-	import { checkAuth, user } from '$lib/stores/authStore';
+	import { checkAuth, startAuthMonitoring, user } from '$lib/stores/authStore';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
@@ -62,6 +62,9 @@
 
 	onMount(() => {
 		checkAuth();
+
+		// Start periodic auth monitoring
+		const stopMonitoring = startAuthMonitoring();
 		// Initialize theme (themeStore constructor applies saved theme)
 		// This ensures theme is applied on page load
 		let lastMessage = '';
@@ -101,6 +104,7 @@
 		window.addEventListener('keydown', handleKeydown);
 
 		return () => {
+			stopMonitoring();
 			window.removeEventListener('error', onError);
 			window.removeEventListener('unhandledrejection', onRejection);
 			window.removeEventListener('keydown', handleKeydown);

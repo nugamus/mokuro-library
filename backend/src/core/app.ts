@@ -201,5 +201,24 @@ export function buildServer(options: BuildOptions = {}) {
     return reply.sendFile('index.html', buildPath);
   });
 
+  // Cleanup expired refresh tokens every hour
+  setInterval(async () => {
+    try {
+      const deleted = await fastify.prisma.refreshToken.deleteMany({
+        where: {
+          expiresAt: {
+            lt: new Date(),
+          },
+        },
+      });
+
+      if (deleted.count > 0) {
+        fastify.log.info(`Cleaned up ${deleted.count} expired refresh tokens`);
+      }
+    } catch (e) {
+      fastify.log.error({ err: e }, 'Failed to cleanup refresh tokens');
+    }
+  }, 60 * 60 * 1000); // Every hour
+
   return fastify;
 }

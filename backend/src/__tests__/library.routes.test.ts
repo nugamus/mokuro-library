@@ -5,6 +5,7 @@ import { createTestContext, registerAndLogin, seedLibrary } from './helpers/test
 describe('library routes', () => {
   let ctx: TestContext;
   let cookieHeader: string;
+  let deviceFingerprint: string;
   let seriesId: string;
   let volumeId: string;
 
@@ -12,6 +13,7 @@ describe('library routes', () => {
     ctx = await createTestContext();
     const auth = await registerAndLogin(ctx.app);
     cookieHeader = auth.cookieHeader;
+    deviceFingerprint = auth.deviceFingerprint;
     const seeded = await seedLibrary(ctx.prisma, ctx.projectRoot, auth.user.id);
     seriesId = seeded.series.id;
     volumeId = seeded.volume.id;
@@ -25,7 +27,10 @@ describe('library routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: '/api/library?sort=title&order=asc&page=1',
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -38,7 +43,10 @@ describe('library routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/library/series/${seriesId}`,
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);
@@ -51,7 +59,10 @@ describe('library routes', () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/library/volume/${volumeId}`,
-      headers: { cookie: cookieHeader },
+      headers: {
+        cookie: cookieHeader,
+        'x-device-fingerprint': deviceFingerprint
+      },
     });
 
     expect(response.statusCode).toBe(200);

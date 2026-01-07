@@ -11,7 +11,7 @@ generator client {
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
+  // URL is now in prisma.config.ts (required for Prisma 7)
 }
 
 // Stores user accounts and their settings
@@ -29,6 +29,22 @@ model User {
   seriesSettings   UserSeriesSettings[]
   submissions      Submission[]
   submissionComments SubmissionComment[]
+  refreshTokens    RefreshToken[]
+}
+
+// Stores refresh tokens for device binding
+model RefreshToken {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token         String   @unique
+  deviceHash    String   // Hash of device fingerprint
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+  lastUsedAt    DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
 }
 
 

@@ -5,7 +5,7 @@ services:
     build:
       context: .
       args:
-        - COMMIT_HASH=${COMMIT_HASH}
+        - COMMIT_HASH=${COMMIT_HASH:-v0.4.0}
     # restart: unless-stopped
     ports:
       # Maps port 80 on computer to port 3001 inside the container.
@@ -21,3 +21,12 @@ services:
       - PORT=3001
       # Ensure the DB file is stored in the mounted /app/data volume
       - DATABASE_URL=file:/app/data/library.db
+      # Security secrets - REQUIRED for production
+      # Generate with: ./scripts/generate-secrets.sh .env.secrets
+      # Then load with: docker-compose up -d (will read .env.secrets automatically)
+      - JWT_SECRET=${JWT_SECRET}
+      - COOKIE_SECRET=${COOKIE_SECRET}
+    # Load secrets from .env.secrets file (REQUIRED for production)
+    # Run ./scripts/generate-secrets.sh .env.secrets to create this file
+    env_file:
+      - .env.secrets

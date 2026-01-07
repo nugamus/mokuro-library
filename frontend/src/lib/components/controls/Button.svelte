@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
+
 	type Variant = 'primary' | 'secondary' | 'danger' | 'success' | 'ghost';
 	type Size = 'sm' | 'md' | 'lg';
 
@@ -9,7 +11,9 @@
 		disabled = false,
 		type = 'button',
 		onclick,
-		class: className = ''
+		class: className = '',
+		icon,
+		children
 	} = $props<{
 		variant?: Variant;
 		size?: Size;
@@ -18,6 +22,8 @@
 		type?: 'button' | 'submit' | 'reset';
 		onclick?: (event: MouseEvent) => void;
 		class?: string;
+		icon?: Snippet;
+		children?: Snippet;
 	}>();
 
 	const baseClasses =
@@ -57,6 +63,6 @@
 			aria-hidden="true"
 		></span>
 	{/if}
-	<slot name="icon" />
-	<slot />
+	{@render icon?.()}
+	{@render children?.()}
 </button>

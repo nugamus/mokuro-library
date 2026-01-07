@@ -10,8 +10,11 @@ data/
 backups/
 
 # Env
+.env
 .env.local
 .env.*.local
+.env.secrets
+backend/.env
 
 # Database
 backend/prisma/library.db

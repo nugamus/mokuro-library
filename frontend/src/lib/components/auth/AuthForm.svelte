@@ -3,6 +3,7 @@
 		username = $bindable(),
 		password = $bindable(),
 		confirmPassword = $bindable(),
+		rememberMe = $bindable(),
 		isRegisterMode,
 		isLoading,
 		error,
@@ -12,6 +13,7 @@
 		username: string;
 		password: string;
 		confirmPassword: string;
+		rememberMe: boolean;
 		isRegisterMode: boolean;
 		isLoading: boolean;
 		error: string | null;
@@ -98,6 +100,27 @@
 			       transition-all duration-300 transform focus:scale-[1.02]"
 		/>
 	</div>
+
+	{#if !isRegisterMode}
+		<div class="flex items-center gap-3 px-1 py-1">
+			<input
+				id="rememberMe"
+				type="checkbox"
+				bind:checked={rememberMe}
+				class="w-5 h-5 rounded-md border-2 border-theme-border bg-theme-main/50
+				       text-accent focus:ring-2 focus:ring-accent/30 focus:outline-none
+				       cursor-pointer transition-all duration-200
+				       checked:bg-accent checked:border-accent"
+			/>
+			<label
+				for="rememberMe"
+				class="text-sm text-theme-secondary font-medium cursor-pointer select-none
+				       hover:text-theme-primary transition-colors duration-200"
+			>
+				Remember me for 30 days
+			</label>
+		</div>
+	{/if}
 
 	{#if isRegisterMode}
 		<div class="space-y-2.5 group animate-in fade-in slide-in-from-top-2 duration-300">

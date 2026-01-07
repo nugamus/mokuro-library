@@ -171,6 +171,16 @@ class APICache {
   }
 
   /**
+   * Clear all cache including user ID
+   * Used on logout or session expiration
+   */
+  clearAllCache(): void {
+    this.cache.clear();
+    this.currentUserId = null;
+    console.debug('All API cache cleared');
+  }
+
+  /**
    * Set current user ID and clear cache if user changed
    * Called after login/auth check to ensure cache is user-specific
    */

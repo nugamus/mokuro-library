@@ -71,6 +71,6 @@ describe('series page', () => {
 
     expect(await screen.findByRole('heading', { name: /Volumes/ })).toBeTruthy();
     expect(screen.getByText('Volume 1')).toBeTruthy();
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/library/series/series-1');
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/library/series/series-1', expect.any(Object));
   });
 });

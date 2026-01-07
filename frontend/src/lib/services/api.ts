@@ -1,6 +1,7 @@
 import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 import { retryWithBackoff } from '$lib/utils/network/retry';
 import { apiCache } from '$lib/utils/caching/apiCache';
+import { getStoredFingerprint } from './deviceFingerprint';
 
 /**
  * It's the same as RequestInit, but 'body' can be 'any'
@@ -69,6 +70,10 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
       }
     }
 
+    // Add device fingerprint to all requests
+    const deviceFingerprint = await getStoredFingerprint();
+    finalHeaders['x-device-fingerprint'] = deviceFingerprint;
+
     if (fetchOptions.body instanceof FormData || fetchOptions.method === 'DELETE') {
       // If body is FormData, delete the 'Content-Type' header
       // so the browser can set it automatically.
@@ -134,6 +139,70 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     throw error;
   }
 }
+
+/**
+ * Track if a refresh is in progress to avoid multiple simultaneous refreshes
+ */
+let refreshInProgress = false;
+
+/**
+ * Attempts to refresh the access token using the refresh token.
+ */
+export const refreshAccessToken = async (): Promise<boolean> => {
+	if (refreshInProgress) {
+		// Wait for existing refresh to complete
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+		return true;
+	}
+
+	refreshInProgress = true;
+
+	try {
+		const deviceFingerprint = await getStoredFingerprint();
+
+		await apiFetch('/api/auth/refresh', {
+			method: 'POST',
+			body: { deviceFingerprint },
+			showErrorToast: false
+		});
+
+		return true;
+	} catch (e) {
+		console.debug('Token refresh failed:', e);
+		return false;
+	} finally {
+		refreshInProgress = false;
+	}
+};
+
+/**
+ * Enhanced apiFetch that automatically retries with token refresh on 401.
+ */
+export const apiFetchWithRefresh = async <T = any>(
+	url: string,
+	options?: ApiFetchOptions
+): Promise<T> => {
+	try {
+		return await apiFetch<T>(url, options);
+	} catch (error) {
+		// If 401 and not already a refresh/login request, try to refresh token
+		if (
+			error instanceof Error &&
+			error.message.includes('401') &&
+			!url.includes('/api/auth/refresh') &&
+			!url.includes('/api/auth/login')
+		) {
+			const refreshed = await refreshAccessToken();
+
+			if (refreshed) {
+				// Retry original request
+				return await apiFetch<T>(url, options);
+			}
+		}
+
+		throw error;
+	}
+};
 
 /**
  * Specialized upload function using XMLHttpRequest to support progress tracking.
