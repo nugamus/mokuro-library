@@ -673,12 +673,6 @@
 		style:cursor={isVertical ? 'vertical-text' : 'text'}
 		role="button"
 		tabindex="-1"
-		ondblclick={(e) => {
-			if (textHoldingElement) {
-				e.stopPropagation();
-				onSmartFontRequest(textHoldingElement);
-			}
-		}}
 	>
 		<span
 			bind:this={textHoldingElement}
