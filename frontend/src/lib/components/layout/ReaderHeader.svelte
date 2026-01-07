@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
-import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
+	import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 	import { fade } from 'svelte/transition';
 	import { keybindStore } from '$lib/stores/keybindStore';
 
@@ -24,7 +24,9 @@ import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 	);
 
 	const saveShortcut = $derived.by(() => ($keybindStore.saveOcr || []).join(' / '));
-	const smartResizeShortcut = $derived.by(() => ($keybindStore.toggleSmartResize || []).join(' / '));
+	const smartResizeShortcut = $derived.by(() =>
+		($keybindStore.toggleSmartResize || []).join(' / ')
+	);
 	const editModeShortcut = $derived.by(() => ($keybindStore.toggleOcrMode || []).join(' / '));
 
 	// --- Handlers ---
@@ -98,7 +100,9 @@ import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 	</div>
 
 	<div class="flex-1 flex justify-center">
-		{#if readerState.ocrMode === 'TEXT' && readerState.focusedBlock}
+		{#if readerState.ocrMode === 'TEXT' && readerState.focusedLineCoord[0] !== -1 && readerState.focusedLineCoord[1] !== -1}
+			{@const pageIdx = readerState.focusedLineCoord[0]}
+			{@const blockIdx = readerState.focusedLineCoord[1]}
 			<div class="relative">
 				<button
 					onclick={toggleFontSlider}
@@ -110,7 +114,8 @@ import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 						>Size</span
 					>
 					<span class="text-sm font-bold text-white min-w-[1.5rem] text-center">
-						{readerState.focusedBlock.font_size?.toFixed(0) ?? 16}
+						{readerState.mokuroStagingData?.pages[pageIdx].blocks[blockIdx].font_size?.toFixed(0) ??
+							16}
 					</span>
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
@@ -128,12 +133,7 @@ import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 					</svg>
 				</button>
 
-				<FontSizeSlider
-					bind:isOpen={isFontSizeOpen}
-					block={readerState.focusedBlock}
-					position={fontSizePos}
-					onOcrChange={() => readerState.onOcrChange()}
-				/>
+				<FontSizeSlider bind:isOpen={isFontSizeOpen} position={fontSizePos} />
 			</div>
 		{:else if readerState.isSaving}
 			<div
@@ -213,6 +213,56 @@ import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 				>
 			</button>
 		{/if}
+
+		<button
+			disabled={!readerState.hasUndo || !headerIsVisible}
+			onclick={(e) => {
+				e.stopPropagation();
+				readerState.undo();
+			}}
+			class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+			title={`Undo`}
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="20"
+				height="20"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				<path d="M3 7v6h6" />
+				<path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+			</svg>
+		</button>
+
+		<button
+			disabled={!readerState.hasRedo || !headerIsVisible}
+			onclick={(e) => {
+				e.stopPropagation();
+				readerState.redo();
+			}}
+			class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
+			title={`Redo`}
+		>
+			<svg
+				xmlns="http://www.w3.org/2000/svg"
+				width="20"
+				height="20"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				<path d="M21 7v6h-6" />
+				<path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+			</svg>
+		</button>
 
 		<button
 			disabled={!headerIsVisible}
@@ -313,7 +363,3 @@ import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
 		</button>
 	</div>
 </header>
-
-
-
-

@@ -8,17 +8,11 @@
 
 	let {
 		panzoomInstance = $bindable(),
-		navZoneWidth,
-
-		// Pass-through props for OcrOverlay
-		showTriggerOutline,
-		onLineFocus
-	} = $props<{
+		navZoneWidth
+	}: {
 		panzoomInstance: PanzoomObject | null;
 		navZoneWidth: number;
-		showTriggerOutline: boolean;
-		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
-	}>();
+	} = $props();
 
 	// Navigation handlers derived from reading direction
 	const handleClickLeft = () => {
@@ -74,16 +68,7 @@
 				style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
 			>
 				<CachedImage src={`/api/files/volume/${readerState.id}/image/${page.img_path}`} />
-				<OcrOverlay
-					pageIndex={page.index}
-					{page}
-					{panzoomInstance}
-					ocrMode={readerState.ocrMode}
-					isSmartResizeMode={readerState.isSmartResizeMode}
-					{showTriggerOutline}
-					readingDirection={readerState.readingDirection}
-					{onLineFocus}
-				/>
+				<OcrOverlay pageIndex={page.index} {page} {panzoomInstance} />
 			</div>
 		{/if}
 	</div>

@@ -1,21 +1,16 @@
 <script lang="ts">
 	import { onMount, tick } from 'svelte';
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
-	import type { MokuroBlock, MokuroPage } from '$lib/types';
 	import type { PanzoomObject } from '@panzoom/panzoom';
 	import CachedImage from '$lib/components/media/CachedImage.svelte';
 	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
-		panzoomInstance = $bindable(),
-		showTriggerOutline,
-		onLineFocus
-	} = $props<{
+		panzoomInstance = $bindable()
+	}: {
 		panzoomInstance: PanzoomObject | null;
-		showTriggerOutline: boolean;
-		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
-	}>();
+	} = $props();
 
 	let verticalScrollerElement = $state<HTMLElement | null>(null);
 	let panzoomWrapper = $state<HTMLElement | null>(null);
@@ -223,16 +218,7 @@
 					>
 						{#if visiblePages[i]}
 							<CachedImage src={`/api/files/volume/${readerState.id}/image/${page.img_path}`} />
-							<OcrOverlay
-								pageIndex={i}
-								{page}
-								{panzoomInstance}
-								ocrMode={readerState.ocrMode}
-								isSmartResizeMode={readerState.isSmartResizeMode}
-								{showTriggerOutline}
-								readingDirection={readerState.readingDirection}
-								{onLineFocus}
-							/>
+							<OcrOverlay pageIndex={i} {page} {panzoomInstance} />
 						{/if}
 					</div>
 				{/each}

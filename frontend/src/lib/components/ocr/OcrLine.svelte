@@ -1,9 +1,11 @@
 <script lang="ts">
 	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
-	import { getImageDeltas, ligaturize } from '$lib/utils/ocr/math';
+	import { computeSmartFont, getImageDeltas, ligaturize } from '$lib/utils/ocr/math';
 	import ResizeHandles from './ResizeHandles.svelte';
 	import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 	import type { Quad, Rect } from '$lib/types';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte';
+	import { tick, untrack } from 'svelte';
 
 	// --- Props ---
 	let {
@@ -11,6 +13,7 @@
 		coords,
 		lineIndex,
 		// Context
+		blockIndex,
 		blockBox,
 		isVertical,
 		fontSize,
@@ -20,7 +23,7 @@
 		onSplit,
 		onMerge,
 		onNavigate,
-		onSmartResizeRequest,
+		onSmartFontRequest,
 		onFocusRequest,
 		onLineChange,
 		onCoordChange,
@@ -31,6 +34,7 @@
 		line: string;
 		coords: Quad;
 		lineIndex: number;
+		blockIndex: number;
 		blockBox: Rect;
 		isVertical: boolean;
 		fontSize: number;
@@ -43,7 +47,7 @@
 			direction: 'up' | 'down' | 'left' | 'right',
 			offset: number
 		) => void;
-		onSmartResizeRequest: (targetElement: HTMLElement) => void;
+		onSmartFontRequest: (targetElement: HTMLElement, dry?: boolean) => number | undefined;
 		onFocusRequest: (targetElement: HTMLElement) => void;
 		onLineChange: (newText: string) => void;
 		onCoordChange: (newCoords: Quad) => void;
@@ -54,9 +58,54 @@
 
 	let lineElement: HTMLElement | undefined = $state();
 	let textHoldingElement: HTMLElement | undefined = $state();
-	let isEmpty = $state(line === ''); // desync only happens on hot-reload
-	let DPR: number | undefined = $state();
-	let finalFontSize = $derived((ocrState.fontScale / (DPR ?? 1)) * fontSize);
+	let isEmpty = $derived(!textHoldingElement || textHoldingElement.textContent.trim() === '');
+	let visualFontSize = $state(12);
+	let finalFontSize = $derived.by(() => {
+		return (ocrState.fontScale / devicePixelRatio) * visualFontSize;
+	});
+	let hasPendingInputChange: boolean = false;
+
+	// --- Automatic font syncing effects ---
+	$effect(() => {
+		let idx = `${ocrState.pageIndex}:${blockIndex}:${lineIndex}`;
+		let smartFont = readerState.smartFontCache.get(idx);
+		if (smartFont) {
+			visualFontSize = smartFont;
+			return;
+		}
+		if (!textHoldingElement) return;
+		untrack(async () => {
+			// wait for layout and font to load
+			await tick();
+			await document.fonts.ready;
+
+			// 3. Re-verify the element is still there
+			if (!textHoldingElement) return;
+			const smartFont = onSmartFontRequest(textHoldingElement, true);
+			if (smartFont) {
+				readerState.smartFontCache.set(idx, smartFont);
+			}
+		});
+	});
+
+	$effect(() => {
+		line;
+		let smartFont;
+		if (!isEmpty) smartFont = onSmartFontRequest(textHoldingElement!, true);
+
+		if (smartFont)
+			readerState.smartFontCache.set(`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`, smartFont);
+	});
+
+	$effect(() => {
+		coords;
+		let smartFont;
+		if (textHoldingElement && textHoldingElement.textContent !== '')
+			smartFont = onSmartFontRequest(textHoldingElement, true);
+
+		if (smartFont)
+			readerState.smartFontCache.set(`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`, smartFont);
+	});
 
 	// handle drag or double click
 	let doubleClickTimer: ReturnType<typeof setTimeout> | null = null;
@@ -134,7 +183,7 @@
 		const isTouch = (e as PointerEvent).pointerType === 'touch';
 
 		// 1. Text Edit Actions (Edit Mode Only)
-		if (ocrState.ocrMode === 'TEXT') {
+		if (readerState.ocrMode === 'TEXT') {
 			if (!isTouch) {
 				// Check if clipboard is available (HTTPS/localhost)
 				const hasClipboard = !!navigator.clipboard;
@@ -155,7 +204,7 @@
 		}
 
 		// 2. Structural Actions (Edit OR Box Mode)
-		if (ocrState.ocrMode !== 'READ') {
+		if (readerState.ocrMode !== 'READ') {
 			if (options.length > 0) options.push({ separator: true });
 			options.push({
 				label: isVertical ? 'Set Horizontal' : 'Set Vertical',
@@ -171,14 +220,18 @@
 	};
 
 	const handleInput = () => {
-		isEmpty = textHoldingElement?.textContent === '';
-		if (ocrState.isSmartResizeMode && textHoldingElement && textHoldingElement.textContent !== '')
-			onSmartResizeRequest(textHoldingElement);
+		hasPendingInputChange = true;
+		if (readerState.isSmartResizeMode && !isEmpty) {
+			onSmartFontRequest(textHoldingElement!);
+		}
 	};
 	const handleBlur = () => {
 		// Sync local -> parent (upsync)
-		let innerText = textHoldingElement?.innerText;
-		onLineChange(innerText ?? '');
+		if (hasPendingInputChange) {
+			let innerText = textHoldingElement?.innerText;
+			onLineChange(innerText ?? '');
+			hasPendingInputChange = false;
+		}
 	};
 
 	// --- Derived Geometry ---
@@ -187,7 +240,7 @@
 		const blockH = blockBox[3] - blockBox[1];
 
 		// Safety check to avoid division by zero if block has 0 size
-		if (blockW === 0 || blockH === 0) return { left: 0, top: 0, width: 0, height: 0 };
+		if (blockW === 0 || blockH === 0 || false) return { left: 0, top: 0, width: 0, height: 0 };
 
 		const x_min = ((coords[0][0] - blockBox[0]) / blockW) * 100;
 		const y_min = ((coords[0][1] - blockBox[1]) / blockH) * 100;
@@ -206,7 +259,7 @@
 
 	const handleDoubleClick = (event: MouseEvent) => {
 		// 1. Prioritize DBLCLICK action
-		ocrState.setMode('TEXT');
+		readerState.setOcrMode('TEXT');
 		onFocusRequest(event.currentTarget as HTMLElement);
 
 		// 2. Crucial State Reset & Drag Prevention
@@ -258,7 +311,7 @@
 		}
 
 		// Actual handle drag start
-		if (ocrState.ocrMode === 'TEXT') ocrState.setMode('BOX');
+		if (readerState.ocrMode === 'TEXT') readerState.setOcrMode('BOX');
 		if (!ocrState.overlayElement || !lineElement) return;
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
@@ -318,8 +371,6 @@
 				coord[1] += totalImageDeltaY;
 			}
 			onCoordChange(localCoords);
-
-			ocrState.markDirty();
 		};
 
 		window.addEventListener('pointermove', handleDragMove);
@@ -327,7 +378,7 @@
 	};
 
 	const handleResizeStart = (startEvent: PointerEvent, handleType: string) => {
-		if (ocrState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
+		if (readerState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
 
@@ -415,9 +466,20 @@
 				lineElement.style.height = `${y_max - y_min}%`;
 			}
 
-			if (ocrState.isSmartResizeMode && textHoldingElement) {
-				onSmartResizeRequest(textHoldingElement);
+			let smartFont;
+			if (readerState.isSmartResizeMode && !isEmpty) {
+				smartFont = onSmartFontRequest(textHoldingElement!);
 			}
+
+			if (!smartFont && !isEmpty) {
+				smartFont = onSmartFontRequest(textHoldingElement!, true);
+			}
+
+			if (smartFont)
+				readerState.smartFontCache.set(
+					`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`,
+					smartFont
+				);
 		};
 
 		const handleDragEnd = () => {
@@ -427,10 +489,9 @@
 			// 4. Commit Data
 			// NOTE: No need to clean up style since svelte reactivity will clear it on update
 			onCoordChange(localCoords);
-			ocrState.markDirty();
 
-			if (ocrState.isSmartResizeMode && textHoldingElement) {
-				onSmartResizeRequest(textHoldingElement);
+			if (readerState.isSmartResizeMode && !isEmpty) {
+				onSmartFontRequest(textHoldingElement!);
 			}
 		};
 
@@ -457,11 +518,13 @@
 
 		if (e.key === 'Enter') {
 			e.preventDefault();
+			e.stopPropagation();
 			const selection = window.getSelection();
 			if (!selection) return;
 			const offset = selection.anchorOffset;
 			const textBefore = line.substring(0, offset);
 			const textAfter = line.substring(offset);
+			hasPendingInputChange = false;
 			onSplit(lineIndex, textBefore, textAfter);
 		}
 
@@ -469,6 +532,8 @@
 			const selection = window.getSelection();
 			if (selection && selection.anchorOffset === 0 && lineIndex > 0) {
 				e.preventDefault();
+				e.stopPropagation();
+				hasPendingInputChange = false;
 				onMerge(lineIndex, line);
 			}
 		}
@@ -499,8 +564,7 @@
 	};
 </script>
 
-<svelte:window bind:devicePixelRatio={DPR} />
-{#if ocrState.ocrMode === 'BOX'}
+{#if readerState.ocrMode === 'BOX'}
 	<div
 		bind:this={lineElement}
 		class="absolute border border-red-500/50 bg-[rgba(239,128,128,0.7)] transition-colors z-2 group/line"
@@ -527,7 +591,7 @@
 			{ligaturize(line)}
 		</div>
 	</div>
-{:else if ocrState.ocrMode === 'TEXT'}
+{:else if readerState.ocrMode === 'TEXT'}
 	<div
 		bind:this={lineElement}
 		class="absolute border border-red-500/70 z-2 bg-[rgba(239,128,128,0.85)]"
@@ -558,17 +622,17 @@
 			onfocus={(e) => {
 				onFocusRequest(e.currentTarget);
 				if (
-					ocrState.isSmartResizeMode &&
+					readerState.isSmartResizeMode &&
 					textHoldingElement &&
 					textHoldingElement.textContent !== ''
 				)
-					onSmartResizeRequest(textHoldingElement);
+					onSmartFontRequest(textHoldingElement);
 			}}
 			oncontextmenu={handleContextMenu}
 			data-line-index={lineIndex}
 		></div>
 	</div>
-{:else if ocrState.isSmartResizeMode}
+{:else if readerState.isSmartResizeMode}
 	<div
 		bind:this={lineElement}
 		class="absolute border border-red-500/50 bg-transparent transition-colors z-2 group/line"
@@ -583,10 +647,9 @@
 			class:vertical-text={isVertical}
 			style:font-size="{finalFontSize}px"
 			ondblclick={(e) => {
-				console.log(isVertical);
-				if (ocrState.isSmartResizeMode && textHoldingElement) {
+				if (readerState.isSmartResizeMode && textHoldingElement) {
 					e.stopPropagation();
-					onSmartResizeRequest(textHoldingElement);
+					onSmartFontRequest(textHoldingElement);
 				}
 			}}
 			role="button"
@@ -597,8 +660,7 @@
 	</div>
 {:else}
 	<span
-		class="relative border border-transparent p-0 m-0 leading-none z-3 inline-flex items-center align-top pointer-events-auto ocr-line-text"
-		class:vertical-text={isVertical}
+		class="relative border border-transparent p-0 m-0 leading-none z-3 inline-flex align-top pointer-events-auto ocr-line-text"
 		style:left="{isVertical
 			? -100 + relativeStyles.width + relativeStyles.left
 			: relativeStyles.width + relativeStyles.left}%"
@@ -607,13 +669,25 @@
 		style:height="{relativeStyles.height}%"
 		style:margin-bottom="-{isVertical ? relativeStyles.height : 0}%"
 		style:margin-left="-{isVertical ? 0 : relativeStyles.width}%"
-		style:font-size="{finalFontSize}px"
-		style:border-color={ocrState.isSmartResizeMode ? 'red' : 'transparent'}
+		style:border-color={readerState.isSmartResizeMode ? 'red' : 'transparent'}
 		style:cursor={isVertical ? 'vertical-text' : 'text'}
 		role="button"
 		tabindex="-1"
+		ondblclick={(e) => {
+			if (textHoldingElement) {
+				e.stopPropagation();
+				onSmartFontRequest(textHoldingElement);
+			}
+		}}
 	>
-		{ligaturize(line)}
+		<span
+			bind:this={textHoldingElement}
+			class="w-fit h-fit whitespace-nowrap ocr-line-text"
+			class:vertical-text={isVertical}
+			style:font-size="{finalFontSize}px"
+		>
+			{ligaturize(line)}
+		</span>
 	</span>
 {/if}
 

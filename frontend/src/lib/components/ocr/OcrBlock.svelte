@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import type { MokuroBlock, PatchOperation, Quad, Rect } from '$lib/types';
 	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
 	import { lineOrderStore } from '$lib/stores/lineOrderStore';
-	import { getImageDeltas, smartResizeFont, getRelativeCoords } from '$lib/utils/ocr/math';
+	import { getImageDeltas, computeSmartFont, getRelativeCoords } from '$lib/utils/ocr/math';
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 
@@ -40,8 +40,10 @@
 	// handle resize handle visibility on mobile
 	let resizeHandleTimer: ReturnType<typeof setTimeout> | null = null;
 	let resizeHandleIsVisible = $state(false);
+	onMount(() => {});
 
 	// --- Derived Styles ---
+	let visualFontSize = $derived(block.font_size);
 	let visualDelta: Rect = $state([0, 0, 0, 0]);
 	let visualBox: Rect = $derived([
 		block.box[0] + visualDelta[0],
@@ -102,8 +104,8 @@
 				resizeHandleTimer = null;
 			}, 1000);
 		}
-		if (ocrState.ocrMode === 'READ') return;
-		if (ocrState.ocrMode === 'TEXT') ocrState.setMode('BOX');
+		if (readerState.ocrMode === 'READ') return;
+		if (readerState.ocrMode === 'TEXT') readerState.setOcrMode('BOX');
 		if (!ocrState.overlayElement || !blockElement) return;
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
@@ -199,7 +201,7 @@
 
 	// 2. Block Resize
 	const handleResizeStart = (startEvent: PointerEvent, handleType: string) => {
-		if (ocrState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
+		if (readerState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
 
@@ -392,25 +394,16 @@
 		targetComponent?.setCaret(clampedOffset);
 	};
 
-	const handleSmartResize = (targetElement: HTMLElement) => {
-		// Clone to prevent direct mutation during calculation
-		const clone = $state.snapshot(block) as MokuroBlock;
+	const handleSmartFontRequest = (targetElement: HTMLElement, dry?: boolean) => {
+		const smartFont = computeSmartFont(
+			[ocrState.pageIndex, blockIndex],
+			targetElement,
+			ocrState.imgWidth,
+			ocrState.fontScale
+		);
 
-		// Run math on clone
-		smartResizeFont(clone, targetElement, ocrState.imgWidth, ocrState.fontScale);
-
-		// If changed, dispatch
-		if (clone.font_size !== block.font_size) {
-			const pIdx = getPageIndex();
-			readerState.dispatch([
-				{
-					op: 'replace',
-					path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
-					value: clone.font_size!,
-					old_value: block.font_size!
-				}
-			]);
-		}
+		if (!dry) visualFontSize = smartFont ?? block.font_size;
+		return smartFont;
 	};
 
 	// 4. Block-Level Mutations
@@ -471,7 +464,7 @@
 	// --- Keyboard Shortcuts (Ctrl+A) ---
 	const handleWindowKeydown = (e: KeyboardEvent) => {
 		if (!isHovered) return;
-		if (ocrState.ocrMode !== 'READ') return; // Only in Reader/Neutral mode
+		if (readerState.ocrMode !== 'READ') return; // Only in Reader/Neutral mode
 
 		if (e.ctrlKey && e.key === 'a') {
 			e.preventDefault();
@@ -492,7 +485,7 @@
 		e.stopPropagation();
 		const options = [] as MenuOption[];
 
-		if (ocrState.ocrMode !== 'READ') {
+		if (readerState.ocrMode !== 'READ') {
 			options.push({ label: 'Add Line', action: () => handleAddLine(e) });
 			options.push({ separator: true });
 			options.push({
@@ -532,7 +525,7 @@
 	role="textbox"
 	tabindex="-1"
 >
-	{#if ocrState.ocrMode === 'BOX'}
+	{#if readerState.ocrMode === 'BOX'}
 		<ResizeHandles
 			variant="block"
 			forceVisible={resizeHandleIsVisible}
@@ -542,15 +535,18 @@
 
 	<TouchToggle
 		class="relative h-full w-full"
-		forceVisible={ocrState.ocrMode === 'BOX' ||
-			(ocrState.ocrMode === 'TEXT' && (ocrState.focusedBlock === block || $contextMenu.isOpen))}
+		forceVisible={readerState.ocrMode === 'BOX' ||
+			(readerState.ocrMode === 'TEXT' &&
+				((readerState.focusedLineCoord[0] === ocrState.pageIndex &&
+					readerState.focusedLineCoord[1] === blockIndex) ||
+					$contextMenu.isOpen))}
 		mode="overlay"
 	>
 		{#snippet trigger()}
 			<div
 				class="absolute top-0 left-0 h-full w-full border transition-opacity z-1"
-				class:border-green-500={ocrState.showTriggerOutline || readerState.ocrMode !== 'READ'}
-				class:border-transparent={!ocrState.showTriggerOutline && readerState.ocrMode === 'READ'}
+				class:border-green-500={readerState.showTriggerOutline || readerState.ocrMode !== 'READ'}
+				class:border-transparent={!readerState.showTriggerOutline && readerState.ocrMode === 'READ'}
 			></div>
 		{/snippet}
 
@@ -562,9 +558,9 @@
 		<div
 			class="relative h-full w-full p-0"
 			class:vertical-text={block.vertical}
-			class:bg-transparent={ocrState.ocrMode !== 'READ'}
-			class:bg-white={ocrState.ocrMode !== 'BOX' && ocrState.ocrMode !== 'TEXT'}
-			class:text-black={ocrState.ocrMode !== 'BOX' && ocrState.ocrMode !== 'TEXT'}
+			class:bg-transparent={readerState.ocrMode !== 'READ'}
+			class:bg-white={readerState.ocrMode !== 'BOX' && readerState.ocrMode !== 'TEXT'}
+			class:text-black={readerState.ocrMode !== 'BOX' && readerState.ocrMode !== 'TEXT'}
 		>
 			{#each block.lines as line, i}
 				<OcrLine
@@ -572,16 +568,17 @@
 					line={block.lines[i]}
 					coords={block.lines_coords[i]}
 					lineIndex={i}
+					{blockIndex}
 					blockBox={visualBox}
 					isVertical={block.vertical ?? false}
-					fontSize={block.font_size ?? 12}
+					fontSize={visualFontSize ?? 12}
 					{ocrState}
 					onSplit={handleSplit}
 					onMerge={handleMerge}
 					onNavigate={handleNavigate}
-					onSmartResizeRequest={handleSmartResize}
+					onSmartFontRequest={handleSmartFontRequest}
 					onFocusRequest={() => {
-						ocrState.setFocus(block);
+						readerState.setFocusedLine(ocrState.pageIndex, blockIndex, i);
 						// Optional: update global active element tracking if needed
 					}}
 					onLineChange={(newText) => {
@@ -595,6 +592,19 @@
 								old_value: block.lines[i]
 							}
 						]);
+
+						// If font_size changed, dispatch
+						if (visualFontSize && visualFontSize !== block.font_size) {
+							const pIdx = getPageIndex();
+							readerState.dispatch([
+								{
+									op: 'replace',
+									path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
+									value: visualFontSize,
+									old_value: block.font_size!
+								}
+							]);
+						}
 					}}
 					onCoordChange={(newCoords) => {
 						const pIdx = ocrState.pageIndex;
@@ -606,10 +616,23 @@
 								old_value: block.lines_coords[i]
 							}
 						]);
+
+						// If font_size changed, dispatch
+						if (visualFontSize && visualFontSize !== block.font_size) {
+							const pIdx = getPageIndex();
+							readerState.dispatch([
+								{
+									op: 'replace',
+									path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
+									value: visualFontSize,
+									old_value: block.font_size!
+								}
+							]);
+						}
 					}}
 					onDeleteRequest={() => deleteLine(i)}
 					onToggleVerticalRequest={toggleVertical}
-					onReorderRequest={() => lineOrderStore.open(block, ocrState.onOcrChange)}
+					onReorderRequest={handleOpenReorder}
 				/>
 			{/each}
 		</div>

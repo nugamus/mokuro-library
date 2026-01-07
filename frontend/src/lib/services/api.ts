@@ -90,6 +90,7 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     if (!response.ok) {
       try {
         const errorData = await response.json();
+        console.log(errorData)
         const errorMessage = errorData.message || 'An unknown API error occurred.';
         throw new Error(errorMessage);
       } catch (e) {

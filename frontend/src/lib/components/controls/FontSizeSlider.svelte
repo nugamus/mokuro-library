@@ -1,19 +1,11 @@
 <script lang="ts">
 	import { browser } from '$app/environment';
-	import type { MokuroBlock } from '$lib/types';
 	import MenuSlider from '$lib/components/menu/MenuSlider.svelte';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 
-	// --- Props ---
-	let {
-		isOpen = $bindable(false),
-		block,
-		position,
-		onOcrChange
-	} = $props<{
+	let { isOpen = $bindable(false), position } = $props<{
 		isOpen: boolean;
-		block: MokuroBlock | null;
 		position: { x: number; y: number };
-		onOcrChange: () => void;
 	}>();
 
 	// --- State ---
@@ -22,12 +14,15 @@
 	let finalX = $state(0);
 	let finalY = $state(0);
 
-	// --- Effects ---
-
-	// Sync internal state when the block prop changes (when opening)
+	// --- Synchronization ---
+	// Sync internal state when opening, using the coordinates to find the block
 	$effect(() => {
-		if (block) {
-			internalFontSize = block.font_size ?? 16;
+		if (isOpen && readerState.focusedLineCoord && readerState.mokuroStagingData) {
+			const [pIdx, bIdx] = readerState.focusedLineCoord;
+			const block = readerState.mokuroStagingData.pages[pIdx]?.blocks[bIdx];
+			if (block) {
+				internalFontSize = block.font_size ?? 16;
+			}
 		}
 	});
 
@@ -61,13 +56,23 @@
 
 	// --- Handlers ---
 
-	const handleSliderInput = (e: Event & { currentTarget: HTMLInputElement }) => {
-		internalFontSize = parseFloat(e.currentTarget.value);
+	const handleSliderChange = () => {
+		if (!readerState.focusedLineCoord || !readerState.mokuroStagingData) return;
 
-		if (block) {
-			block.font_size = internalFontSize;
-			onOcrChange(); // Mark state as dirty
-		}
+		const [pIdx, bIdx] = readerState.focusedLineCoord;
+		const block = readerState.mokuroStagingData.pages[pIdx]?.blocks[bIdx];
+
+		if (!block || internalFontSize === block.font_size) return;
+
+		// Dispatch using the exact indices from the coordinate system
+		readerState.dispatch([
+			{
+				op: 'replace',
+				path: `/pages/${pIdx}/blocks/${bIdx}/font_size`,
+				value: internalFontSize,
+				old_value: block.font_size ?? 16
+			}
+		]);
 	};
 </script>
 
@@ -77,15 +82,16 @@
 			bind:this={sliderElement}
 			class="fixed z-50 w-64 rounded-2xl bg-black/60 backdrop-blur-3xl border border-white/10 p-5 shadow-2xl"
 			style="left: {finalX}px; top: {finalY}px;"
+			onpointerdown={(e) => e.stopPropagation()}
 		>
 			<MenuSlider
 				label="Font Size"
 				bind:value={internalFontSize}
 				min={8}
-				max={48}
+				max={100}
 				step={1}
 				displayValue="{internalFontSize.toFixed(0)}px"
-				onInput={handleSliderInput}
+				onChange={handleSliderChange}
 			/>
 		</div>
 	{/if}

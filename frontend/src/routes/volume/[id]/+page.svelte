@@ -131,9 +131,6 @@
 	});
 
 	// Bridge functions
-	const onOcrChange = () => readerState.onOcrChange();
-	const onLineFocus = (block: MokuroBlock | null, page: MokuroPage | null) =>
-		readerState.setFocusedBlock(block, page);
 </script>
 
 <svelte:head>
@@ -159,25 +156,11 @@
 
 		<main class="flex flex-1 items-center justify-center overflow-hidden h-full">
 			{#if readerState.layoutMode === 'vertical'}
-				<VerticalReader
-					bind:panzoomInstance
-					showTriggerOutline={readerState.showTriggerOutline}
-					{onLineFocus}
-				/>
+				<VerticalReader bind:panzoomInstance />
 			{:else if readerState.layoutMode === 'double'}
-				<DoublePageReader
-					bind:panzoomInstance
-					navZoneWidth={readerState.navZoneWidth}
-					showTriggerOutline={readerState.showTriggerOutline}
-					{onLineFocus}
-				/>
+				<DoublePageReader bind:panzoomInstance navZoneWidth={readerState.navZoneWidth} />
 			{:else}
-				<SinglePageReader
-					bind:panzoomInstance
-					navZoneWidth={readerState.navZoneWidth}
-					showTriggerOutline={readerState.showTriggerOutline}
-					{onLineFocus}
-				/>
+				<SinglePageReader bind:panzoomInstance navZoneWidth={readerState.navZoneWidth} />
 			{/if}
 		</main>
 

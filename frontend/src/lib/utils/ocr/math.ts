@@ -1,3 +1,4 @@
+import { readerState } from '$lib/states/reader/ReaderState.svelte';
 import type { MokuroBlock } from '$lib/types';
 
 /**
@@ -84,7 +85,7 @@ export const getImageDeltas = (
 ) => {
   const { scaleRatioX, scaleRatioY } = getScaleRatios(containerElement, imgWidth, imgHeight);
 
-  // 1. Get mouse movement delta (browser handles zoom natively in movementX/Y usually, 
+  // 1. Get mouse movement delta (browser handles zoom natively in movementX/Y usually,
   // but we apply the ratio to map to image space)
   const relativeDeltaX = moveEvent.movementX;
   const relativeDeltaY = moveEvent.movementY;
@@ -104,12 +105,14 @@ export const getImageDeltas = (
  * @param imgWidth Original image width (for max bounds)
  * @param fontScale Current visual scale factor
  */
-export function smartResizeFont(
-  block: MokuroBlock,
+export function computeSmartFont(
+  [pageIdx, blockIdx]: [number, number],
   lineElement: HTMLElement,
   imgWidth: number,
   fontScale: number
 ) {
+  let block = readerState.mokuroStagingData?.pages[pageIdx]?.blocks[blockIdx];
+  if (!block) return;
   if (!lineElement || !lineElement.parentElement) return;
 
   const isVertical = block.vertical ?? false;
@@ -160,10 +163,10 @@ export function smartResizeFont(
     guess = min + ((targetMeasure - minMeasure) / (maxMeasure - minMeasure)) * (max - min);
   }
 
-  // 5. Return result (Mutation is handled by caller or we can do it here if we pass object)
-  block.font_size = +bestGuess.toFixed(3);
-  // lineElement.style.fontSize = `${fontScale * block.font_size}px`;
-
-  // 6. cleanup
+  // 5. cleanup
   range.detach();
+
+  // 6. Return result (Mutation is handled by caller or we can do it here if we pass object)
+  return +bestGuess.toFixed(3);
+
 }

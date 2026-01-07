@@ -8,6 +8,7 @@ import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
 import { apiCache } from '$lib/utils/caching/apiCache';
 import { PatchApplicator } from '$lib/utils/ocr/PatchApplicator';
 import { toastStore } from '$lib/stores/toastStore.svelte';
+import { SvelteMap } from 'svelte/reactivity';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
@@ -57,6 +58,7 @@ class ReaderState {
   // --- Session State (Not Persisted) ---
   ocrMode = $state<'READ' | 'BOX' | 'TEXT'>('READ');
   isSmartResizeMode = $state(false);
+  smartFontCache: SvelteMap<string, number> = new SvelteMap();
   now = $state(new Date()); // for scheduled settings
 
   isNightModeActive = $derived.by(() => {
@@ -105,8 +107,7 @@ class ReaderState {
   });
 
   // --- Editing / UI State ---
-  focusedBlock = $state<MokuroBlock | null>(null);
-  focusedPage = $state<MokuroPage | null>(null);
+  focusedLineCoord: [number, number, number] = $state([-1, -1, -1]);
   hasUnsavedChanges = $state(false);
   isSaving = $state(false);
   saveSuccess = $state(false);
@@ -116,6 +117,15 @@ class ReaderState {
   isPatching = $state(false);
   private patchQueue: PatchTask[] = [];
   mokuroStagingData = $state<MokuroData | null>(null)
+  hasUndo = $derived(!!(
+    this.volume?.id &&
+    !this.isPatching
+  ));
+
+  hasRedo = $derived(!!(
+    this.volume?.id &&
+    !this.isPatching
+  ));
 
 
   // --- Internals ---
@@ -247,10 +257,11 @@ class ReaderState {
     // 3. Reset Volume State Only
     this.canLazyServe = false;
     this.volume = null;
-    this.focusedBlock = null;
-    this.focusedPage = null;
+    this.focusedLineCoord = [-1, -1, -1];
     this.hasUnsavedChanges = false;
     this.ocrMode = 'READ';
+    this.isSmartResizeMode = false;
+    this.smartFontCache = new SvelteMap();
 
     // 4. Exit fullscreen if automated
     const handleError = (e: any) => console.log(`Set fullscreen state failed ${e}`);
@@ -337,9 +348,13 @@ class ReaderState {
     // The UI updates instantly for all ops in the array
     try {
       PatchApplicator.applyAll(this.mokuroStagingData, ops);
-    } catch (e) {
+    } catch (e: any) {
       console.error("ReaderState: Optimistic apply failed", e);
+      toastStore.error(`Ivalid Patch: ${e}`)
       return;
+    }
+    for (let op of ops) {
+      toastStore.info(`applied patch ${op}`);
     }
 
     // 2. Queue for Serial Execution
@@ -406,8 +421,59 @@ class ReaderState {
       }
     }
 
-    if (this.volume?.mokuroData) this.mokuroStagingData = $state.snapshot(this.volume).mokuroData as MokuroData;
     this.isPatching = false;
+  }
+
+  async undo() {
+    // The getter now handles the checks, but we keep the guard for safety
+    if (!this.hasUndo) return;
+    await this.performVersionOp('undo');
+  }
+
+  async redo() {
+    if (!this.hasRedo) return;
+    await this.performVersionOp('redo');
+  }
+
+  private async performVersionOp(op: 'undo' | 'redo') {
+    this.isPatching = true;
+    try {
+      // 1. Call API
+      // Response matches UserAPIAccessStrategy: { success, newHeadId, newVersion, patch }
+      const res = await apiFetch(`/api/library/volume/${this.volume!.id}/${op}`, {
+        method: 'POST',
+        body: { branchVersion: this.branchVersion }
+      });
+
+      // 2. Apply the Single Patch (Inverse or Original)
+      if (this.volume?.mokuroData && res.patch) {
+        // Apply to COMMITTED (Server Truth)
+        PatchApplicator.apply(this.volume.mokuroData, res.patch);
+
+        // Apply to STAGING (UI)
+        // We must apply it to staging to see the revert/redo visually
+        if (this.mokuroStagingData) {
+          PatchApplicator.apply(this.mokuroStagingData, res.patch);
+        }
+      }
+
+      // 3. Update Versioning
+      if (res.newVersion) {
+        this.branchVersion = res.newVersion;
+      }
+
+      // 4. Update Flags & Head Pointer
+      // Since backend doesn't return full versionInfo, we must update optimistically/logically
+      if (this.volume?.versionInfo) {
+        this.volume.versionInfo.branchVersion = res.newVersion;
+        this.volume.versionInfo.headPatchId = res.newHeadId;
+      }
+
+    } catch (e: any) {
+      console.error(`${op} failed:`, e);
+    } finally {
+      this.isPatching = false;
+    }
   }
 
   private async saveProgress(volumeId: string) {
@@ -508,6 +574,7 @@ class ReaderState {
   get hasNext() { return this.currentPageIndex < this.totalPages - 1; }
   get hasPrev() { return this.currentPageIndex > 0; }
 
+
   // --- Actions ---
 
   nextPage() {
@@ -566,7 +633,9 @@ class ReaderState {
 
   setOcrMode(mode: 'READ' | 'BOX' | 'TEXT') {
     this.ocrMode = mode;
-    if (mode === 'READ') this.focusedBlock = null;
+    if (mode === 'READ') {
+      this.unsetFocusedLine();
+    }
   }
 
   toggleSmartResizeMode() {
@@ -577,9 +646,41 @@ class ReaderState {
     this.hasUnsavedChanges = true;
   }
 
-  setFocusedBlock(block: MokuroBlock | null, page: MokuroPage | null) {
-    this.focusedBlock = block;
-    this.focusedPage = page;
+  unsetFocusedLine() {
+    if (this.volume?.mokuroData) this.mokuroStagingData = $state.snapshot(this.volume).mokuroData as MokuroData;
+    this.focusedLineCoord = [-1, -1, -1];
+  }
+
+  setFocusedLine(pageIndex: number, blockIndex: number, lineIndex: number) {
+    // 1. Guard: Staging data must exist
+    if (!this.mokuroStagingData) {
+      console.warn('setFocusedLine called before data loaded');
+      return;
+    }
+
+    // 2. Validate Page
+    const page = this.mokuroStagingData.pages[pageIndex];
+    if (!page) {
+      console.warn(`setFocusedLine: Invalid page index ${pageIndex}`);
+      return;
+    }
+
+    // 3. Validate Block
+    const block = page.blocks[blockIndex];
+    if (!block) {
+      console.warn(`setFocusedLine: Invalid block index ${blockIndex} on page ${pageIndex}`);
+      return;
+    }
+
+    // 4. Validate Line
+    // We check against block.lines array length
+    if (lineIndex < 0 || lineIndex >= block.lines.length) {
+      console.warn(`setFocusedLine: Invalid line index ${lineIndex} on block ${blockIndex}`);
+      return;
+    }
+
+    // 5. Apply
+    this.focusedLineCoord = [pageIndex, blockIndex, lineIndex];
   }
 
   async markVolumeComplete() {

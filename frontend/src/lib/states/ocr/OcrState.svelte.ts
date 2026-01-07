@@ -10,21 +10,6 @@ export class OcrState {
 
   pageIndex = $state<number>(-1); // Critical for path generation
 
-  // --- Modes ---
-  ocrMode = $state<'READ' | 'BOX' | 'TEXT'>('READ');
-  isSmartResizeMode = $state(false);
-  showTriggerOutline = $state(false);
-  readingDirection = $state('rtl');
-
-  // --- Focus Tracking ---
-  focusedBlock = $state<MokuroBlock | null>(null);
-
-  // --- Callbacks (Injected) ---
-  onOcrChange = $state<() => void>(() => { });
-  // This function is purely to coordinate font slider logic on the top-level
-  // I should rethink this
-  onLineFocus = $state<(block: MokuroBlock | null, page: MokuroPage | null) => void>(() => { });
-
   constructor(init?: Partial<OcrState>) {
     Object.assign(this, init);
   }
@@ -67,18 +52,5 @@ export class OcrState {
     } as PatchOperation;
 
     readerState.dispatch([patch]);
-  }
-
-  markDirty() {
-    this.onOcrChange();
-  }
-
-  setMode(mode: 'READ' | 'BOX' | 'TEXT') {
-    readerState.setOcrMode(mode);
-  }
-
-  setFocus(block: MokuroBlock | null) {
-    this.focusedBlock = block;
-    this.onLineFocus(block, this.page);
   }
 }

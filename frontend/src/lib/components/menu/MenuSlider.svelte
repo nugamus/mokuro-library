@@ -9,7 +9,8 @@
 		max = 1,
 		step = 0.1,
 		displayValue = '',
-		onInput
+		onInput,
+		onChange
 	} = $props<{
 		label: string;
 		tooltip?: string;
@@ -19,6 +20,7 @@
 		step?: number;
 		displayValue?: string;
 		onInput?: (e: Event & { currentTarget: HTMLInputElement }) => void;
+		onChange?: () => void;
 	}>();
 </script>
 
@@ -42,6 +44,7 @@
 			{max}
 			{step}
 			oninput={onInput}
+			onchange={onChange}
 			class="w-full h-2 rounded-full appearance-none cursor-pointer slider"
 			style="--progress: {(value - min) / (max - min)}"
 		/>

@@ -5,11 +5,13 @@
 	// Local state to track the reordering visually
 	// This ensures we don't mutate the 'staging' data until the user clicks Done
 	let order = $state<number[]>([]);
+	let originalOrder: number[];
 
 	// Initialize order when the modal opens with a new block
 	$effect(() => {
 		if ($lineOrderStore.block) {
 			order = $lineOrderStore.block.lines.map((_, i) => i);
+			originalOrder = $lineOrderStore.block.lines.map((_, i) => i);
 		}
 	});
 
@@ -28,8 +30,14 @@
 	};
 
 	const handleDone = () => {
-		// Pass the final permutation back to the caller
-		$lineOrderStore.onCommit(order);
+		for (let i = 0; i < order.length; i++) {
+			if (order[i] !== originalOrder[i]) {
+				// Pass the final permutation back to the caller
+				$lineOrderStore.onCommit(order);
+				break;
+			}
+		}
+
 		lineOrderStore.close();
 	};
 </script>

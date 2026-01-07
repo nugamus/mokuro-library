@@ -5,31 +5,22 @@
 	import { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 	import { getRelativeCoords, getScaleRatios } from '$lib/utils/ocr/math';
 	import OcrBlock from './OcrBlock.svelte';
+	import { readerState } from '$lib/states/reader/ReaderState.svelte';
+	import { PatchApplicator } from '$lib/utils/ocr/PatchApplicator';
 
 	let {
 		page,
 		pageIndex, // New Prop
-		panzoomInstance,
-		ocrMode,
-		isSmartResizeMode,
-		showTriggerOutline,
-		readingDirection,
-		onLineFocus
-	} = $props<{
+		panzoomInstance
+	}: {
 		page: MokuroPage;
 		pageIndex: number;
 		panzoomInstance: PanzoomObject | null;
-		ocrMode: 'READ' | 'BOX' | 'TEXT';
-		isSmartResizeMode: boolean;
-		showTriggerOutline: boolean;
-		readingDirection: string;
-		onLineFocus: (block: MokuroBlock | null, page: MokuroPage | null) => void;
-	}>();
+	} = $props();
 
 	// Initialize State with Page Index
 	const ocrState = new OcrState({
-		pageIndex,
-		onLineFocus: (b, p) => onLineFocus(b, p)
+		pageIndex
 	});
 
 	// Sync Props
@@ -37,17 +28,13 @@
 		ocrState.page = page;
 		ocrState.pageIndex = pageIndex; // Keep synced
 		ocrState.panzoomInstance = panzoomInstance;
-		ocrState.isSmartResizeMode = isSmartResizeMode;
-		ocrState.showTriggerOutline = showTriggerOutline;
-		ocrState.readingDirection = readingDirection;
-		ocrState.ocrMode = ocrMode;
 	});
 
 	const handleOverlayClick = (e: MouseEvent) => {
 		if (e.target !== e.currentTarget) return;
-		if (ocrMode === 'TEXT') {
-			ocrState.setFocus(null);
-			ocrState.setMode('BOX');
+		if (readerState.ocrMode === 'TEXT') {
+			readerState.unsetFocusedLine();
+			readerState.setOcrMode('BOX');
 		}
 		const selection = window.getSelection();
 		if (selection) selection.removeAllRanges();
@@ -101,20 +88,25 @@
 
 		// 3. Dispatch 'ADD' Op
 		// Path: /pages/{p}/blocks/- (Append)
-		ocrState.dispatch('blocks/-', 'add', newBlock);
+		ocrState.dispatch('blocks/-', 'add', PatchApplicator.nativeBlockToUnified(newBlock));
 	};
 
 	const handleDeleteBlock = (blockToDelete: MokuroBlock) => {
 		const index = page.blocks.indexOf(blockToDelete);
 		if (index > -1) {
 			// Dispatch 'REMOVE' Op
-			ocrState.dispatch(`blocks/${index}`, 'remove', null, blockToDelete);
+			ocrState.dispatch(
+				`blocks/${index}`,
+				'remove',
+				null,
+				PatchApplicator.nativeBlockToUnified(blockToDelete)
+			);
 		}
 	};
 
 	const handleContextMenu = (event: MouseEvent) => {
 		if (event.target !== event.currentTarget) return;
-		if (ocrMode !== 'READ') {
+		if (readerState.ocrMode !== 'READ') {
 			event.preventDefault();
 			event.stopPropagation();
 			contextMenu.open(event.clientX, event.clientY, [
