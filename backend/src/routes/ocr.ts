@@ -66,11 +66,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         return result;
       } catch (err: any) {
         if (err instanceof HttpError) {
-          return reply.code(err.statusCode).send({ error: err.message });
+          return reply.code(err.statusCode).send({ message: err.message });
         }
         request.log.error(err);
         const message = err instanceof Error ? err.message : 'Internal Server Error';
-        return reply.code(500).send({ error: message });
+        return reply.code(500).send({ message });
       }
     }
   );
@@ -89,11 +89,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         return result;
       } catch (err: any) {
         if (err instanceof HttpError) {
-          return reply.code(err.statusCode).send({ error: err.message });
+          return reply.code(err.statusCode).send({ message: err.message });
         }
         request.log.error(err);
         const message = err instanceof Error ? err.message : 'Internal Server Error';
-        return reply.code(500).send({ error: message });
+        return reply.code(500).send({ message });
       }
     }
   );
@@ -112,11 +112,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         return result;
       } catch (err: any) {
         if (err instanceof HttpError) {
-          return reply.code(err.statusCode).send({ error: err.message });
+          return reply.code(err.statusCode).send({ message: err.message });
         }
         request.log.error(err);
         const message = err instanceof Error ? err.message : 'Internal Server Error';
-        return reply.code(500).send({ error: message });
+        return reply.code(500).send({ message });
       }
     }
   );
@@ -134,11 +134,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         return { success: true };
       } catch (err: any) {
         if (err instanceof HttpError) {
-          return reply.code(err.statusCode).send({ error: err.message });
+          return reply.code(err.statusCode).send({ message: err.message });
         }
         request.log.error(err);
         const message = err instanceof Error ? err.message : 'Internal Server Error';
-        return reply.code(500).send({ error: message });
+        return reply.code(500).send({ message });
       }
     }
   );
@@ -172,7 +172,7 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         });
       } catch (err: any) {
         if (err instanceof HttpError) {
-          return reply.code(err.statusCode).send({ error: err.message });
+          return reply.code(err.statusCode).send({ message: err.message });
         }
         request.log.error(err);
         return reply.code(500).send({ error: 'Failed to synchronize OCR snapshot' });
@@ -195,11 +195,11 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         return { success: true };
       } catch (err: any) {
         if (err instanceof HttpError) {
-          return reply.code(err.statusCode).send({ error: err.message });
+          return reply.code(err.statusCode).send({ message: err.message });
         }
         request.log.error(err);
         const message = err instanceof Error ? err.message : 'Internal Server Error';
-        return reply.code(500).send({ error: message });
+        return reply.code(500).send({ message });
       }
     }
   );

@@ -67,13 +67,20 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
 export async function fetchAncestryChain(prisma: ExtendedPrismaClient, startId: string, stopId: string | null = null): Promise<Patch[]> {
   return await prisma.$queryRaw<Patch[]>`
     WITH RECURSIVE chain AS (
+      -- Base case: Start with the initial record
       SELECT * FROM "Patch" WHERE id = ${startId}
+
       UNION ALL
+
+      -- Recursive step: Join the previous record's parentId to the Patch table's id
       SELECT p.* FROM "Patch" p
       INNER JOIN chain c ON c.parentId = p.id
+      -- This condition stops the recursion from LOOKING for the stopId's parent
       WHERE c.id <> ${stopId ?? ''}
     )
-    SELECT * FROM chain;
+    -- Final filter: Remove the stopId record itself from the returned set
+    SELECT * FROM chain
+    WHERE id <> ${stopId ?? ''};
   `;
 }
 

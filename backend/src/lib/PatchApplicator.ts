@@ -2,17 +2,15 @@ import { PatchOperation, UnifiedLine, UnifiedBlock } from '../types/history';
 import { MokuroData, Quad, Rect, MokuroBlock } from '../types/mokuro';
 
 export class PatchApplicator {
-
   /**
    * Applies a patch operation to the MokuroData object (mutates in place).
-   * Patches are assumed to be valid (validated at insertion time).
-   * 
+   * Validates indices before applying.
+   *
    * @param data - The MokuroData object to modify
    * @param patch - The patch operation to apply
-   * @throws Error if path/op is unsupported
+   * @throws Error if path/op is unsupported or indices are invalid
    */
   static apply(data: MokuroData, patch: PatchOperation): void {
-    // Genesis/No-op: skip
     if (patch.op === 'genesis') {
       return;
     }
@@ -24,35 +22,59 @@ export class PatchApplicator {
     if (parts[2] === 'blocks') {
       const pageIndex = parseInt(parts[1]);
       const page = data.pages[pageIndex];
+      if (!page) {
+        throw new Error(`Invalid page index ${pageIndex}: only ${data.pages.length} pages exist`);
+      }
 
       // Reorder Blocks (/pages/0/blocks)
       if (parts.length === 3 && op === 'reorder') {
-        this.reorderArray(page.blocks, patch.new_order!);
+        if (!patch.new_order) {
+          throw new Error(`Reorder operation missing new_order`);
+        }
+        if (patch.new_order.length !== page.blocks.length) {
+          throw new Error(`Reorder length mismatch: new_order has ${patch.new_order.length} elements, but page has ${page.blocks.length} blocks`);
+        }
+        this.reorderArray(page.blocks, patch.new_order);
         return;
       }
 
       const blockIndexRaw = parts[3];
-      const property = parts[4];
 
       // Block Add/Remove (/pages/0/blocks/- or /pages/0/blocks/1)
       if (parts.length === 4) {
         if (op === 'add') {
+          if (!patch.value) {
+            throw new Error(`Add operation missing value`);
+          }
           const nativeBlock = this.unifiedToNativeBlock(patch.value as UnifiedBlock);
           if (blockIndexRaw === '-') {
             page.blocks.push(nativeBlock);
           } else {
-            page.blocks.splice(parseInt(blockIndexRaw), 0, nativeBlock);
+            const blockIndex = parseInt(blockIndexRaw);
+            if (blockIndex < 0 || blockIndex > page.blocks.length) {
+              throw new Error(`Invalid block insert index ${blockIndex}: page has ${page.blocks.length} blocks`);
+            }
+            page.blocks.splice(blockIndex, 0, nativeBlock);
           }
           return;
         }
 
         if (op === 'remove') {
-          page.blocks.splice(parseInt(blockIndexRaw), 1);
+          const blockIndex = parseInt(blockIndexRaw);
+          if (blockIndex < 0 || blockIndex >= page.blocks.length) {
+            throw new Error(`Invalid block index ${blockIndex}: page has ${page.blocks.length} blocks`);
+          }
+          page.blocks.splice(blockIndex, 1);
           return;
         }
       }
 
-      const block = page.blocks[parseInt(blockIndexRaw)];
+      const blockIndex = parseInt(blockIndexRaw);
+      if (blockIndex < 0 || blockIndex >= page.blocks.length) {
+        throw new Error(`Invalid block index ${blockIndex}: page has ${page.blocks.length} blocks`);
+      }
+      const block = page.blocks[blockIndex];
+      const property = parts[4];
 
       // Line Operations (/pages/0/blocks/1/lines/...)
       if (property === 'lines') {
@@ -60,42 +82,64 @@ export class PatchApplicator {
 
         // Reorder Lines
         if (!lineIndexRaw && op === 'reorder') {
-          this.reorderParallel(block.lines, block.lines_coords, patch.new_order!);
+          if (!patch.new_order) {
+            throw new Error(`Reorder operation missing new_order`);
+          }
+          if (patch.new_order.length !== block.lines.length) {
+            throw new Error(`Reorder length mismatch: new_order has ${patch.new_order.length} elements, but block has ${block.lines.length} lines`);
+          }
+          this.reorderParallel(block.lines, block.lines_coords, patch.new_order);
           return;
         }
 
         if (lineIndexRaw) {
-          // Add/Remove Line
+          // Add Line
           if (op === 'add') {
+            if (!patch.value) {
+              throw new Error(`Add operation missing value`);
+            }
             const val = patch.value as UnifiedLine;
             if (lineIndexRaw === '-') {
               block.lines.push(val.text);
               block.lines_coords.push(val.coords);
             } else {
-              const idx = parseInt(lineIndexRaw);
-              block.lines.splice(idx, 0, val.text);
-              block.lines_coords.splice(idx, 0, val.coords);
+              const lineIndex = parseInt(lineIndexRaw);
+              if (lineIndex < 0 || lineIndex > block.lines.length) {
+                throw new Error(`Invalid line insert index ${lineIndex}: block has ${block.lines.length} lines`);
+              }
+              block.lines.splice(lineIndex, 0, val.text);
+              block.lines_coords.splice(lineIndex, 0, val.coords);
             }
             return;
           }
 
+          // Remove Line
           if (op === 'remove') {
-            const idx = parseInt(lineIndexRaw);
-            block.lines.splice(idx, 1);
-            block.lines_coords.splice(idx, 1);
+            const lineIndex = parseInt(lineIndexRaw);
+            if (lineIndex < 0 || lineIndex >= block.lines.length) {
+              throw new Error(`Invalid line index ${lineIndex}: block has ${block.lines.length} lines`);
+            }
+            block.lines.splice(lineIndex, 1);
+            block.lines_coords.splice(lineIndex, 1);
             return;
           }
 
           // Line Properties (Text/Coords)
           const subProp = parts[6];
           if (op === 'replace') {
-            const idx = parseInt(lineIndexRaw);
+            const lineIndex = parseInt(lineIndexRaw);
+            if (lineIndex < 0 || lineIndex >= block.lines.length) {
+              throw new Error(`Invalid line index ${lineIndex}: block has ${block.lines.length} lines`);
+            }
+            if (patch.value === undefined) {
+              throw new Error(`Replace operation missing value`);
+            }
             if (subProp === 'text') {
-              block.lines[idx] = patch.value as string;
+              block.lines[lineIndex] = patch.value as string;
               return;
             }
             if (subProp === 'coords') {
-              block.lines_coords[idx] = patch.value as Quad;
+              block.lines_coords[lineIndex] = patch.value as Quad;
               return;
             }
           }
@@ -104,6 +148,9 @@ export class PatchApplicator {
 
       // Block Properties (box, vertical, font_size)
       if (op === 'replace') {
+        if (patch.value === undefined) {
+          throw new Error(`Replace operation missing value`);
+        }
         if (property === 'box') {
           block.box = patch.value as Rect;
           return;
@@ -134,13 +181,26 @@ export class PatchApplicator {
   // --- Conversion Helpers ---
 
   /** Convert UnifiedBlock to native storage format */
-  private static unifiedToNativeBlock(u: UnifiedBlock): MokuroBlock {
+  static unifiedToNativeBlock(u: UnifiedBlock): MokuroBlock {
     return {
       box: u.box,
       vertical: u.vertical,
       font_size: u.font_size,
       lines: u.lines.map(l => l.text),
       lines_coords: u.lines.map(l => l.coords)
+    };
+  }
+
+  /** Convert UnifiedBlock to native storage format */
+  static nativeBlockToUnified(block: MokuroBlock): UnifiedBlock {
+    return {
+      box: block.box,
+      vertical: block.vertical ?? false,
+      font_size: block.font_size,
+      lines: block.lines.map((text, i) => ({
+        text: text,
+        coords: block.lines_coords[i]
+      }))
     };
   }
 
