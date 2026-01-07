@@ -65,4 +65,18 @@ describe('files routes', () => {
 
     expect(response.statusCode).toBe(404);
   });
+
+  it('serves images without device fingerprint (for browser img tags)', async () => {
+    const response = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/files/series/${seriesId}/cover`,
+      headers: {
+        cookie: cookieHeader,
+        // NO x-device-fingerprint header - simulates browser <img> tag
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/');
+  });
 });

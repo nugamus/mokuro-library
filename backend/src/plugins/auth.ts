@@ -47,7 +47,9 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
     }
 
     // Verify device fingerprint if present in token
-    if (decoded.deviceHash) {
+    // For GET requests, fingerprint is optional since browser image/file requests can't send custom headers
+    // For state-changing requests (POST/PUT/DELETE), fingerprint is required
+    if (decoded.deviceHash && !SAFE_METHODS.has(request.method)) {
       const deviceFingerprint = request.headers['x-device-fingerprint'] as string;
 
       if (!deviceFingerprint) {

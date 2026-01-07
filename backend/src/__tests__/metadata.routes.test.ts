@@ -103,4 +103,20 @@ describe('metadata routes', () => {
     const volume = await ctx.prisma.volume.findUnique({ where: { id: volumeId } });
     expect(volume?.title).toBe('Updated Volume');
   });
+
+  it('rejects state-changing requests without device fingerprint', async () => {
+    const response = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/metadata/volume/${volumeId}/progress`,
+      headers: {
+        cookie: cookieHeader,
+        // NO x-device-fingerprint header
+        'x-csrf-token': csrfToken
+      },
+      payload: { page: 2, completed: false },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json().message).toBe('Device fingerprint required');
+  });
 });

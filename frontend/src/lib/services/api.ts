@@ -90,7 +90,6 @@ export async function apiFetch(path: string, options: ApiFetchOptions = {}) {
     if (!response.ok) {
       try {
         const errorData = await response.json();
-        console.log(errorData)
         const errorMessage = errorData.message || 'An unknown API error occurred.';
         throw new Error(errorMessage);
       } catch (e) {
@@ -215,8 +214,11 @@ export function apiUpload(
   onProgress: (percent: number) => void,
   maxRetries = 2
 ): Promise<any> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     let attempts = 0;
+
+    // Get device fingerprint once at the start
+    const deviceFingerprint = await getStoredFingerprint();
 
     const tryUpload = () => {
       attempts++;
@@ -254,6 +256,9 @@ export function apiUpload(
       if (csrfToken) {
         xhr.setRequestHeader('x-csrf-token', csrfToken);
       }
+
+      // Add device fingerprint header
+      xhr.setRequestHeader('x-device-fingerprint', deviceFingerprint);
 
       if (xhr.upload) {
         xhr.upload.onprogress = (event) => {
