@@ -13,11 +13,13 @@
 
 	// --- Props ---
 	let {
+		pageIndex,
 		blockIndex,
 		block,
 		ocrState,
 		onDelete
 	}: {
+		pageIndex: number;
 		blockIndex: number;
 		block: MokuroBlock;
 		ocrState: OcrState;
@@ -64,7 +66,6 @@
 
 		return { x_min, y_min, width, height };
 	});
-	const getPageIndex = () => ocrState.pageIndex;
 
 	// --- Interactions ---
 
@@ -160,7 +161,7 @@
 			if (isPendingDoubleClick) return;
 
 			// --- REFACTOR: Dispatch Batch Ops ---
-			const pIdx = ocrState.pageIndex;
+			const pIdx = pageIndex;
 			const bIdx = blockIndex;
 			const ops: PatchOperation[] = [];
 
@@ -256,7 +257,7 @@
 		const handleDragEnd = () => {
 			window.removeEventListener('pointermove', handleDragMove);
 			window.removeEventListener('pointerup', handleDragEnd);
-			const pIdx = ocrState.pageIndex;
+			const pIdx = pageIndex;
 			const bIdx = blockIndex;
 
 			// Calculate Final Box
@@ -289,7 +290,7 @@
 	// 3. Child Line Actions (Bubbled Up)
 
 	const handleSplit = async (index: number, textBefore: string, textAfter: string) => {
-		const pIdx = getPageIndex();
+		const pIdx = pageIndex;
 		const bIdx = blockIndex;
 
 		// Calculate New Geometry
@@ -337,7 +338,7 @@
 
 	const handleMerge = async (index: number, text: string) => {
 		if (index === 0) return;
-		const pIdx = getPageIndex();
+		const pIdx = pageIndex;
 		const bIdx = blockIndex;
 		const prevLength = block.lines[index - 1].length;
 		const combinedText = block.lines[index - 1] + text;
@@ -396,7 +397,7 @@
 
 	const handleSmartFontRequest = (targetElement: HTMLElement, dry?: boolean) => {
 		const smartFont = computeSmartFont(
-			[ocrState.pageIndex, blockIndex],
+			[pageIndex, blockIndex],
 			targetElement,
 			ocrState.imgWidth,
 			ocrState.fontScale
@@ -408,7 +409,7 @@
 
 	// 4. Block-Level Mutations
 	const toggleVertical = () => {
-		const pIdx = getPageIndex();
+		const pIdx = pageIndex;
 		readerState.dispatch([
 			{
 				op: 'replace',
@@ -423,7 +424,7 @@
 		if (block.lines.length <= 1) {
 			onDelete(); // Block deletion is handled by parent (OcrOverlay)
 		} else {
-			const pIdx = getPageIndex();
+			const pIdx = pageIndex;
 			readerState.dispatch([
 				{
 					op: 'remove',
@@ -450,7 +451,7 @@
 			[imgX, imgY + DEFAULT_S]
 		];
 
-		const pIdx = getPageIndex();
+		const pIdx = pageIndex;
 		// Dispatch Add to end of list ('-')
 		readerState.dispatch([
 			{
@@ -537,7 +538,7 @@
 		class="relative h-full w-full"
 		forceVisible={readerState.ocrMode === 'BOX' ||
 			(readerState.ocrMode === 'TEXT' &&
-				((readerState.focusedLineCoord[0] === ocrState.pageIndex &&
+				((readerState.focusedLineCoord[0] === pageIndex &&
 					readerState.focusedLineCoord[1] === blockIndex) ||
 					$contextMenu.isOpen))}
 		mode="overlay"
@@ -568,6 +569,7 @@
 					line={block.lines[i]}
 					coords={block.lines_coords[i]}
 					lineIndex={i}
+					{pageIndex}
 					{blockIndex}
 					blockBox={visualBox}
 					isVertical={block.vertical ?? false}
@@ -578,11 +580,11 @@
 					onNavigate={handleNavigate}
 					onSmartFontRequest={handleSmartFontRequest}
 					onFocusRequest={() => {
-						readerState.setFocusedLine(ocrState.pageIndex, blockIndex, i);
+						readerState.setFocusedLine(pageIndex, blockIndex, i);
 						// Optional: update global active element tracking if needed
 					}}
 					onLineChange={(newText) => {
-						const pIdx = ocrState.pageIndex;
+						const pIdx = pageIndex;
 						if (newText === block.lines[i]) return;
 						readerState.dispatch([
 							{
@@ -595,7 +597,7 @@
 
 						// If font_size changed, dispatch
 						if (visualFontSize && visualFontSize !== block.font_size) {
-							const pIdx = getPageIndex();
+							const pIdx = pageIndex;
 							readerState.dispatch([
 								{
 									op: 'replace',
@@ -607,7 +609,7 @@
 						}
 					}}
 					onCoordChange={(newCoords) => {
-						const pIdx = ocrState.pageIndex;
+						const pIdx = pageIndex;
 						readerState.dispatch([
 							{
 								op: 'replace',
@@ -619,7 +621,7 @@
 
 						// If font_size changed, dispatch
 						if (visualFontSize && visualFontSize !== block.font_size) {
-							const pIdx = getPageIndex();
+							const pIdx = pageIndex;
 							readerState.dispatch([
 								{
 									op: 'replace',

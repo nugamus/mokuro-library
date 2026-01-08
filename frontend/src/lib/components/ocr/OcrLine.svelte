@@ -13,6 +13,7 @@
 		coords,
 		lineIndex,
 		// Context
+		pageIndex,
 		blockIndex,
 		blockBox,
 		isVertical,
@@ -34,6 +35,7 @@
 		line: string;
 		coords: Quad;
 		lineIndex: number;
+		pageIndex: number;
 		blockIndex: number;
 		blockBox: Rect;
 		isVertical: boolean;
@@ -77,48 +79,36 @@
 	);
 	let hasPendingInputChange: boolean = false;
 
-	// --- Automatic font syncing effects ---
+	let requestFont = $state(false);
 	onMount(() => {
-		let idx = `${ocrState.pageIndex}:${blockIndex}:${lineIndex}`;
+		let idx = `${pageIndex}:${blockIndex}:${lineIndex}`;
 		let smartFont = readerState.smartFontCache.get(idx);
 		if (smartFont) {
 			visualFontSize = smartFont;
 			return;
 		}
-		let setup = async () => {
-			// wait for layout and font to load
-			await tick();
-			await document.fonts.ready;
-
-			requestAnimationFrame(() => {
-				requestAnimationFrame(() => {
-					// Re-verify the element is still there
-					if (isEmpty) return;
-					const smartFont = onSmartFontRequest(textHoldingElement!, true);
-					if (smartFont) {
-						visualFontSize = smartFont;
-						readerState.smartFontCache.set(idx, smartFont);
-					}
-				});
-			});
-		};
-		setup();
+		firstTrigger = false;
+		requestFont = true;
 	});
 
+	// --- Automatic font syncing effects ---
 	let firstTrigger = true;
 	$effect(() => {
 		line;
 		coords;
+		requestFont;
 		if (firstTrigger) {
 			firstTrigger = false;
 			return;
 		}
 
+		let textElem = untrack(() => textHoldingElement);
+		let empty = untrack(() => isEmpty);
 		let smartFont;
-		if (!isEmpty) smartFont = onSmartFontRequest(textHoldingElement!, true);
+		if (!empty) smartFont = onSmartFontRequest(textElem!, true);
 
 		if (smartFont) {
-			readerState.smartFontCache.set(`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`, smartFont);
+			readerState.smartFontCache.set(`${pageIndex}:${blockIndex}:${lineIndex}`, smartFont);
 			visualFontSize = smartFont;
 		}
 	});

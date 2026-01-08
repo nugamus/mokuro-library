@@ -19,14 +19,16 @@
 	} = $props();
 
 	// Initialize State with Page Index
-	const ocrState = new OcrState({
-		pageIndex
+	let ocrState = new OcrState({
+		page,
+		pageIndex,
+		panzoomInstance
 	});
 
 	// Sync Props
 	$effect(() => {
 		ocrState.page = page;
-		ocrState.pageIndex = pageIndex; // Keep synced
+		ocrState.pageIndex = pageIndex;
 		ocrState.panzoomInstance = panzoomInstance;
 	});
 
@@ -128,6 +130,7 @@
 >
 	{#each page.blocks as block, i (block)}
 		<OcrBlock
+			{pageIndex}
 			blockIndex={i}
 			block={page.blocks[i]}
 			{ocrState}
