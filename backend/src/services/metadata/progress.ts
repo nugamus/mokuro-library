@@ -1,7 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { Prisma } from '../../generated/prisma/client';
-import { libraryCache } from '../../lib/caches/libraryCache';
-import { updateSeriesStatus } from '../../utils/seriesStatus';
 
 export type ProgressBody = {
   page?: number;
@@ -70,38 +67,17 @@ export async function updateVolumeProgress(
   });
 
   if (volume) {
-    const seriesId = volume.seriesId;
-
-    if (data.completed !== undefined) {
-      await updateSeriesStatus(fastify.prisma, userId, seriesId);
-
-      await fastify.prisma.userSeriesSettings.upsert({
-        where: { userId_seriesId: { userId, seriesId } },
-        create: { userId, seriesId, lastReadAt: new Date(), status: data.completed ? 1 : 0 },
-        update: { lastReadAt: new Date() }
-      });
-    } else if (data.page !== undefined) {
-      const currentSettings = await fastify.prisma.userSeriesSettings.findUnique({
-        where: { userId_seriesId: { userId, seriesId } },
-        select: { status: true }
-      });
-
-      const shouldBumpStatus = !currentSettings || currentSettings.status === 0;
-
-      await fastify.prisma.userSeriesSettings.upsert({
-        where: { userId_seriesId: { userId, seriesId } },
-        create: {
-          userId,
-          seriesId,
-          lastReadAt: new Date(),
-          status: 1
-        },
-        update: {
-          lastReadAt: new Date(),
-          ...(shouldBumpStatus ? { status: 1 } : {})
-        }
-      });
-    }
+    await fastify.prisma.userSeriesSettings.upsert({
+      where: { userId_seriesId: { userId, seriesId: volume.seriesId } },
+      create: {
+        userId,
+        seriesId: volume.seriesId,
+        lastReadAt: new Date()
+        // Extension default for status is 0 (Unread), but extension 'upsert' hook
+        // might immediately flip it to Reading if progress > 0.
+      },
+      update: { lastReadAt: new Date() }
+    });
   }
 
   return { ...upsertedProgress, seriesId: volume?.seriesId };
@@ -115,12 +91,6 @@ export async function resetVolumeProgress(
   await fastify.prisma.userProgress.delete({
     where: { userId_volumeId: { userId, volumeId } },
   });
-
-  const volume = await fastify.prisma.volume.findUnique({
-    where: { id: volumeId },
-    select: { seriesId: true }
-  });
-  if (volume) await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
 
   return { message: 'Progress reset successfully.' };
 }

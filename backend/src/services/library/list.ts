@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { LibraryQuery } from '../../types/library';
 import { Prisma } from '../../generated/prisma/client';
-import { libraryCache } from '../../lib/caches/libraryCache';
 import { transformSeries } from './seriesTransform';
 
 export async function getLibraryList(
@@ -82,20 +81,6 @@ export async function getLibraryList(
       ]
     });
   }
-
-  const cacheKey = `library:${userId}:${JSON.stringify({
-    page,
-    limit,
-    q,
-    sort,
-    order,
-    status,
-    bookmarked,
-    filter_missing,
-    is_organized,
-    owner
-  })}`;
-
 
   if (sort === 'recent') {
     const [total, settings] = await fastify.prisma.$transaction([

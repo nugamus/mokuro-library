@@ -245,6 +245,7 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         clearLockout(lockoutKey);
 
         // Generate short-lived access token (15 minutes)
+        const accessTokenExpiry = rememberMe ? '30d' : '1d';
         const deviceHash = hashDeviceFingerprint(deviceFingerprint);
         const accessToken = jwt.sign(
           {
@@ -253,7 +254,7 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
             deviceHash,
           },
           JWT_SECRET,
-          { expiresIn: '15m' }
+          { expiresIn: accessTokenExpiry }
         );
 
         // Generate refresh token for database
@@ -273,12 +274,13 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         });
 
         // Set access token cookie (short-lived, 15 minutes)
+        const cookieMaxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
         reply.setCookie('sessionId', accessToken, {
           path: '/',
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          maxAge: 15 * 60, // 15 minutes
+          maxAge: cookieMaxAge, // 15 minutes
           signed: true,
         });
 

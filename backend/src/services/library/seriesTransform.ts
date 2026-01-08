@@ -1,23 +1,13 @@
 import { Prisma, UserSeriesSettings } from '../../generated/prisma/client';
 
-type SeriesWithVolumes = Prisma.SeriesGetPayload<{
-  include: {
-    volumes: {
-      select: {
-        pageCount: true;
-        progress: {
-          select: {
-            completed: true;
-            page: true;
-          };
-        };
-      };
-    };
-  };
-}>;
+type SeriesBase = Prisma.SeriesGetPayload<null>;
 
-export type SeriesWithOptionalSettings = SeriesWithVolumes & {
+export type SeriesWithOptionalSettings = SeriesBase & {
   userSettings?: UserSeriesSettings[];
+
+  // We might still have volumes if this is used by getSeries (single view),
+  // so we allow it but don't require it for the transform.
+  volumes?: any[];
 };
 
 export function transformSeries(
@@ -30,7 +20,8 @@ export function transformSeries(
   const userStats = settings || series.userSettings?.[0];
 
   // Remove internal relations we don't want to send raw
-  const { userSettings, ...cleanSeries } = series;
+  // (We use destructuring to separate relations from scalar fields)
+  const { userSettings, volumes, ...cleanSeries } = series;
 
   return {
     ...cleanSeries,
@@ -40,10 +31,16 @@ export function transformSeries(
     organized: userStats?.organized ?? false,
     lastReadAt: userStats?.lastReadAt ?? new Date(0), // Epoch if never read
 
-    // 2. Computed "Official" Indicator
+    // 2. Progress Stats (From Cached DB Fields)
+    totalPageCount: cleanSeries.totalPageCount ?? 0,
+    totalVolumeCount: cleanSeries.totalVolumeCount ?? 0,
+    readPageCount: userStats?.readPageCount ?? 0,
+    completedVolumeCount: userStats?.completedVolumeCount ?? 0,
+
+    // 3. Computed "Official" Indicator
     isOfficial: series.ownerId === 'admin',
 
-    // 3. Permissions Flag (Optional, helps frontend disable delete buttons)
+    // 4. Permissions Flag
     canEdit: series.ownerId === userId
   };
 }

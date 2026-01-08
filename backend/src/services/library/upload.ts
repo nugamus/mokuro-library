@@ -4,12 +4,10 @@ import util from 'util';
 import { pipeline } from 'stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Prisma } from '../../generated/prisma/client';
-import { updateSeriesStatus } from '../../utils/seriesStatus';
 import { safeFilename } from '../../utils/safeFilename';
 import { drainStream } from '../../utils/stream';
 import { deleteFolder } from './delete';
 import { enqueueUploadJob } from '../../lib/uploadQueue';
-import { libraryCache } from '../../lib/caches/libraryCache';
 
 const pump = util.promisify(pipeline);
 
@@ -221,9 +219,6 @@ export async function handleLibraryUpload(
             completed: metadata.volume_progress.isCompleted
           }
         });
-
-        // Recalculate Series Status via Settings (Helper handles the redirection)
-        await updateSeriesStatus(fastify.prisma, userId, series.id);
       }
 
       return volume;

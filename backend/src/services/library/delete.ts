@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import type { FastifyInstance } from 'fastify/types/instance';
-import { updateSeriesStatus } from '../../utils/seriesStatus';
 import { deleteBranchSnapshots } from '../../utils/ocrHelpers';
 
 // Cleanup Helper (Rollback)
@@ -139,10 +138,6 @@ export async function deleteVolumeById(
     }
 
     await fastify.prisma.series.delete({ where: { id: volume.seriesId } });
-  } else {
-    // 7. Recalculate series status if series still exists
-    await updateSeriesStatus(fastify.prisma, userId, volume.seriesId);
   }
-
   return volume.title || volume.folderName;
 }

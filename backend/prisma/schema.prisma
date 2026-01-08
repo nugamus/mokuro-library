@@ -70,6 +70,9 @@ model Series {
   owner         User      @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   ownerId       String    // Which user uploaded this
 
+  totalPageCount   Int       @default(0)
+  totalVolumeCount Int       @default(0)
+
   // Relation to User Settings
   userSettings  UserSeriesSettings[]
 
@@ -209,8 +212,11 @@ model UserSeriesSettings {
   // True = User has verified this entry
   organized     Boolean   @default(false)
 
-  // Sorting: "Recently Read" is now per-user
+  // Sorting: "Recently Read"
   lastReadAt DateTime @default(dbgenerated("'1970-01-01T00:00:00.000Z'"))
+
+  readPageCount        Int       @default(0)
+  completedVolumeCount Int       @default(0)
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)

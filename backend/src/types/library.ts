@@ -34,6 +34,11 @@ export interface LibraryEntry {
   lastReadAt: Date;
   isOfficial: boolean;
   canEdit: boolean;
+  // Progress Stats (Cached)
+  totalPageCount: number;
+  totalVolumeCount: number;
+  readPageCount: number;
+  completedVolumeCount: number;
 }
 
 export interface LibraryResponse {
