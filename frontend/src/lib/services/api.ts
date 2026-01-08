@@ -149,59 +149,59 @@ let refreshInProgress = false;
  * Attempts to refresh the access token using the refresh token.
  */
 export const refreshAccessToken = async (): Promise<boolean> => {
-	if (refreshInProgress) {
-		// Wait for existing refresh to complete
-		await new Promise((resolve) => setTimeout(resolve, 1000));
-		return true;
-	}
+  if (refreshInProgress) {
+    // Wait for existing refresh to complete
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return true;
+  }
 
-	refreshInProgress = true;
+  refreshInProgress = true;
 
-	try {
-		const deviceFingerprint = await getStoredFingerprint();
+  try {
+    const deviceFingerprint = await getStoredFingerprint();
 
-		await apiFetch('/api/auth/refresh', {
-			method: 'POST',
-			body: { deviceFingerprint },
-			showErrorToast: false
-		});
+    await apiFetch('/api/auth/refresh', {
+      method: 'POST',
+      body: { deviceFingerprint },
+      showErrorToast: false
+    });
 
-		return true;
-	} catch (e) {
-		console.debug('Token refresh failed:', e);
-		return false;
-	} finally {
-		refreshInProgress = false;
-	}
+    return true;
+  } catch (e) {
+    console.debug('Token refresh failed:', e);
+    return false;
+  } finally {
+    refreshInProgress = false;
+  }
 };
 
 /**
  * Enhanced apiFetch that automatically retries with token refresh on 401.
  */
 export const apiFetchWithRefresh = async <T = any>(
-	url: string,
-	options?: ApiFetchOptions
+  url: string,
+  options?: ApiFetchOptions
 ): Promise<T> => {
-	try {
-		return await apiFetch<T>(url, options);
-	} catch (error) {
-		// If 401 and not already a refresh/login request, try to refresh token
-		if (
-			error instanceof Error &&
-			error.message.includes('401') &&
-			!url.includes('/api/auth/refresh') &&
-			!url.includes('/api/auth/login')
-		) {
-			const refreshed = await refreshAccessToken();
+  try {
+    return await apiFetch(url, options);
+  } catch (error) {
+    // If 401 and not already a refresh/login request, try to refresh token
+    if (
+      error instanceof Error &&
+      error.message.includes('401') &&
+      !url.includes('/api/auth/refresh') &&
+      !url.includes('/api/auth/login')
+    ) {
+      const refreshed = await refreshAccessToken();
 
-			if (refreshed) {
-				// Retry original request
-				return await apiFetch<T>(url, options);
-			}
-		}
+      if (refreshed) {
+        // Retry original request
+        return await apiFetch(url, options);
+      }
+    }
 
-		throw error;
-	}
+    throw error;
+  }
 };
 
 /**

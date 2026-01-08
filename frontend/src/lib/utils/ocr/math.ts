@@ -105,68 +105,95 @@ export const getImageDeltas = (
  * @param imgWidth Original image width (for max bounds)
  * @param fontScale Current visual scale factor
  */
+
+// 1. Singleton sandbox outside the panzoom/transform tree
+let sandbox: HTMLElement | null = null;
+
+function getSandbox() {
+  if (sandbox) return sandbox;
+  sandbox = document.createElement('div');
+  Object.assign(sandbox.style, {
+    position: 'fixed',
+    top: '-9999px',
+    left: '-9999px',
+    visibility: 'hidden',
+    whiteSpace: 'nowrap',
+    // Critical: Ensure no transforms are inherited
+    transform: 'none',
+    willChange: 'font-size'
+  });
+  document.body.appendChild(sandbox);
+  return sandbox;
+}
+
 export function computeSmartFont(
   [pageIdx, blockIdx]: [number, number],
   lineElement: HTMLElement,
   imgWidth: number,
   fontScale: number
 ) {
-  let block = readerState.mokuroStagingData?.pages[pageIdx]?.blocks[blockIdx];
-  if (!block) return;
-  if (!lineElement || !lineElement.parentElement) return;
+  const block = readerState.mokuroStagingData?.pages[pageIdx]?.blocks[blockIdx];
+  if (!block || !lineElement) return;
 
   const isVertical = block.vertical ?? false;
+  const sb = getSandbox();
 
-  // 1. Get Target Dimension
-  const parentRect = lineElement.parentElement.getBoundingClientRect();
-  const targetMeasure = isVertical ? parentRect.height : parentRect.width;
+  // 2. Sync Styles (including any vertical writing modes)
+  const sourceStyle = window.getComputedStyle(lineElement);
+  sb.style.fontFamily = sourceStyle.fontFamily;
+  sb.style.fontWeight = sourceStyle.fontWeight;
+  sb.style.letterSpacing = sourceStyle.letterSpacing;
+  sb.style.writingMode = sourceStyle.writingMode;
+  sb.textContent = lineElement.textContent;
 
-  // 2. Define search range
-  const MIN_FONT_SIZE = 8;
-  const MAX_FONT_SIZE = imgWidth / 2;
+  // 3. Get the "Natural" Target Dimension
+  // Since parent is under panzoom, we use offsetWidth/Height
+  // to get dimensions WITHOUT the CSS transform scale.
+  const parent = lineElement.parentElement!;
+  const targetMeasure = isVertical ? parent.offsetHeight : parent.offsetWidth;
 
-  // 3. Helper function to measure the DOM at a specific size
-  const range = document.createRange();
-  range.selectNodeContents(lineElement);
+  // 4. Measuring Function
   const measure = (size: number): number => {
-    lineElement.style.fontSize = `${fontScale / devicePixelRatio * size}px`;
-    const rect = lineElement.getBoundingClientRect();
-    return isVertical ? rect.height : rect.width;
+    // Standardize the font size calculation
+    const fontSize = (fontScale / window.devicePixelRatio) * size;
+    sb.style.fontSize = `${fontSize}px`;
+    const m = isVertical ? sb.offsetHeight : sb.offsetWidth;
+
+    // Using offsetHeight/Width is faster in Firefox than getBoundingClientRect
+    // because it avoids the coordinate projection logic.
+    return m;
   };
 
-  // 4. Binary search
-  let min = MIN_FONT_SIZE;
-  let max = MAX_FONT_SIZE;
+  // 5. Binary Search with Linear Interpolation
+  let min = 8;
+  let max = imgWidth / 2;
   let minMeasure = measure(min);
   let maxMeasure = measure(max);
+
+  if (Math.abs(maxMeasure - minMeasure) < 0.1) return min;
+
   let guess = min + ((targetMeasure - minMeasure) / (maxMeasure - minMeasure)) * (max - min);
   let bestGuess = guess;
 
-  for (let i = 0; i < 100; i++) {
-    let guessMeasure = measure(guess);
-    let delta = targetMeasure - guessMeasure;
+  // Reduced to 12 iterations; usually converges for text in 4-6
+  for (let i = 0; i < 12; i++) {
+    const guessMeasure = measure(guess);
+    const delta = targetMeasure - guessMeasure;
 
     if (delta > 0) {
       min = guess;
       minMeasure = guessMeasure;
       bestGuess = guess;
-    }
-    if (delta < 0) {
+    } else {
       max = guess;
       maxMeasure = guessMeasure;
     }
-    if (max - min < 0.001 || Math.abs(delta) < 0.1) {
-      break;
-    }
 
-    // Linear interpolation
-    guess = min + ((targetMeasure - minMeasure) / (maxMeasure - minMeasure)) * (max - min);
+    if (max - min < 0.05 || Math.abs(delta) < 0.1) break;
+
+    const denom = maxMeasure - minMeasure;
+    guess = denom === 0 ? min : min + ((targetMeasure - minMeasure) / denom) * (max - min);
   }
 
-  // 5. cleanup
-  range.detach();
-
-  // 6. Return result (Mutation is handled by caller or we can do it here if we pass object)
   return +bestGuess.toFixed(3);
-
 }

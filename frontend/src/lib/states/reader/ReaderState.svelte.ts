@@ -58,7 +58,7 @@ class ReaderState {
   // --- Session State (Not Persisted) ---
   ocrMode = $state<'READ' | 'BOX' | 'TEXT'>('READ');
   isSmartResizeMode = $state(false);
-  smartFontCache: SvelteMap<string, number> = new SvelteMap();
+  smartFontCache: Map<string, number> = new Map();
   now = $state(new Date()); // for scheduled settings
 
   isNightModeActive = $derived.by(() => {
@@ -353,6 +353,7 @@ class ReaderState {
       toastStore.error(`Ivalid Patch: ${e}`)
       return;
     }
+
     for (let op of ops) {
       toastStore.info(`applied patch ${op}`);
     }

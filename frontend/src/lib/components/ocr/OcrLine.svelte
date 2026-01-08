@@ -5,7 +5,7 @@
 	import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
 	import type { Quad, Rect } from '$lib/types';
 	import { readerState } from '$lib/states/reader/ReaderState.svelte';
-	import { tick, untrack } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
 
 	// --- Props ---
 	let {
@@ -63,48 +63,64 @@
 	let finalFontSize = $derived.by(() => {
 		return (ocrState.fontScale / devicePixelRatio) * visualFontSize;
 	});
+	let visualCoordsDelta: Quad = $state([
+		[0, 0],
+		[0, 0],
+		[0, 0],
+		[0, 0]
+	]);
+	let visualCoords: Quad = $derived(
+		coords.map((pair, i) => [
+			pair[0] + visualCoordsDelta[i][0],
+			pair[1] + visualCoordsDelta[i][1]
+		]) as Quad
+	);
 	let hasPendingInputChange: boolean = false;
 
 	// --- Automatic font syncing effects ---
-	$effect(() => {
+	onMount(() => {
 		let idx = `${ocrState.pageIndex}:${blockIndex}:${lineIndex}`;
 		let smartFont = readerState.smartFontCache.get(idx);
 		if (smartFont) {
 			visualFontSize = smartFont;
 			return;
 		}
-		if (!textHoldingElement) return;
-		untrack(async () => {
+		let setup = async () => {
 			// wait for layout and font to load
 			await tick();
 			await document.fonts.ready;
 
-			// 3. Re-verify the element is still there
-			if (!textHoldingElement) return;
-			const smartFont = onSmartFontRequest(textHoldingElement, true);
-			if (smartFont) {
-				readerState.smartFontCache.set(idx, smartFont);
-			}
-		});
+			requestAnimationFrame(() => {
+				requestAnimationFrame(() => {
+					// Re-verify the element is still there
+					if (isEmpty) return;
+					const smartFont = onSmartFontRequest(textHoldingElement!, true);
+					if (smartFont) {
+						visualFontSize = smartFont;
+						readerState.smartFontCache.set(idx, smartFont);
+					}
+				});
+			});
+		};
+		setup();
 	});
 
+	let firstTrigger = true;
 	$effect(() => {
 		line;
+		coords;
+		if (firstTrigger) {
+			firstTrigger = false;
+			return;
+		}
+
 		let smartFont;
 		if (!isEmpty) smartFont = onSmartFontRequest(textHoldingElement!, true);
 
-		if (smartFont)
+		if (smartFont) {
 			readerState.smartFontCache.set(`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`, smartFont);
-	});
-
-	$effect(() => {
-		coords;
-		let smartFont;
-		if (textHoldingElement && textHoldingElement.textContent !== '')
-			smartFont = onSmartFontRequest(textHoldingElement, true);
-
-		if (smartFont)
-			readerState.smartFontCache.set(`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`, smartFont);
+			visualFontSize = smartFont;
+		}
 	});
 
 	// handle drag or double click
@@ -242,10 +258,10 @@
 		// Safety check to avoid division by zero if block has 0 size
 		if (blockW === 0 || blockH === 0 || false) return { left: 0, top: 0, width: 0, height: 0 };
 
-		const x_min = ((coords[0][0] - blockBox[0]) / blockW) * 100;
-		const y_min = ((coords[0][1] - blockBox[1]) / blockH) * 100;
-		const x_max = ((coords[2][0] - blockBox[0]) / blockW) * 100;
-		const y_max = ((coords[2][1] - blockBox[1]) / blockH) * 100;
+		const x_min = ((visualCoords[0][0] - blockBox[0]) / blockW) * 100;
+		const y_min = ((visualCoords[0][1] - blockBox[1]) / blockH) * 100;
+		const x_max = ((visualCoords[2][0] - blockBox[0]) / blockW) * 100;
+		const y_max = ((visualCoords[2][1] - blockBox[1]) / blockH) * 100;
 
 		return {
 			left: x_min,
@@ -382,10 +398,6 @@
 		startEvent.preventDefault();
 		startEvent.stopPropagation();
 
-		// 1. Snapshot Initial State
-		// We work on a local copy to avoid triggering Svelte updates during drag
-		const localCoords = coords.map((pair) => [pair[0], pair[1]]) as Quad;
-
 		// We need block dimensions for percentage calculations
 		const blockW = blockBox[2] - blockBox[0];
 		const blockH = blockBox[3] - blockBox[1];
@@ -411,59 +423,45 @@
 			// 2. Update Local Coordinates (Math Only)
 			switch (handleType) {
 				case 'top-left':
-					localCoords[0][0] += imageDeltaX;
-					localCoords[0][1] += imageDeltaY;
-					localCoords[1][1] += imageDeltaY;
-					localCoords[3][0] += imageDeltaX;
+					visualCoordsDelta[0][0] += imageDeltaX;
+					visualCoordsDelta[0][1] += imageDeltaY;
+					visualCoordsDelta[1][1] += imageDeltaY;
+					visualCoordsDelta[3][0] += imageDeltaX;
 					break;
 				case 'top-center':
-					localCoords[0][1] += imageDeltaY;
-					localCoords[1][1] += imageDeltaY;
+					visualCoordsDelta[0][1] += imageDeltaY;
+					visualCoordsDelta[1][1] += imageDeltaY;
 					break;
 				case 'top-right':
-					localCoords[1][0] += imageDeltaX;
-					localCoords[1][1] += imageDeltaY;
-					localCoords[0][1] += imageDeltaY;
-					localCoords[2][0] += imageDeltaX;
+					visualCoordsDelta[1][0] += imageDeltaX;
+					visualCoordsDelta[1][1] += imageDeltaY;
+					visualCoordsDelta[0][1] += imageDeltaY;
+					visualCoordsDelta[2][0] += imageDeltaX;
 					break;
 				case 'middle-left':
-					localCoords[0][0] += imageDeltaX;
-					localCoords[3][0] += imageDeltaX;
+					visualCoordsDelta[0][0] += imageDeltaX;
+					visualCoordsDelta[3][0] += imageDeltaX;
 					break;
 				case 'middle-right':
-					localCoords[1][0] += imageDeltaX;
-					localCoords[2][0] += imageDeltaX;
+					visualCoordsDelta[1][0] += imageDeltaX;
+					visualCoordsDelta[2][0] += imageDeltaX;
 					break;
 				case 'bottom-left':
-					localCoords[3][0] += imageDeltaX;
-					localCoords[3][1] += imageDeltaY;
-					localCoords[0][0] += imageDeltaX;
-					localCoords[2][1] += imageDeltaY;
+					visualCoordsDelta[3][0] += imageDeltaX;
+					visualCoordsDelta[3][1] += imageDeltaY;
+					visualCoordsDelta[0][0] += imageDeltaX;
+					visualCoordsDelta[2][1] += imageDeltaY;
 					break;
 				case 'bottom-center':
-					localCoords[2][1] += imageDeltaY;
-					localCoords[3][1] += imageDeltaY;
+					visualCoordsDelta[2][1] += imageDeltaY;
+					visualCoordsDelta[3][1] += imageDeltaY;
 					break;
 				case 'bottom-right':
-					localCoords[2][0] += imageDeltaX;
-					localCoords[2][1] += imageDeltaY;
-					localCoords[1][0] += imageDeltaX;
-					localCoords[3][1] += imageDeltaY;
+					visualCoordsDelta[2][0] += imageDeltaX;
+					visualCoordsDelta[2][1] += imageDeltaY;
+					visualCoordsDelta[1][0] += imageDeltaX;
+					visualCoordsDelta[3][1] += imageDeltaY;
 					break;
-			}
-
-			// 3. Visual Update (Direct DOM Style)
-			// We must convert absolute image coords back to percentages relative to the block
-			if (lineElement && blockW > 0 && blockH > 0) {
-				const x_min = ((localCoords[0][0] - blockBox[0]) / blockW) * 100;
-				const y_min = ((localCoords[0][1] - blockBox[1]) / blockH) * 100;
-				const x_max = ((localCoords[2][0] - blockBox[0]) / blockW) * 100;
-				const y_max = ((localCoords[2][1] - blockBox[1]) / blockH) * 100;
-
-				lineElement.style.left = `${x_min}%`;
-				lineElement.style.top = `${y_min}%`;
-				lineElement.style.width = `${x_max - x_min}%`;
-				lineElement.style.height = `${y_max - y_min}%`;
 			}
 
 			let smartFont;
@@ -473,13 +471,8 @@
 
 			if (!smartFont && !isEmpty) {
 				smartFont = onSmartFontRequest(textHoldingElement!, true);
+				visualFontSize = smartFont ?? 12;
 			}
-
-			if (smartFont)
-				readerState.smartFontCache.set(
-					`${ocrState.pageIndex}:${blockIndex}:${lineIndex}`,
-					smartFont
-				);
 		};
 
 		const handleDragEnd = () => {
@@ -487,12 +480,13 @@
 			window.removeEventListener('pointerup', handleDragEnd);
 
 			// 4. Commit Data
-			// NOTE: No need to clean up style since svelte reactivity will clear it on update
-			onCoordChange(localCoords);
-
-			if (readerState.isSmartResizeMode && !isEmpty) {
-				onSmartFontRequest(textHoldingElement!);
-			}
+			onCoordChange(visualCoords);
+			visualCoordsDelta = [
+				[0, 0],
+				[0, 0],
+				[0, 0],
+				[0, 0]
+			];
 		};
 
 		window.addEventListener('pointermove', handleDragMove);
@@ -696,7 +690,7 @@
 		color: black;
 
 		/* Ensure a high-quality CJK font is used */
-		font-family: 'Source Han Serif JP', 'Noto Sans JP', sans-serif;
+		font-family: 'Noto Sans JP', sans-serif;
 		line-height: 1;
 	}
 </style>

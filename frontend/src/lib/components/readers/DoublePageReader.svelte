@@ -61,7 +61,7 @@
 			onInit: (pz) => (panzoomInstance = pz)
 		}}
 	>
-		{#each readerState.visiblePages as page, i (page.img_path)}
+		{#each readerState.visiblePages as page, i (i)}
 			<div
 				class="relative flex-shrink-0 shadow-2xl reader-page"
 				style={`aspect-ratio: ${page.img_width} / ${page.img_height}; height: 100%;`}
