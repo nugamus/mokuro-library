@@ -53,6 +53,9 @@
     }
 
     cancel();
+
+    const targetPath = to?.url ? to.url.pathname + to.url.search : null;
+
     if (readerState.hasUnsavedChanges) {
       confirmation.open(
         'Discard Unsaved Changes?',
@@ -61,7 +64,10 @@
           readerState.hasUnsavedChanges = false;
           await readerState.cleanup();
           imageStore.clear();
-          if (to?.url) goto(resolve(String(to.url), {}));
+          if (targetPath) {
+            navigateLock = true;
+            goto(resolve(targetPath, {}));
+          }
         },
         'Discard & Exit',
         'Exiting...'
@@ -72,12 +78,14 @@
     void readerState
       .cleanup()
       .then(() => {
-        navigateLock = true;
-        imageStore.clear();
-        if (to?.url) goto(resolve(String(to.url), {}));
+        if (targetPath) {
+          navigateLock = true;
+          imageStore.clear();
+          goto(resolve(targetPath, {}));
+        }
       })
       .catch((error) => {
-        console.error("Save failed, sync code didn't run", error);
+        console.error('Cleanup failed', error);
       });
   });
 
