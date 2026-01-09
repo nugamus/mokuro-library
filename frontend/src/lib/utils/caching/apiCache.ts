@@ -27,69 +27,53 @@ class APICache {
       maxAge?: number;
       staleTime?: number;
       skipCache?: boolean;
-      onStaleRefetch?: (data: unknown) => void;
+      onStaleRefetch?: (data: T) => void;
     }
   ): Promise<T> {
-    const maxAge = options?.maxAge ?? this.maxAge;
-    const staleTime = options?.staleTime ?? this.staleTime;
+    // We assert here because chance of key collision is near 0
+    const now = Date.now();
+    const cached = this.cache.get(key) as CacheEntry<T> | undefined;
 
-    // Force refresh if skipCache
-    if (options?.skipCache) {
+    // 1. Calculate state
+    const age = now - (cached?.timestamp ?? 0);
+    const isExpired = !cached || age > (options?.maxAge ?? this.maxAge);
+    const isStale = age > (options?.staleTime ?? this.staleTime);
+
+    // 2. GROUPED: Fetch Fresh Logic (Blocking)
+    // We fetch and wait if: forced skip, no cache exists, or data is hard-expired.
+    if (options?.skipCache || isExpired) {
       const data = await fetcher();
       this.set(key, data);
       return data;
     }
 
-    const cached = this.cache.get(key);
-    const now = Date.now();
-
-    // No cache - fetch fresh
-    if (!cached) {
-      const promise = fetcher();
-      this.cache.set(key, { data: null as unknown, timestamp: now, promise });
-
-      const data = await promise;
-      this.set(key, data);
-      return data;
-    }
-
-    // Check if already fetching
+    // 3. Request Collapsing
+    // If we get here, cache exists and isn't expired. If it's already fetching, join in.
     if (cached.promise) {
       return await cached.promise;
     }
 
-    const age = now - cached.timestamp;
+    // 4. Stale-While-Revalidate (Non-Blocking)
+    // Data is usable but old. Trigger background update and return old data immediately.
+    if (isStale || cached.stale) {
+      const promise = fetcher();
+      cached.promise = promise;
 
-    // Fresh data - return immediately
-    if (age < staleTime && !cached.stale) {
-      return cached.data;
+      promise
+        .then((data) => {
+          this.set(key, data);
+          options?.onStaleRefetch?.(data);
+        })
+        .catch((err) => {
+          console.error('Background revalidation failed:', err);
+          delete cached.promise;
+        });
+
+      return cached.data as T;
     }
 
-    // Stale but not expired - return cached, revalidate in background
-    if (age < maxAge) {
-      // Don't revalidate if already revalidating
-      if (!cached.promise) {
-        const promise = fetcher();
-        cached.promise = promise;
-
-        promise
-          .then((data) => {
-            this.set(key, data);
-            if (options?.onStaleRefetch) options.onStaleRefetch(data);
-          })
-          .catch((err) => {
-            console.error('Background revalidation failed:', err);
-            delete cached.promise;
-          });
-      }
-
-      return cached.data;
-    }
-
-    // Expired - fetch fresh
-    const data = await fetcher();
-    this.set(key, data);
-    return data;
+    // 5. Fresh Hit
+    return cached.data as T;
   }
 
   /**
