@@ -18,7 +18,7 @@ function extractTags(userId: string, data: Record<string, any>, hints: string[])
 
     const getValues = (obj: any, pathParts: string[]) => {
       if (!obj) return;
-      if (pathParts.length === 0 || pathParts[0] === '.') {
+      if (pathParts.length === 0 || pathParts[0] === '') {
         if (obj.id) tags.add(`${m}:${obj.id}`);
         return;
       }
@@ -104,15 +104,18 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
         async create({ args, query }) {
           const result = await query(args);
           // 1. Increment Series Stats on Create
-          if (result.seriesId) {
-            await basePrisma.series.update({
-              where: { id: result.seriesId },
-              data: {
-                totalPageCount: { increment: result.pageCount },
-                totalVolumeCount: { increment: 1 },
-              },
-            });
-          }
+          if (!result.seriesId) throw new HttpError(403, `Create volume query must select seriesId for stat sync.`)
+          await basePrisma.series.update({
+            where: { id: result.seriesId },
+            data: {
+              totalPageCount: { increment: result.pageCount },
+              totalVolumeCount: { increment: 1 },
+            },
+          });
+          await basePrisma.userSeriesSettings.updateMany({
+            where: { seriesId: result.seriesId, status: 2 },
+            data: { status: 1 }
+          })
           return result;
         },
         async delete({ args, query }) {
@@ -135,12 +138,17 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const result = await query(args);
 
           // A. Decrement Series Stats
-          await basePrisma.series.update({
+          const series = await basePrisma.series.update({
             where: { id: volume.seriesId },
             data: {
               totalPageCount: { decrement: volume.pageCount },
               totalVolumeCount: { decrement: 1 },
             },
+          });
+
+          await basePrisma.userSeriesSettings.updateMany({
+            where: { seriesId: series.id, completedVolumeCount: series.totalVolumeCount },
+            data: { status: 2 }
           });
 
           // B. Decrement User Stats (Manual Cascade Handling)
@@ -151,6 +159,74 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
             const volumesToRemove = p.completed ? 1 : 0;
 
             await updateSeriesStats(basePrisma, p.userId, volume.seriesId, -pagesToRemove, -volumesToRemove);
+          }
+
+          return result;
+        },
+        async update({ args, query }) {
+          // 1. Pre-fetch Old Data
+          const oldVolume = await basePrisma.volume.findFirst({
+            where: args.where,
+            include: { progress: true }
+          });
+
+          if (!oldVolume) return query(args);
+
+          const newSeriesId = (args.data.seriesId as string) || oldVolume.seriesId;
+          const newPageCount = (args.data.pageCount as number) ?? oldVolume.pageCount;
+
+          // Optimization: If relevant fields didn't change, skip logic
+          if (newSeriesId === oldVolume.seriesId && newPageCount === oldVolume.pageCount) {
+            return query(args);
+          }
+
+          // 2. Execute Update
+          const result = await query(args);
+
+          // 3. LOGIC: REMOVE from Old Location
+          const oldSeries = await basePrisma.series.update({
+            where: { id: oldVolume.seriesId },
+            data: {
+              totalPageCount: { decrement: oldVolume.pageCount },
+              totalVolumeCount: { decrement: 1 }
+            }
+          });
+
+          // Auto-Promote users in old series (Standard Delete Logic)
+          await basePrisma.userSeriesSettings.updateMany({
+            where: { seriesId: oldVolume.seriesId, completedVolumeCount: oldSeries.totalVolumeCount },
+            data: { status: 2 }
+          });
+
+          // Remove User Stats from Old Series
+          for (const p of oldVolume.progress) {
+            const pages = p.completed ? oldVolume.pageCount : p.page;
+            const vol = p.completed ? 1 : 0;
+            await updateSeriesStats(basePrisma, p.userId, oldVolume.seriesId, -pages, -vol);
+          }
+
+          // 4. LOGIC: ADD to New Location
+          await basePrisma.series.update({
+            where: { id: newSeriesId },
+            data: {
+              totalPageCount: { increment: newPageCount },
+              totalVolumeCount: { increment: 1 }
+            }
+          });
+
+          // Auto-Demote users in new series (Standard Create Logic)
+          // "If you were done, you aren't anymore because I just added/moved a book here."
+          await basePrisma.userSeriesSettings.updateMany({
+            where: { seriesId: newSeriesId, status: 2 },
+            data: { status: 1 }
+          });
+
+          // Add User Stats to New Series
+          for (const p of oldVolume.progress) {
+            // Note: We use newPageCount here. If they completed it, their read-count scales up/down.
+            const pages = p.completed ? newPageCount : p.page;
+            const vol = p.completed ? 1 : 0;
+            await updateSeriesStats(basePrisma, p.userId, newSeriesId, pages, vol);
           }
 
           return result;
@@ -246,6 +322,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
 
         // Automatically generate granular tags from the result
         const tags = extractTags(uid, result, hints);
+        for (let t of tags) console.log(t);
 
         // return libraryCache.cachedQuery(fullCacheKey, tags, async () => result);
         return (async () => { return { ...(await libraryCache.cachedQuery(fullCacheKey, tags, async () => result)), tags } })()
@@ -272,6 +349,8 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
             if (id) tagsToClear.add(`${m}:${id}`);
             else if (uid) tagsToClear.add(`${uid}:${m}`);
             else tagsToClear.add(`${m}`);
+
+            if (uid && operation === 'create') tagsToClear.add(`${uid}:${m}`);
             libraryCache.invalidateTags(Array.from(tagsToClear));
           }
           return result;
