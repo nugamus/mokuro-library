@@ -4,6 +4,7 @@
   import { createJobsFromFiles, type UploadJob } from '$lib/utils/helpers/upload';
   import MenuGridRadio from '$lib/components/menu/MenuGridRadio.svelte';
   import AriaLiveRegion from '$lib/components/feedback/AriaLiveRegion.svelte';
+  import type { AsyncUploadResponse } from '$lib/types';
 
   let { isOpen, onClose, onUploadSuccess } = $props<{
     isOpen: boolean;
@@ -169,11 +170,11 @@
           formData.append('files', file, file.webkitRelativePath);
         }
 
-        const response = await apiUpload('/api/library/upload?async=true', formData, (percent) => {
+        const response = (await apiUpload('/api/library/upload?async=true', formData, (percent) => {
           job.progress = percent;
           if (percent === 100) job.status = 'processing';
-        });
-        if (response?.jobId) {
+        })) as AsyncUploadResponse;
+        if (response.jobId) {
           job.status = 'processing';
           jobPromises.push(
             pollUploadStatus(job, response.jobId, () => {
@@ -188,7 +189,7 @@
       } catch (err) {
         console.error(`Failed to upload ${job.name}`, err);
         job.status = 'error';
-        job.resultMsg = (e as Error).message;
+        job.resultMsg = (err as Error).message;
       }
     }
 
