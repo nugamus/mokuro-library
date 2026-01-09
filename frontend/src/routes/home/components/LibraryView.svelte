@@ -153,7 +153,11 @@
 
     const queryString = newParams.toString();
     if (queryString !== currentParams.toString()) {
-      goto(resolve(`?${queryString}`, {}), { replaceState: true, keepFocus: true, noScroll: true });
+      goto(resolve(`/?${queryString}`, {}), {
+        replaceState: true,
+        keepFocus: true,
+        noScroll: true
+      });
     }
 
     if (filterDebounceTimer) clearTimeout(filterDebounceTimer);
