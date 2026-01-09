@@ -98,6 +98,7 @@
     }
   });
 
+  let isFirstLoad = true;
   $effect(() => {
     uiState.libraryVersion;
 
@@ -163,9 +164,14 @@
     }
 
     if (filterDebounceTimer) clearTimeout(filterDebounceTimer);
-    filterDebounceTimer = setTimeout(() => {
+    if (isFirstLoad) {
       fetchLibrary(`?${queryString}`);
-    }, 250);
+      isFirstLoad = false;
+    } else {
+      filterDebounceTimer = setTimeout(() => {
+        fetchLibrary(`?${queryString}`);
+      }, 250);
+    }
   });
 
   onDestroy(() => {
