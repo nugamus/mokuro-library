@@ -2,18 +2,19 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 import { retryWithBackoff } from '$lib/utils/network/retry';
 import { apiCache } from '$lib/utils/caching/apiCache';
 import { getStoredFingerprint } from './deviceFingerprint';
+import type { UploadResponse } from '$lib/types';
 
 /**
  * It's the same as RequestInit, but 'body' can be 'any'
  * We will convert 'body' into a valid type inside of apiFetch.
  */
-interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'cache'> {
+interface ApiFetchOptions<T> extends Omit<RequestInit, 'body' | 'cache'> {
   body?: unknown;
   retry?: boolean;
   showErrorToast?: boolean;
   cache?: boolean; // Enable caching for GET requests
   skipCache?: boolean; // Force fresh fetch
-  onStaleRefetch?: (data: unknown) => void;
+  onStaleRefetch?: (data: T) => void;
 }
 
 const getCsrfToken = () => {
@@ -34,7 +35,7 @@ const isStateChanging = (method?: string) => {
  */
 export async function apiFetch<T = unknown>(
   path: string,
-  options: ApiFetchOptions = {}
+  options: ApiFetchOptions<T> = {}
 ): Promise<T> {
   const {
     retry = false,
@@ -56,14 +57,23 @@ export async function apiFetch<T = unknown>(
 
     // Stringify the body if it's an object and method is not GET
     // GET request doesn't have a body by specification
-    let body: BodyInit | null | undefined = fetchOptions.body;
-    if (
-      fetchOptions.body &&
-      typeof fetchOptions.body === 'object' &&
-      fetchOptions.method !== 'GET' &&
-      !(fetchOptions.body instanceof FormData)
-    ) {
+    let body: BodyInit | null | undefined;
+
+    // 1. GET requests never have a body
+    if (isGet || fetchOptions.body == null) {
+      body = undefined;
+    }
+    // 2. FormData is passed through as-is (letting browser set boundary)
+    else if (fetchOptions.body instanceof FormData) {
+      body = fetchOptions.body;
+    }
+    // 3. Objects are stringified for the JSON API
+    else if (typeof fetchOptions.body === 'object') {
       body = JSON.stringify(fetchOptions.body);
+    }
+    // 4. Fallback for primitives (strings, numbers, etc.)
+    else {
+      body = String(fetchOptions.body);
     }
 
     // --- Conditionally build headers ---
@@ -185,7 +195,7 @@ export const refreshAccessToken = async (): Promise<boolean> => {
  */
 export const apiFetchWithRefresh = async <T = unknown>(
   url: string,
-  options?: ApiFetchOptions
+  options?: ApiFetchOptions<T>
 ): Promise<T> => {
   try {
     return await apiFetch<T>(url, options);
@@ -213,118 +223,91 @@ export const apiFetchWithRefresh = async <T = unknown>(
  * Specialized upload function using XMLHttpRequest to support progress tracking.
  * fetch() does not support upload progress, so we must use XHR.
  */
-export function apiUpload(
+export async function apiUpload(
   path: string,
   formData: FormData,
   onProgress: (percent: number) => void,
   maxRetries = 2
-): Promise<unknown> {
-  // Get device fingerprint once at the start (outside the promise executor)
-  return (async () => {
-    const deviceFingerprint = await getStoredFingerprint();
+): Promise<UploadResponse> {
+  // 1. Get fingerprint before starting the promise chain
+  const deviceFingerprint = await getStoredFingerprint();
 
-    return new Promise<unknown>((res, rej) => {
-      let attempts = 0;
+  return new Promise<UploadResponse>((res, rej) => {
+    let attempts = 0;
 
-      const tryUpload = () => {
-        attempts++;
-        console.log(`Upload attempt ${attempts}/${maxRetries + 1}`);
+    const tryUpload = () => {
+      attempts++;
+      const xhr = new XMLHttpRequest();
+      let hasStarted = false;
 
-        const xhr = new XMLHttpRequest();
-        let hasStarted = false;
-
-        // Short timeout to detect "stuck" requests that never start
-        const stuckTimer = setTimeout(() => {
-          console.log(`hasStarted: ${hasStarted}`);
-          if (!hasStarted) {
-            console.log('Request appears stuck, aborting...');
-            xhr.abort();
-            if (attempts <= maxRetries) {
-              setTimeout(tryUpload, 200);
-            } else {
-              rej(new Error('Upload failed: request never started after retries'));
-            }
-          }
-        }, 5000);
-
-        xhr.open('POST', path);
-
-        xhr.onreadystatechange = () => {
-          // readyState 2 = HEADERS_RECEIVED (server has received the request)
-          if (xhr.readyState >= 2 && !hasStarted) {
-            hasStarted = true;
-            clearTimeout(stuckTimer);
-            console.log('Request started successfully');
-          }
-        };
-
-        const csrfToken = getCsrfToken();
-        if (csrfToken) {
-          xhr.setRequestHeader('x-csrf-token', csrfToken);
-        }
-
-        // Add device fingerprint header
-        xhr.setRequestHeader('x-device-fingerprint', deviceFingerprint);
-
-        if (xhr.upload) {
-          xhr.upload.onprogress = (event) => {
-            hasStarted = true;
-            clearTimeout(stuckTimer);
-            if (event.lengthComputable) {
-              const percent = Math.round((event.loaded / event.total) * 100);
-              onProgress(percent);
-            }
-          };
-        }
-
-        // Longer timeout for the actual upload (adjust based on your file sizes)
-        xhr.timeout = 300000; // 5 minutes
-
-        xhr.ontimeout = () => {
-          clearTimeout(stuckTimer);
+      // 2. Stuck Timer
+      const stuckTimer = setTimeout(() => {
+        if (!hasStarted) {
+          xhr.abort();
           if (attempts <= maxRetries) {
-            console.log('Request timed out, retrying...');
             setTimeout(tryUpload, 200);
           } else {
-            rej(new Error('Upload timed out after retries'));
+            rej(new Error('Upload failed: request never started after retries'));
           }
-        };
+        }
+      }, 5000);
 
-        xhr.onload = () => {
+      xhr.open('POST', path);
+
+      // 3. Headers
+      const csrfToken = getCsrfToken();
+      if (csrfToken) xhr.setRequestHeader('x-csrf-token', csrfToken);
+      xhr.setRequestHeader('x-device-fingerprint', deviceFingerprint);
+
+      // 4. Progress Tracking
+      if (xhr.upload) {
+        xhr.upload.onprogress = (event) => {
+          hasStarted = true;
           clearTimeout(stuckTimer);
-          if (xhr.status >= 200 && xhr.status < 300) {
-            try {
-              res(JSON.parse(xhr.responseText));
-            } catch {
-              res(xhr.responseText);
-            }
-          } else {
-            // Don't retry on server errors (4xx, 5xx) - only on stuck/timeout
-            try {
-              const errorData = JSON.parse(xhr.responseText);
-              rej(new Error(errorData.message || 'Upload failed'));
-            } catch {
-              rej(new Error(`Upload failed with status ${xhr.status}`));
-            }
+          if (event.lengthComputable) {
+            onProgress(Math.round((event.loaded / event.total) * 100));
           }
         };
+      }
 
-        xhr.onerror = () => {
-          clearTimeout(stuckTimer);
-          if (attempts <= maxRetries) {
-            console.log('Network error, retrying...');
-            setTimeout(tryUpload, 200);
-          } else {
-            rej(new Error('Network error during upload'));
+      xhr.onload = () => {
+        clearTimeout(stuckTimer);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            // Type assertion here to satisfy the return type
+            res(JSON.parse(xhr.responseText) as UploadResponse);
+          } catch {
+            // If the server sends a 200 but not JSON, we have a contract break
+            rej(new Error('Server returned success but invalid JSON format'));
           }
-        };
-
-        xhr.send(formData);
+        } else {
+          try {
+            const errorData = JSON.parse(xhr.responseText);
+            rej(new Error(errorData.message || 'Upload failed'));
+          } catch {
+            rej(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        }
       };
 
-      tryUpload();
-    });
-  })();
+      // 5. Error & Timeout Handling
+      xhr.onerror = () => {
+        clearTimeout(stuckTimer);
+        if (attempts <= maxRetries) {
+          setTimeout(tryUpload, 200);
+        } else {
+          rej(new Error('Network error during upload'));
+        }
+      };
+
+      xhr.timeout = 300000;
+      xhr.ontimeout = xhr.onerror; // Reuse the retry logic
+
+      xhr.send(formData);
+    };
+
+    tryUpload();
+  });
 }
 
 /**

@@ -67,7 +67,7 @@ let wasAuthenticated = false;
 export async function checkAuth() {
   try {
     // Try to get the current user - suppress error toast on initial check
-    const userData = await apiFetchWithRefresh('/api/auth/me', {
+    const userData = await apiFetchWithRefresh<AuthUser>('/api/auth/me', {
       showErrorToast: false
     });
 
@@ -75,7 +75,7 @@ export async function checkAuth() {
     if (!userData.settings) {
       userData.settings = {};
     }
-    const authUser = userData as AuthUser;
+    const authUser = userData;
     user.set(authUser);
 
     // Clear cache if user changed

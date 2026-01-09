@@ -145,6 +145,22 @@ export interface SeriesMetadata {
   >;
 }
 
+export interface SyncUploadResponse {
+  message: 'Upload processed.';
+  processed: 1;
+  volumeId: string;
+}
+
+export interface AsyncUploadResponse {
+  message: 'Upload queued.';
+  jobId: string;
+}
+
+// The combined Union Type
+export type UploadResponse = SyncUploadResponse | AsyncUploadResponse | string;
+
+// --- OCR Editing types ---
+
 // Fine Values: Used for 'replace' operations on leaf nodes.
 export type FineValue =
   | string // For text content
