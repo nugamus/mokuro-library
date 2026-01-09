@@ -62,7 +62,6 @@ class APICache {
 
     // Fresh data - return immediately
     if (age < staleTime && !cached.stale) {
-      console.log('HIT');
       return cached.data;
     }
 
@@ -143,7 +142,6 @@ class APICache {
    * Invalidate cache entries by prefix
    */
   invalidate(prefix: string, hard: boolean = false): void {
-    console.log(`INVALIDATE ${prefix} ${hard}`);
     for (const key of this.cache.keys()) {
       if (key.startsWith(prefix)) {
         if (hard) this.cache.delete(key);
@@ -157,7 +155,6 @@ class APICache {
   }
 
   invalidateExact(key: string, hard?: boolean): void {
-    console.log(`INVALIDATE EXACT ${key} ${hard}`);
     if (hard) this.cache.delete(key);
     else {
       const entry = this.cache.get(key);
@@ -216,7 +213,6 @@ class APICache {
    * Invalidate cache when user makes changes
    */
   invalidateLibraryCache(hard?: boolean): void {
-    console.log('INVALIDATE LIBRARY');
     this.invalidate('GET:/api/library', hard);
   }
 

@@ -75,7 +75,7 @@
       onclick={(e) => {
         e.stopPropagation();
         const destination = uiState.returnPath || `/series/${readerState.seriesId}`;
-        goto(resolve(String(destination), {}));
+        goto(resolve(destination, {}));
         uiState.clearReturnPath();
       }}
       class="group flex items-center gap-2 pr-4 text-theme-secondary hover:text-theme-primary transition-colors"

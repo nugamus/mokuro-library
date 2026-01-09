@@ -99,6 +99,8 @@
   });
 
   $effect(() => {
+    uiState.libraryVersion;
+
     if (!browser) return;
 
     const currentParams = new SvelteURLSearchParams(page.url.searchParams);

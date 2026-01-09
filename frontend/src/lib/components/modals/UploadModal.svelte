@@ -42,7 +42,10 @@
 
     while (Date.now() - start < maxWaitMs) {
       try {
-        const status = await apiFetch(`/api/library/upload/status/${jobId}`, {
+        const status = await apiFetch<{
+          status: 'queued' | 'processing' | 'completed' | 'failed';
+          message: string;
+        }>(`/api/library/upload/status/${jobId}`, {
           method: 'GET',
           showErrorToast: false
         });
@@ -124,7 +127,7 @@
     for (const job of jobs) {
       if (job.status === 'done') continue;
       try {
-        const check = await apiFetch('/api/library/check', {
+        const check = await apiFetch<{ exists: boolean }>('/api/library/check', {
           method: 'POST',
           body: {
             series_folder_name: job.seriesFolderName,
@@ -544,8 +547,8 @@
                   To enable OCR features, you need to generate <code
                     class="px-1.5 py-0.5 rounded bg-theme-main border border-theme-border-light text-accent font-mono text-xs"
                     >.mokuro</code
-                  > files using the Mokuro tool. Place these files alongside your image folders (not
-                  inside them).
+                  > files using the Mokuro tool. Place these files alongside your image folders (not inside
+                  them).
                 </p>
                 <a
                   href="https://github.com/kha-white/mokuro"
