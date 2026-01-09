@@ -1,9 +1,9 @@
 <script lang="ts">
 	let {
-		label = '',
-		description = '',
-		shortcut,
-		checked = $bindable()
+	  label = '',
+	  description = '',
+	  shortcut,
+	  checked = $bindable()
 	} = $props<{
 		label?: string;
 		description?: string;
@@ -30,8 +30,8 @@
 
 	<div
 		class="w-10 h-6 rounded-full transition-all duration-200 relative flex-shrink-0 {checked
-			? 'bg-accent-surface border-2 border-accent'
-			: 'bg-black/40 border-2 border-white/10'}"
+		  ? 'bg-accent-surface border-2 border-accent'
+		  : 'bg-black/40 border-2 border-white/10'}"
 	>
 		<div
 			class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition-transform duration-300 ease-in-out

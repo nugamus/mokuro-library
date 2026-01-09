@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { browser } from '$app/environment';
 	import { sampleStats } from './lib/constants';
 	import { ContributionsState } from './state/ContributionsState.svelte.ts';
@@ -38,35 +39,33 @@
 	onMount(() => contributionsState.mount());
 
 	$effect(() => {
-		if (browser && $user === null) goto('/login');
+	  if (browser && $user === null) goto(resolve('/login'));
 	});
 
 	$effect(() => {
-		if (browser) {
-			const expandedKey = Array.from(contributionsState.expandedSeries).join('|');
-			expandedKey;
-			contributionsState.persistExpanded();
-		}
+	  if (browser) {
+	    contributionsState.persistExpanded();
+	  }
 	});
 
 	// Reset to my-contributions tab if non-admin tries to access review queue
 	$effect(() => {
-		if (!isAdmin && activeTab === 'review-queue') {
-			activeTab = 'my-contributions';
-		}
+	  if (!isAdmin && activeTab === 'review-queue') {
+	    activeTab = 'my-contributions';
+	  }
 	});
 
 	// Handle bulk reject modal
 	function handleOpenBulkReject(ids: string[]) {
-		bulkRejectSubmissionIds = ids;
-		showBulkRejectModal = true;
+	  bulkRejectSubmissionIds = ids;
+	  showBulkRejectModal = true;
 	}
 
 	function handleBulkRejectComplete() {
-		showBulkRejectModal = false;
-		bulkRejectSubmissionIds = [];
-		// Reload admin queue
-		adminQueueRef?.reload();
+	  showBulkRejectModal = false;
+	  bulkRejectSubmissionIds = [];
+	  // Reload admin queue
+	  adminQueueRef?.reload();
 	}
 </script>
 
@@ -74,14 +73,17 @@
 	<DevelopmentNotice />
 
 	<ContributionsHeader
-		sampleStats={sampleStats}
+		{sampleStats}
 		activityGraph={contributionsState.activityGraph}
-		showQuickActions={Boolean(contributionsState.lastContinueVolume || contributionsState.recentlyEdited.length > 0)}
+		showQuickActions={Boolean(
+		  contributionsState.lastContinueVolume || contributionsState.recentlyEdited.length > 0
+		)}
 		volumesNeedingRebase={contributionsState.volumesNeedingRebase}
 		activityHistoryCount={contributionsState.activityHistory.length}
 		selectedItemsCount={contributionsState.selectedItems.size}
 		onRebaseAll={() => contributionsState.handleRebaseAll()}
-		onToggleActivityTimeline={() => (contributionsState.showActivityTimeline = !contributionsState.showActivityTimeline)}
+		onToggleActivityTimeline={() =>
+		  (contributionsState.showActivityTimeline = !contributionsState.showActivityTimeline)}
 		onBatchRebase={() => contributionsState.handleBatchRebase()}
 		onExportEdits={() => contributionsState.handleExportEdits()}
 	/>
@@ -101,8 +103,8 @@
 			onclick={() => (activeTab = 'my-contributions')}
 			class="px-4 py-2 font-semibold text-sm transition-all relative {activeTab ===
 			'my-contributions'
-				? 'text-accent border-b-2 border-accent'
-				: 'text-theme-secondary hover:text-theme-primary'}"
+			  ? 'text-accent border-b-2 border-accent'
+			  : 'text-theme-secondary hover:text-theme-primary'}"
 		>
 			My Contributions
 		</button>
@@ -110,10 +112,9 @@
 		{#if isAdmin}
 			<button
 				onclick={() => (activeTab = 'review-queue')}
-				class="px-4 py-2 font-semibold text-sm transition-all relative {activeTab ===
-				'review-queue'
-					? 'text-accent border-b-2 border-accent'
-					: 'text-theme-secondary hover:text-theme-primary'}"
+				class="px-4 py-2 font-semibold text-sm transition-all relative {activeTab === 'review-queue'
+				  ? 'text-accent border-b-2 border-accent'
+				  : 'text-theme-secondary hover:text-theme-primary'}"
 			>
 				Review Queue
 			</button>
@@ -128,10 +129,9 @@
 		<div class="flex items-center gap-2 border-b border-theme-border/50 mb-4">
 			<button
 				onclick={() => (userSubTab = 'ocr-edits')}
-				class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab ===
-				'ocr-edits'
-					? 'text-accent border-b-2 border-accent'
-					: 'text-theme-tertiary hover:text-theme-primary'}"
+				class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab === 'ocr-edits'
+				  ? 'text-accent border-b-2 border-accent'
+				  : 'text-theme-tertiary hover:text-theme-primary'}"
 			>
 				✏️ OCR Edits
 			</button>
@@ -139,8 +139,8 @@
 				onclick={() => (userSubTab = 'submit-manga')}
 				class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab ===
 				'submit-manga'
-					? 'text-accent border-b-2 border-accent'
-					: 'text-theme-tertiary hover:text-theme-primary'}"
+				  ? 'text-accent border-b-2 border-accent'
+				  : 'text-theme-tertiary hover:text-theme-primary'}"
 			>
 				📤 Submit Manga
 			</button>
@@ -148,8 +148,8 @@
 				onclick={() => (userSubTab = 'my-submissions')}
 				class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab ===
 				'my-submissions'
-					? 'text-accent border-b-2 border-accent'
-					: 'text-theme-tertiary hover:text-theme-primary'}"
+				  ? 'text-accent border-b-2 border-accent'
+				  : 'text-theme-tertiary hover:text-theme-primary'}"
 			>
 				📋 My Submissions
 			</button>
@@ -182,7 +182,8 @@
 					onVolumeLongPress={(volumeId) => contributionsState.handleVolumeLongPress(volumeId)}
 					onVolumeSelect={(e, volumeId) => contributionsState.handleVolumeSelect(e, volumeId)}
 					onViewVolume={(volumeId) => contributionsState.handleViewVolume(volumeId)}
-					onRebase={(e, volume, seriesTitle) => contributionsState.handleRebase(e, volume, seriesTitle)}
+					onRebase={(e, volume, seriesTitle) =>
+					  contributionsState.handleRebase(e, volume, seriesTitle)}
 					onReset={(e, volume) => contributionsState.handleReset(e, volume)}
 					onOpenDiffViewer={(volume) => contributionsState.openDiffViewer(volume)}
 				/>
@@ -221,8 +222,8 @@
 	volume={contributionsState.selectedDiffVolume}
 	onClose={() => (contributionsState.showDiffViewer = false)}
 	onStartRebase={() => {
-		contributionsState.showDiffViewer = false;
-		alert('Would start rebase process for this volume');
+	  contributionsState.showDiffViewer = false;
+	  alert('Would start rebase process for this volume');
 	}}
 />
 

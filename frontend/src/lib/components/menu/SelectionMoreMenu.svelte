@@ -6,53 +6,58 @@
 	import { apiCache } from '$lib/utils/caching/apiCache';
 
 	let {
-		selectionCount,
-		onScrape,
-		onRefresh
+	  selectionCount,
+	  onScrape,
+	  onRefresh
 	}: {
 		selectionCount: number;
-		onScrape: () => void;
+		onScrape?: () => void;
 		onRefresh: () => void;
 	} = $props();
 
 	async function handleOrganize(value: boolean) {
-		const ids = uiState.selectedIdsArray;
-		try {
-			await apiFetch('/api/metadata/batch/organize', {
-				method: 'POST',
-				body: { ids, value }
-			});
-			for (const id of ids) {
-				apiCache.invalidateSeriesCache({ seriesId: id });
-			}
-			apiCache.invalidateLibraryCache(true);
-			uiState.exitSelectionMode();
-			onRefresh();
-		} catch (e) {
-			console.error(e);
-			alert('Failed to update status');
-		}
+	  const ids = uiState.selectedIdsArray;
+	  try {
+	    await apiFetch('/api/metadata/batch/organize', {
+	      method: 'POST',
+	      body: { ids, value }
+	    });
+	    for (const id of ids) {
+	      apiCache.invalidateSeriesCache({ seriesId: id });
+	    }
+	    apiCache.invalidateLibraryCache(true);
+	    uiState.exitSelectionMode();
+	    onRefresh();
+	  } catch (e) {
+	    console.error(e);
+	    alert('Failed to update status');
+	  }
 	}
 
 	function openMenu(e: MouseEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		const target = e.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
+	  e.preventDefault();
+	  e.stopPropagation();
+	  const target = e.currentTarget as HTMLElement;
+	  const rect = target.getBoundingClientRect();
 
-		const menuItems: MenuOption[] = [
-			// Section: Organization
-			{
-				label: 'Mark as Organized',
-				action: () => handleOrganize(true)
-			},
-			{
-				label: 'Mark as Unorganized',
-				action: () => handleOrganize(false)
-			}
-		];
+	  const menuItems: MenuOption[] = [
+	    // Section: Organization
+	    {
+	      label: 'Mark as Organized',
+	      action: () => handleOrganize(true)
+	    },
+	    {
+	      label: 'Mark as Unorganized',
+	      action: () => handleOrganize(false)
+	    }
+	  ];
 
-		contextMenu.open(rect.left, rect.top, menuItems, { yEdgeAlign: 'top' }, target);
+	  if (typeof onScrape === 'function') {
+	    menuItems.push({ label: 'Scrape metadata', action: () => onScrape() });
+	  }
+
+
+	  contextMenu.open(rect.left, rect.top, menuItems, { yEdgeAlign: 'top' }, target);
 	}
 </script>
 
@@ -60,6 +65,7 @@
 	onclick={openMenu}
 	class="p-2.5 rounded-xl hover:bg-theme-primary/10 text-theme-secondary hover:text-theme-primary transition-colors"
 	title="More Actions"
+	aria-label={`More actions for ${selectionCount} selected`}
 >
 	<svg
 		xmlns="http://www.w3.org/2000/svg"

@@ -3,11 +3,13 @@
 	import { apiFetch } from '$lib/services/api';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
 	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
+	import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
+	import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
 	let {
-		isOpen = $bindable(false),
-		preSelectedSeriesIds = [],
-		onClose
+	  isOpen = $bindable(false),
+	  preSelectedSeriesIds = [],
+	  onClose
 	} = $props<{
 		isOpen: boolean;
 		preSelectedSeriesIds?: string[];
@@ -20,301 +22,288 @@
 	let adminSeries = $state<Series[]>([]);
 
 	// Only show pre-selected series
-	let displayedSeries = $derived(
-		allUserSeries.filter((s) => preSelectedSeriesIds.includes(s.id))
-	);
+	let displayedSeries = $derived(allUserSeries.filter((s) => preSelectedSeriesIds.includes(s.id)));
 
 	// Expandable state per series
-	let expandedSeriesIds = $state<Set<string>>(new Set());
+	let expandedSeriesIds = new SvelteSet<string>();
 
 	// Selected volumes per series
-	let selectedVolumeIdsBySeriesId = $state<Map<string, Set<string>>>(new Map());
+	let selectedVolumeIdsBySeriesId = new SvelteMap<string, Set<string>>();
 
 	// Merge decisions per series: null = create new, string = merge into that admin series ID
-	let mergeDecisions = $state<Map<string, string | null>>(new Map());
+	let mergeDecisions = new SvelteMap<string, string | null>();
 
 	// Fuzzy match detection
 	function fuzzyMatchSeries(userTitle: string, adminTitle: string): boolean {
-		const normalize = (str: string) =>
-			str
-				.toLowerCase()
-				.replace(/[^\w\s]/g, '')
-				.replace(/\s+/g, ' ')
-				.trim();
+	  const normalize = (str: string) =>
+	    str
+	      .toLowerCase()
+	      .replace(/[^\w\s]/g, '')
+	      .replace(/\s+/g, ' ')
+	      .trim();
 
-		const u = normalize(userTitle);
-		const a = normalize(adminTitle);
+	  const u = normalize(userTitle);
+	  const a = normalize(adminTitle);
 
-		// Must be at least 3 characters to match
-		if (u.length < 3 || a.length < 3) return false;
+	  // Must be at least 3 characters to match
+	  if (u.length < 3 || a.length < 3) return false;
 
-		// Exact match
-		if (u === a) return true;
+	  // Exact match
+	  if (u === a) return true;
 
-		// Substring match only if one is significantly contained in the other
-		// and the shorter string is at least 60% of the longer
-		const longer = u.length > a.length ? u : a;
-		const shorter = u.length > a.length ? a : u;
+	  // Substring match only if one is significantly contained in the other
+	  // and the shorter string is at least 60% of the longer
+	  const longer = u.length > a.length ? u : a;
+	  const shorter = u.length > a.length ? a : u;
 
-		if (longer.includes(shorter)) {
-			const ratio = shorter.length / longer.length;
-			return ratio >= 0.6; // At least 60% match
-		}
+	  if (longer.includes(shorter)) {
+	    const ratio = shorter.length / longer.length;
+	    return ratio >= 0.6; // At least 60% match
+	  }
 
-		return false;
+	  return false;
 	}
 
 	function findMatchingAdminSeries(userS: Series): Series | null {
-		if (!userS.title) return null;
+	  if (!userS.title) return null;
 
-		return (
-			adminSeries.find((adminS) => {
-				if (!adminS.title) return false;
+	  return (
+	    adminSeries.find((adminS) => {
+	      if (!adminS.title) return false;
 
-				if (fuzzyMatchSeries(userS.title!, adminS.title)) return true;
+	      if (fuzzyMatchSeries(userS.title!, adminS.title)) return true;
 
-				const userTitles = [
-					userS.title,
-					userS.romajiTitle,
-					userS.japaneseTitle,
-					...(userS.synonyms?.split(',').map((s) => s.trim()) || [])
-				].filter(Boolean);
+	      const userTitles = [
+	        userS.title,
+	        userS.romajiTitle,
+	        userS.japaneseTitle,
+	        ...(userS.synonyms?.split(',').map((s: string) => s.trim()) || [])
+	      ].filter(Boolean);
 
-				const adminTitles = [
-					adminS.title,
-					adminS.romajiTitle,
-					adminS.japaneseTitle,
-					...(adminS.synonyms?.split(',').map((s) => s.trim()) || [])
-				].filter(Boolean);
+	      const adminTitles = [
+	        adminS.title,
+	        adminS.romajiTitle,
+	        adminS.japaneseTitle,
+	        ...(adminS.synonyms?.split(',').map((s: string) => s.trim()) || [])
+	      ].filter(Boolean);
 
-				return userTitles.some((ut) =>
-					adminTitles.some((at) => fuzzyMatchSeries(ut!, at!))
-				);
-			}) || null
-		);
+	      return userTitles.some((ut) => adminTitles.some((at) => fuzzyMatchSeries(ut!, at!)));
+	    }) || null
+	  );
 	}
 
 	// Check volume conflicts
-	function getVolumeConflicts(
-		userVolumes: Series['volumes'],
-		adminS: Series | null
-	): Set<string> {
-		const conflicts = new Set<string>();
-		if (!adminS || !adminS.volumes || !userVolumes) return conflicts;
+	function getVolumeConflicts(userVolumes: Series['volumes'], adminS: Series | null): Set<string> {
+	  const conflicts = new SvelteSet<string>();
+	  if (!adminS || !adminS.volumes || !userVolumes) return conflicts;
 
-		userVolumes.forEach((userVol) => {
-			const userTitle = (userVol.title || userVol.folderName || '').toLowerCase().trim();
-			if (!userTitle) return; // Skip if no title or folderName
+	  userVolumes.forEach((userVol) => {
+	    const userTitle = (userVol.title || userVol.folderName || '').toLowerCase().trim();
+	    if (!userTitle) return; // Skip if no title or folderName
 
-			const hasConflict = adminS.volumes!.some((adminVol) => {
-				const adminTitle = (adminVol.title || adminVol.folderName || '').toLowerCase().trim();
-				if (!adminTitle) return false; // Skip if no title or folderName
-				return userTitle === adminTitle;
-			});
-			if (hasConflict) conflicts.add(userVol.id);
-		});
+	    const hasConflict = adminS.volumes!.some((adminVol) => {
+	      const adminTitle = (adminVol.title || adminVol.folderName || '').toLowerCase().trim();
+	      if (!adminTitle) return false; // Skip if no title or folderName
+	      return userTitle === adminTitle;
+	    });
+	    if (hasConflict) conflicts.add(userVol.id);
+	  });
 
-		return conflicts;
+	  return conflicts;
 	}
 
 	// Suggested matches with conflict detection
 	let suggestedMatches = $derived.by(() => {
-		const matches = new Map<
-			string,
-			{ adminSeries: Series; conflictVolumeIds: Set<string> }
-		>();
+	  const matches = new SvelteMap<string, { adminSeries: Series; conflictVolumeIds: Set<string> }>();
 
-		displayedSeries.forEach((userS) => {
-			const matchedAdmin = findMatchingAdminSeries(userS);
-			if (matchedAdmin) {
-				const conflictVolumeIds = getVolumeConflicts(userS.volumes, matchedAdmin);
-				matches.set(userS.id, { adminSeries: matchedAdmin, conflictVolumeIds });
-			}
-		});
+	  displayedSeries.forEach((userS) => {
+	    const matchedAdmin = findMatchingAdminSeries(userS);
+	    if (matchedAdmin) {
+	      const conflictVolumeIds = getVolumeConflicts(userS.volumes, matchedAdmin);
+	      matches.set(userS.id, { adminSeries: matchedAdmin, conflictVolumeIds });
+	    }
+	  });
 
-		return matches;
+	  return matches;
 	});
 
 	// Load data
 	async function loadSeriesData() {
-		loading = true;
-		try {
-			const userLibraryResponse = await apiFetch('/api/library', {
-				showErrorToast: false
-			});
+	  loading = true;
+	  try {
+	    const userLibraryResponse = await apiFetch<{ data: Series[] }>('/api/library', {
+	      showErrorToast: false
+	    });
 
-			allUserSeries = (userLibraryResponse.data as Series[]).filter(
-				(s) => s.canEdit && s.volumes && s.volumes.length > 0
-			);
+	    allUserSeries = (userLibraryResponse.data || []).filter(
+	      (s) => s.canEdit && s.volumes && s.volumes.length > 0
+	    );
 
-			const adminLibraryResponse = await apiFetch('/api/library?owner=admin&limit=1000', {
-				showErrorToast: false
-			});
+	    const adminLibraryResponse = await apiFetch<{ data: Series[] }>(
+	      '/api/library?owner=admin&limit=1000',
+	      {
+	        showErrorToast: false
+	      }
+	    );
 
-			// Only include admin series that have at least one volume
-			const rawAdminSeries = adminLibraryResponse.data as Series[];
-			console.log('[SubmitModal] Raw admin series count:', rawAdminSeries.length);
-			console.log('[SubmitModal] Admin series with volumes (_count):', rawAdminSeries.filter(s => s._count && s._count.volumes > 0).length);
-			console.log('[SubmitModal] Admin series WITHOUT volumes:', rawAdminSeries.filter(s => !s._count || s._count.volumes === 0).length);
+	    // Only include admin series that have at least one volume
+	    const rawAdminSeries = adminLibraryResponse.data || [];
+	    console.log('[SubmitModal] Raw admin series count:', rawAdminSeries.length);
+	    console.log(
+	      '[SubmitModal] Admin series with volumes (_count):',
+	      rawAdminSeries.filter((s) => s._count && s._count.volumes > 0).length
+	    );
+	    console.log(
+	      '[SubmitModal] Admin series WITHOUT volumes:',
+	      rawAdminSeries.filter((s) => !s._count || s._count.volumes === 0).length
+	    );
 
-			adminSeries = rawAdminSeries.filter(
-				(s) => s._count && s._count.volumes > 0
-			);
+	    adminSeries = rawAdminSeries.filter((s) => s._count && s._count.volumes > 0);
 
-			console.log('[SubmitModal] Filtered admin series:', adminSeries.length);
+	    console.log('[SubmitModal] Filtered admin series:', adminSeries.length);
 
-			// Initialize selection and decisions
-			initializeSelections();
-		} catch (err: any) {
-			console.error('Failed to load series data', err);
-			toastStore.error('Failed to load library data');
-		} finally {
-			loading = false;
-		}
+	    // Initialize selection and decisions
+	    initializeSelections();
+	  } catch (err: unknown) {
+	    console.error('Failed to load series data', err);
+	    toastStore.error('Failed to load library data');
+	  } finally {
+	    loading = false;
+	  }
 	}
 
 	function initializeSelections() {
-		const newSelectedVolumeIds = new Map<string, Set<string>>();
-		const newMergeDecisions = new Map<string, string | null>();
-		const newExpandedIds = new Set<string>();
+	  const newSelectedVolumeIds = new SvelteMap<string, Set<string>>();
+	  const newMergeDecisions = new SvelteMap<string, string | null>();
+	  const newExpandedIds = new SvelteSet<string>();
 
-		displayedSeries.forEach((series: Series) => {
-			const match = suggestedMatches.get(series.id);
+	  displayedSeries.forEach((series: Series) => {
+	    const match = suggestedMatches.get(series.id);
 
-			// If fuzzy match found, auto-expand and set merge decision
-			if (match) {
-				newExpandedIds.add(series.id);
-				newMergeDecisions.set(series.id, match.adminSeries.id);
+	    // If fuzzy match found, auto-expand and set merge decision
+	    if (match) {
+	      newExpandedIds.add(series.id);
+	      newMergeDecisions.set(series.id, match.adminSeries.id);
 
-				// Select all non-conflicting volumes
-				const selectableVolumes = (series.volumes || []).filter(
-					(v) => !match.conflictVolumeIds.has(v.id)
-				);
-				newSelectedVolumeIds.set(
-					series.id,
-					new Set(selectableVolumes.map((v) => v.id))
-				);
-			} else {
-				// No match - default to create new series and select all volumes
-				newMergeDecisions.set(series.id, null);
-				newSelectedVolumeIds.set(
-					series.id,
-					new Set((series.volumes || []).map((v) => v.id))
-				);
-			}
-		});
+	      // Select all non-conflicting volumes
+	      const selectableVolumes = (series.volumes || []).filter(
+	        (v) => !match.conflictVolumeIds.has(v.id)
+	      );
+	      newSelectedVolumeIds.set(series.id, new SvelteSet(selectableVolumes.map((v) => v.id)));
+	    } else {
+	      // No match - default to create new series and select all volumes
+	      newMergeDecisions.set(series.id, null);
+	      newSelectedVolumeIds.set(series.id, new SvelteSet((series.volumes || []).map((v) => v.id)));
+	    }
+	  });
 
-		expandedSeriesIds = newExpandedIds;
-		selectedVolumeIdsBySeriesId = newSelectedVolumeIds;
-		mergeDecisions = newMergeDecisions;
+	  expandedSeriesIds = newExpandedIds;
+	  selectedVolumeIdsBySeriesId = newSelectedVolumeIds;
+	  mergeDecisions = newMergeDecisions;
 	}
 
 	function toggleExpanded(seriesId: string) {
-		if (expandedSeriesIds.has(seriesId)) {
-			expandedSeriesIds.delete(seriesId);
-		} else {
-			expandedSeriesIds.add(seriesId);
-		}
-		expandedSeriesIds = expandedSeriesIds;
+	  if (expandedSeriesIds.has(seriesId)) {
+	    expandedSeriesIds.delete(seriesId);
+	  } else {
+	    expandedSeriesIds.add(seriesId);
+	  }
+	  expandedSeriesIds = expandedSeriesIds;
 	}
 
 	function toggleVolume(seriesId: string, volumeId: string) {
-		const selected = selectedVolumeIdsBySeriesId.get(seriesId) || new Set();
-		if (selected.has(volumeId)) {
-			selected.delete(volumeId);
-		} else {
-			selected.add(volumeId);
-		}
-		selectedVolumeIdsBySeriesId.set(seriesId, selected);
-		selectedVolumeIdsBySeriesId = selectedVolumeIdsBySeriesId;
+	  const selected = selectedVolumeIdsBySeriesId.get(seriesId) || new SvelteSet();
+	  if (selected.has(volumeId)) {
+	    selected.delete(volumeId);
+	  } else {
+	    selected.add(volumeId);
+	  }
+	  selectedVolumeIdsBySeriesId.set(seriesId, selected);
+	  selectedVolumeIdsBySeriesId = selectedVolumeIdsBySeriesId;
 	}
 
 	function selectAllVolumes(seriesId: string, volumes: Series['volumes']) {
-		if (!volumes) return;
+	  if (!volumes) return;
 
-		const match = suggestedMatches.get(seriesId);
-		const selectableVolumes = volumes.filter(
-			(v) => !match || !match.conflictVolumeIds.has(v.id)
-		);
+	  const match = suggestedMatches.get(seriesId);
+	  const selectableVolumes = volumes.filter((v) => !match || !match.conflictVolumeIds.has(v.id));
 
-		const selected = selectedVolumeIdsBySeriesId.get(seriesId) || new Set();
-		const allSelected = selectableVolumes.every((v) => selected.has(v.id));
+	  const selected = selectedVolumeIdsBySeriesId.get(seriesId) || new SvelteSet();
+	  const allSelected = selectableVolumes.every((v) => selected.has(v.id));
 
-		if (allSelected) {
-			selectableVolumes.forEach((v) => selected.delete(v.id));
-		} else {
-			selectableVolumes.forEach((v) => selected.add(v.id));
-		}
+	  if (allSelected) {
+	    selectableVolumes.forEach((v) => selected.delete(v.id));
+	  } else {
+	    selectableVolumes.forEach((v) => selected.add(v.id));
+	  }
 
-		selectedVolumeIdsBySeriesId.set(seriesId, selected);
-		selectedVolumeIdsBySeriesId = selectedVolumeIdsBySeriesId;
+	  selectedVolumeIdsBySeriesId.set(seriesId, selected);
+	  selectedVolumeIdsBySeriesId = selectedVolumeIdsBySeriesId;
 	}
 
 	function setMergeDecision(seriesId: string, adminSeriesId: string | null) {
-		mergeDecisions.set(seriesId, adminSeriesId);
-		mergeDecisions = mergeDecisions;
+	  mergeDecisions.set(seriesId, adminSeriesId);
+	  mergeDecisions = mergeDecisions;
 	}
 
 	// Get total selected volumes across all series
 	let totalSelectedVolumes = $derived(
-		Array.from(selectedVolumeIdsBySeriesId.values()).reduce(
-			(sum, set) => sum + set.size,
-			0
-		)
+	  Array.from(selectedVolumeIdsBySeriesId.values()).reduce((sum, set) => sum + set.size, 0)
 	);
 
 	async function handleSubmit() {
-		if (totalSelectedVolumes === 0) {
-			toastStore.error('Please select at least one volume');
-			return;
-		}
+	  if (totalSelectedVolumes === 0) {
+	    toastStore.error('Please select at least one volume');
+	    return;
+	  }
 
-		// Validate: each series must have a decision
-		for (const series of displayedSeries) {
-			if (!mergeDecisions.has(series.id)) {
-				toastStore.error(`Please choose a destination for ${series.title || series.folderName}`);
-				return;
-			}
-		}
+	  // Validate: each series must have a decision
+	  for (const series of displayedSeries) {
+	    if (!mergeDecisions.has(series.id)) {
+	      toastStore.error(`Please choose a destination for ${series.title || series.folderName}`);
+	      return;
+	    }
+	  }
 
-		submitting = true;
-		try {
-			// Submit each series separately with its merge decision
-			for (const series of displayedSeries) {
-				const selectedVolumes = selectedVolumeIdsBySeriesId.get(series.id);
-				if (!selectedVolumes || selectedVolumes.size === 0) continue;
+	  submitting = true;
+	  try {
+	    // Submit each series separately with its merge decision
+	    for (const series of displayedSeries) {
+	      const selectedVolumes = selectedVolumeIdsBySeriesId.get(series.id);
+	      if (!selectedVolumes || selectedVolumes.size === 0) continue;
 
-				const targetSeriesId = mergeDecisions.get(series.id);
+	      const targetSeriesId = mergeDecisions.get(series.id);
 
-				await contributionsStore.submitVolumes(
-					Array.from(selectedVolumes),
-					targetSeriesId === null || targetSeriesId === undefined ? undefined : targetSeriesId
-				);
-			}
+	      await contributionsStore.submitVolumes(
+	        Array.from(selectedVolumes),
+	        targetSeriesId === null || targetSeriesId === undefined ? undefined : targetSeriesId
+	      );
+	    }
 
-			toastStore.success(`Submitted ${totalSelectedVolumes} volume(s) successfully`);
-			close();
-		} catch (err: any) {
-			toastStore.error(err.message || 'Failed to submit volumes');
-		} finally {
-			submitting = false;
-		}
+	    toastStore.success(`Submitted ${totalSelectedVolumes} volume(s) successfully`);
+	    close();
+	  } catch (err: unknown) {
+	    const message = err instanceof Error ? err.message : 'Failed to submit volumes';
+	    toastStore.error(message);
+	  } finally {
+	    submitting = false;
+	  }
 	}
 
 	function close() {
-		isOpen = false;
-		expandedSeriesIds = new Set();
-		selectedVolumeIdsBySeriesId = new Map();
-		mergeDecisions = new Map();
-		if (onClose) onClose();
+	  isOpen = false;
+	  expandedSeriesIds = new SvelteSet();
+	  selectedVolumeIdsBySeriesId = new SvelteMap();
+	  mergeDecisions = new SvelteMap();
+	  if (onClose) onClose();
 	}
 
 	$effect(() => {
-		if (isOpen && allUserSeries.length === 0) {
-			loadSeriesData();
-		} else if (isOpen && allUserSeries.length > 0) {
-			initializeSelections();
-		}
+	  if (isOpen && allUserSeries.length === 0) {
+	    loadSeriesData();
+	  } else if (isOpen && allUserSeries.length > 0) {
+	    initializeSelections();
+	  }
 	});
 </script>
 
@@ -388,25 +377,25 @@
 					{#each displayedSeries as series (series.id)}
 						{@const isExpanded = expandedSeriesIds.has(series.id)}
 						{@const match = suggestedMatches.get(series.id)}
-						{@const selectedVolumes = selectedVolumeIdsBySeriesId.get(series.id) || new Set()}
+						{@const selectedVolumes = selectedVolumeIdsBySeriesId.get(series.id) || new SvelteSet()}
 						{@const mergeDecision = mergeDecisions.get(series.id)}
 						{@const conflictCount = match ? match.conflictVolumeIds.size : 0}
 						{@const volumes = series.volumes || []}
 						{@const selectableVolumes = volumes.filter(
-							(v) => !match || !match.conflictVolumeIds.has(v.id)
+						  (v) => !match || !match.conflictVolumeIds.has(v.id)
 						)}
 
 						<div
 							class="bg-gradient-to-br from-theme-surface/40 to-theme-surface/20 border-2 rounded-xl overflow-hidden {match
-								? 'border-yellow-500/40 shadow-lg shadow-yellow-500/10'
-								: 'border-theme-border hover:border-accent/30'} transition-all"
+							  ? 'border-yellow-500/40 shadow-lg shadow-yellow-500/10'
+							  : 'border-theme-border hover:border-accent/30'} transition-all"
 						>
 							<!-- Series Header -->
 							<div class="bg-theme-surface/60 border-b-2 border-theme-border/50 p-4">
 								<div class="flex items-start gap-3">
 									<!-- Cover Image -->
 									{#if series.coverPath}
-										<img
+										<AuthenticatedImage
 											src="/api/files/series/{series.id}/cover?w=80&q=60&format=avif"
 											alt=""
 											class="w-12 h-16 object-cover rounded-lg border-2 border-theme-border flex-shrink-0"
@@ -433,8 +422,8 @@
 											stroke="currentColor"
 											stroke-width="2.5"
 											class="text-theme-primary transition-transform {isExpanded
-												? 'rotate-90'
-												: ''}"
+											  ? 'rotate-90'
+											  : ''}"
 										>
 											<polyline points="9 18 15 12 9 6"></polyline>
 										</svg>
@@ -450,7 +439,9 @@
 													class="px-2 py-0.5 rounded-md bg-yellow-500/20 border border-yellow-500/40 flex items-center gap-1.5"
 												>
 													<span class="text-sm">⚠️</span>
-													<span class="text-[10px] font-bold text-yellow-300 uppercase">Match Found</span>
+													<span class="text-[10px] font-bold text-yellow-300 uppercase"
+														>Match Found</span
+													>
 												</div>
 											{:else}
 												<div
@@ -492,17 +483,17 @@
 											<div class="text-xs text-theme-secondary mb-2">
 												Your series matches <strong class="text-theme-primary"
 													>{match.adminSeries.title || match.adminSeries.folderName}</strong
-												> in the shared library ({match.adminSeries._count?.volumes || 0} volumes).
+												>
+												in the shared library ({match.adminSeries._count?.volumes || 0} volumes).
 											</div>
 											{#if conflictCount > 0}
 												<div class="text-xs text-yellow-400 mt-2 flex items-start gap-2">
 													<span>⚠️</span>
 													<span
-														>{conflictCount} volume{conflictCount > 1
-															? 's'
-															: ''} already exist{conflictCount === 1
-															? 's'
-															: ''} and will be excluded from submission</span
+														>{conflictCount} volume{conflictCount > 1 ? 's' : ''} already exist{conflictCount ===
+														1
+														  ? 's'
+														  : ''} and will be excluded from submission</span
 													>
 												</div>
 											{/if}
@@ -516,7 +507,9 @@
 								<div class="bg-theme-main/30 border-b-2 border-theme-border/50">
 									<!-- Select All Header -->
 									{#if selectableVolumes.length > 0}
-										<div class="px-4 py-2 bg-theme-surface/30 border-b border-theme-border/30 flex items-center justify-between">
+										<div
+											class="px-4 py-2 bg-theme-surface/30 border-b border-theme-border/30 flex items-center justify-between"
+										>
 											<span class="text-xs text-theme-tertiary font-medium">
 												Select volumes to submit:
 											</span>
@@ -525,15 +518,15 @@
 												class="px-3 py-1 rounded-md text-xs font-bold bg-accent/10 text-accent hover:bg-accent/20 border border-accent/30 transition-all"
 											>
 												{selectableVolumes.every((v) => selectedVolumes.has(v.id))
-													? 'Deselect All'
-													: 'Select All'}
+												  ? 'Deselect All'
+												  : 'Select All'}
 											</button>
 										</div>
 									{/if}
 
 									<!-- Scrollable Volume List -->
 									<div class="p-4 space-y-2 max-h-[400px] overflow-y-auto">
-										{#each volumes as volume}
+										{#each volumes as volume (volume.id)}
 											{@const isConflict = match && match.conflictVolumeIds.has(volume.id)}
 											{@const isSelected = selectedVolumes.has(volume.id)}
 
@@ -541,18 +534,18 @@
 												onclick={() => !isConflict && toggleVolume(series.id, volume.id)}
 												disabled={isConflict}
 												class="w-full flex items-center gap-3 p-2.5 rounded-lg border-2 transition-all {isConflict
-													? 'bg-yellow-500/5 border-yellow-500/20 opacity-50 cursor-not-allowed'
-													: isSelected
-														? 'bg-accent/10 border-accent shadow-sm'
-														: 'bg-theme-surface/40 border-theme-border hover:border-accent/30 hover:bg-theme-surface'}"
+												  ? 'bg-yellow-500/5 border-yellow-500/20 opacity-50 cursor-not-allowed'
+												  : isSelected
+												    ? 'bg-accent/10 border-accent shadow-sm'
+												    : 'bg-theme-surface/40 border-theme-border hover:border-accent/30 hover:bg-theme-surface'}"
 											>
 												<!-- Checkbox -->
 												<div
 													class="w-5 h-5 flex-shrink-0 rounded border-2 flex items-center justify-center {isConflict
-														? 'border-yellow-500/40 bg-yellow-500/10'
-														: isSelected
-															? 'bg-accent border-accent'
-															: 'border-theme-border'}"
+													  ? 'border-yellow-500/40 bg-yellow-500/10'
+													  : isSelected
+													    ? 'bg-accent border-accent'
+													    : 'border-theme-border'}"
 												>
 													{#if isConflict}
 														<span class="text-yellow-400 text-xs font-bold">⚠</span>
@@ -600,8 +593,8 @@
 									<label
 										class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {mergeDecision ===
 										null
-											? 'bg-accent/10 border-accent shadow-sm'
-											: 'bg-theme-surface/20 border-theme-border hover:border-accent/30 hover:bg-theme-surface/40'}"
+										  ? 'bg-accent/10 border-accent shadow-sm'
+										  : 'bg-theme-surface/20 border-theme-border hover:border-accent/30 hover:bg-theme-surface/40'}"
 									>
 										<input
 											type="radio"
@@ -626,8 +619,8 @@
 										<label
 											class="flex items-center gap-3 p-3 rounded-lg border-2 cursor-pointer transition-all {mergeDecision ===
 											match.adminSeries.id
-												? 'bg-accent/10 border-accent shadow-sm'
-												: 'bg-theme-surface/20 border-yellow-500/30 hover:border-accent/30 hover:bg-theme-surface/40'}"
+											  ? 'bg-accent/10 border-accent shadow-sm'
+											  : 'bg-theme-surface/20 border-yellow-500/30 hover:border-accent/30 hover:bg-theme-surface/40'}"
 										>
 											<input
 												type="radio"
@@ -637,7 +630,9 @@
 												class="w-5 h-5 accent-accent"
 											/>
 											<div class="flex-1">
-												<div class="font-semibold text-sm text-theme-primary flex items-center gap-2">
+												<div
+													class="font-semibold text-sm text-theme-primary flex items-center gap-2"
+												>
 													<span>🔗</span>
 													<span
 														>Merge into: {match.adminSeries.title ||
@@ -665,13 +660,13 @@
 												Or merge into different series...
 											</summary>
 											<div class="mt-2 space-y-1.5 max-h-40 overflow-y-auto px-1">
-												{#each adminSeries as adminS}
+												{#each adminSeries as adminS (adminS.id)}
 													{#if !match || adminS.id !== match.adminSeries.id}
 														<label
 															class="flex items-center gap-3 p-2 rounded-lg border cursor-pointer transition-all {mergeDecision ===
 															adminS.id
-																? 'bg-accent/10 border-accent'
-																: 'bg-theme-surface/20 border-theme-border hover:border-accent/30'}"
+															  ? 'bg-accent/10 border-accent'
+															  : 'bg-theme-surface/20 border-theme-border hover:border-accent/30'}"
 														>
 															<input
 																type="radio"

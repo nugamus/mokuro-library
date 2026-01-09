@@ -9,36 +9,36 @@
 
 	// Initialize order when the modal opens with a new block
 	$effect(() => {
-		if ($lineOrderStore.block) {
-			order = $lineOrderStore.block.lines.map((_, i) => i);
-			originalOrder = $lineOrderStore.block.lines.map((_, i) => i);
-		}
+	  if ($lineOrderStore.block) {
+	    order = $lineOrderStore.block.lines.map((_, i) => i);
+	    originalOrder = $lineOrderStore.block.lines.map((_, i) => i);
+	  }
 	});
 
 	const swap = (i: number, j: number) => {
-		const newOrder = [...order];
-		[newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
-		order = newOrder;
+	  const newOrder = [...order];
+	  [newOrder[i], newOrder[j]] = [newOrder[j], newOrder[i]];
+	  order = newOrder;
 	};
 
 	const handleMoveUp = (index: number) => {
-		if (index > 0) swap(index, index - 1);
+	  if (index > 0) swap(index, index - 1);
 	};
 
 	const handleMoveDown = (index: number) => {
-		if (index < order.length - 1) swap(index, index + 1);
+	  if (index < order.length - 1) swap(index, index + 1);
 	};
 
 	const handleDone = () => {
-		for (let i = 0; i < order.length; i++) {
-			if (order[i] !== originalOrder[i]) {
-				// Pass the final permutation back to the caller
-				$lineOrderStore.onCommit(order);
-				break;
-			}
-		}
+	  for (let i = 0; i < order.length; i++) {
+	    if (order[i] !== originalOrder[i]) {
+	      // Pass the final permutation back to the caller
+	      $lineOrderStore.onCommit(order);
+	      break;
+	    }
+	  }
 
-		lineOrderStore.close();
+	  lineOrderStore.close();
 	};
 </script>
 

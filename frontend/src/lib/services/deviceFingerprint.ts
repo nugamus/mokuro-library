@@ -4,70 +4,80 @@
  * cookie theft across different devices.
  */
 export const generateDeviceFingerprint = async (): Promise<string> => {
-	const components: string[] = [];
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined') {
+    throw new Error('Device fingerprint can only be generated in browser environment');
+  }
 
-	// User agent
-	components.push(navigator.userAgent);
+  const components: string[] = [];
 
-	// Screen resolution
-	components.push(`${screen.width}x${screen.height}x${screen.colorDepth}`);
+  // User agent
+  components.push(navigator.userAgent);
 
-	// Timezone
-	components.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  // Screen resolution
+  components.push(`${screen.width}x${screen.height}x${screen.colorDepth}`);
 
-	// Language
-	components.push(navigator.language);
+  // Timezone
+  components.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
-	// Platform
-	components.push(navigator.platform);
+  // Language
+  components.push(navigator.language);
 
-	// Hardware concurrency (CPU cores)
-	components.push((navigator.hardwareConcurrency || 0).toString());
+  // Platform
+  components.push(navigator.platform);
 
-	// Device memory (if available)
-	const nav = navigator as any;
-	if (nav.deviceMemory) {
-		components.push(nav.deviceMemory.toString());
-	}
+  // Hardware concurrency (CPU cores)
+  components.push((navigator.hardwareConcurrency || 0).toString());
 
-	// Canvas fingerprint (simplified)
-	try {
-		const canvas = document.createElement('canvas');
-		const ctx = canvas.getContext('2d');
-		if (ctx) {
-			ctx.textBaseline = 'top';
-			ctx.font = '14px Arial';
-			ctx.fillText('Mokuro Library', 2, 2);
-			const data = canvas.toDataURL();
-			components.push(data);
-		}
-	} catch (e) {
-		// Canvas fingerprinting blocked
-	}
+  // Device memory (if available)
+  const deviceMemory = (navigator as unknown as { deviceMemory?: number }).deviceMemory;
+  if (deviceMemory) {
+    components.push(deviceMemory.toString());
+  }
 
-	// Combine all components
-	const fingerprintString = components.join('|||');
+  // Canvas fingerprint (simplified)
+  try {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillText('Mokuro Library', 2, 2);
+      const data = canvas.toDataURL();
+      components.push(data);
+    }
+  } catch {
+    // Canvas fingerprinting blocked
+  }
 
-	// Hash using SubtleCrypto
-	const encoder = new TextEncoder();
-	const data = encoder.encode(fingerprintString);
-	const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-	const hashArray = Array.from(new Uint8Array(hashBuffer));
-	const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  // Combine all components
+  const fingerprintString = components.join('|||');
 
-	return hashHex;
+  // Hash using SubtleCrypto
+  const encoder = new TextEncoder();
+  const data = encoder.encode(fingerprintString);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+
+  return hashHex;
 };
 
 /**
  * Stores device fingerprint in sessionStorage for consistency.
  */
 export const getStoredFingerprint = async (): Promise<string> => {
-	const stored = sessionStorage.getItem('deviceFingerprint');
-	if (stored) {
-		return stored;
-	}
+  // Check if we're in a browser environment
+  if (typeof window === 'undefined' || typeof sessionStorage === 'undefined') {
+    throw new Error('Device fingerprint can only be accessed in browser environment');
+  }
 
-	const fingerprint = await generateDeviceFingerprint();
-	sessionStorage.setItem('deviceFingerprint', fingerprint);
-	return fingerprint;
+  const stored = sessionStorage.getItem('deviceFingerprint');
+  if (stored) {
+    return stored;
+  }
+
+  const fingerprint = await generateDeviceFingerprint();
+  sessionStorage.setItem('deviceFingerprint', fingerprint);
+  return fingerprint;
 };

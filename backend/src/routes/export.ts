@@ -10,7 +10,7 @@ import { getComputedMokuroState } from '../utils/ocrHelpers';
 import {
   buildComicInfoXml,
   generateSeriesMetadata
-} from '../services/export/metadata';
+} from '../utils/export/metadata';
 
 
 // an interface for the route parameters

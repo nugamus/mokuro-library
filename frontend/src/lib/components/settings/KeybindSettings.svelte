@@ -3,73 +3,74 @@
 	import { fade, fly, scale } from 'svelte/transition';
 	import { quintOut } from 'svelte/easing';
 	import {
-		eventToKeyCombo,
-		keybindDefinitions,
-		type KeybindDefinition,
-		type KeybindId
+	  eventToKeyCombo,
+	  keybindDefinitions,
+	  type KeybindDefinition,
+	  type KeybindId
 	} from '$lib/keybinds';
 	import { keybindStore } from '$lib/stores/keybindStore';
 	import { keybindCaptureStore } from '$lib/stores/keybindCaptureStore';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	let capturingId = $state<KeybindId | null>(null);
 	let errorMessage = $state<string | null>(null);
 
 	const capturingLabel = $derived.by(() => {
-		if (!capturingId) return '';
-		return keybindDefinitions.find((item) => item.id === capturingId)?.label ?? capturingId;
+	  if (!capturingId) return '';
+	  return keybindDefinitions.find((item) => item.id === capturingId)?.label ?? capturingId;
 	});
 
 	const groupedDefinitions = $derived.by(() => {
-		const groups = new Map<string, KeybindDefinition[]>();
-		for (const def of keybindDefinitions) {
-			const items = groups.get(def.category) ?? [];
-			items.push(def);
-			groups.set(def.category, items);
-		}
-		return Array.from(groups.entries()).map(([category, items]) => ({ category, items }));
+	  const groups = new SvelteMap<string, KeybindDefinition[]>();
+	  for (const def of keybindDefinitions) {
+	    const items = groups.get(def.category) ?? [];
+	    items.push(def);
+	    groups.set(def.category, items);
+	  }
+	  return Array.from(groups.entries()).map(([category, items]) => ({ category, items }));
 	});
 
 	const startCapture = (id: KeybindId) => {
-		capturingId = id;
-		errorMessage = null;
-		keybindCaptureStore.set(true);
+	  capturingId = id;
+	  errorMessage = null;
+	  keybindCaptureStore.set(true);
 	};
 
 	const stopCapture = () => {
-		capturingId = null;
-		keybindCaptureStore.set(false);
+	  capturingId = null;
+	  keybindCaptureStore.set(false);
 	};
 
 	const handleKeyCapture = async (event: KeyboardEvent) => {
-		if (!capturingId) return;
-		event.preventDefault();
-		event.stopImmediatePropagation();
+	  if (!capturingId) return;
+	  event.preventDefault();
+	  event.stopImmediatePropagation();
 
-		if (event.key === 'Escape') {
-			stopCapture();
-			return;
-		}
+	  if (event.key === 'Escape') {
+	    stopCapture();
+	    return;
+	  }
 
-		if (event.key === 'Backspace' || event.key === 'Delete') {
-			await keybindStore.clearBindings(capturingId);
-			stopCapture();
-			return;
-		}
+	  if (event.key === 'Backspace' || event.key === 'Delete') {
+	    await keybindStore.clearBindings(capturingId);
+	    stopCapture();
+	    return;
+	  }
 
-		const combo = eventToKeyCombo(event);
-		if (!combo) return;
-		const result = await keybindStore.addBinding(capturingId, combo);
-		if (!result.ok) {
-			errorMessage = result.error;
-			return;
-		}
+	  const combo = eventToKeyCombo(event);
+	  if (!combo) return;
+	  const result = await keybindStore.addBinding(capturingId, combo);
+	  if (!result.ok) {
+	    errorMessage = result.error;
+	    return;
+	  }
 
-		stopCapture();
-		errorMessage = null;
+	  stopCapture();
+	  errorMessage = null;
 	};
 
 	onDestroy(() => {
-		keybindCaptureStore.set(false);
+	  keybindCaptureStore.set(false);
 	});
 </script>
 
@@ -130,7 +131,9 @@
 				class="absolute inset-0 bg-gradient-to-r from-accent/0 via-accent/10 to-accent/0 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"
 			></div>
 		</button>
-		<div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-theme-surface/50 border border-theme-border-light">
+		<div
+			class="flex items-center gap-2 px-3 py-2 rounded-xl bg-theme-surface/50 border border-theme-border-light"
+		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				width="14"
@@ -148,7 +151,8 @@
 				<path d="M12 8h.01" />
 			</svg>
 			<span class="text-xs text-theme-tertiary font-medium">
-				Press a key to assign · <kbd class="font-mono">Backspace</kbd> clears · <kbd class="font-mono">Esc</kbd> cancels
+				Press a key to assign · <kbd class="font-mono">Backspace</kbd> clears ·
+				<kbd class="font-mono">Esc</kbd> cancels
 			</span>
 		</div>
 	</div>
@@ -180,7 +184,7 @@
 	{/if}
 
 	<div class="space-y-6">
-		{#each groupedDefinitions as group, groupIndex}
+		{#each groupedDefinitions as group, groupIndex (group.category)}
 			<div
 				class="rounded-2xl bg-theme-main border-2 border-theme-border-light p-6 space-y-5 hover:border-accent/20 transition-all duration-300"
 				in:fly={{ y: 20, duration: 300, delay: groupIndex * 50, easing: quintOut }}
@@ -208,13 +212,13 @@
 				</div>
 
 				<div class="space-y-4">
-					{#each group.items as item}
+					{#each group.items as item (item.id)}
 						{@const isCapturing = capturingId === item.id}
 						{@const hasBindings = ($keybindStore[item.id] || []).length > 0}
 						<div
 							class="group flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl bg-theme-surface/40 hover:bg-theme-surface transition-all duration-200 border border-transparent hover:border-theme-border-light {isCapturing
-								? 'ring-2 ring-accent/50 bg-accent/5'
-								: ''}"
+							  ? 'ring-2 ring-accent/50 bg-accent/5'
+							  : ''}"
 						>
 							<div class="flex-1">
 								<div class="flex items-center gap-2">
@@ -229,7 +233,7 @@
 								<div class="text-xs text-theme-tertiary mt-0.5">{item.description}</div>
 							</div>
 							<div class="flex flex-wrap items-center gap-2">
-								{#each ($keybindStore[item.id] || []) as key, i}
+								{#each $keybindStore[item.id] || [] as key, i (key)}
 									<div
 										class="group/key inline-flex items-center gap-2 rounded-lg bg-theme-main px-3 py-1.5 text-xs font-mono font-semibold text-theme-primary border-2 border-theme-border-light hover:border-accent/50 transition-all duration-200 shadow-sm"
 										in:scale={{ start: 0.8, duration: 200, delay: i * 50, easing: quintOut }}
@@ -263,8 +267,8 @@
 									type="button"
 									onclick={() => startCapture(item.id)}
 									class="group/btn relative px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all duration-200 overflow-hidden {isCapturing
-										? 'border-accent bg-accent text-white'
-										: 'border-theme-border-light text-theme-secondary hover:text-theme-primary hover:border-accent/50'}"
+									  ? 'border-accent bg-accent text-white'
+									  : 'border-theme-border-light text-theme-secondary hover:text-theme-primary hover:border-accent/50'}"
 								>
 									<span class="relative z-10 flex items-center gap-1.5">
 										{#if isCapturing}

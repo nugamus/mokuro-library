@@ -1,9 +1,4 @@
-export type Quad = [
-  [number, number],
-  [number, number],
-  [number, number],
-  [number, number]
-];
+export type Quad = [[number, number], [number, number], [number, number], [number, number]];
 
 export type Rect = [number, number, number, number];
 
@@ -72,25 +67,37 @@ export interface Volume {
 export interface Series {
   id: string;
   title: string | null;
-  sortTitle?: string | null;
-  japaneseTitle?: string | null;
-  romajiTitle?: string | null;
-  synonyms?: string | null;
-  folderName: string;
+  japaneseTitle: string | null;
+  romajiTitle: string | null;
+  synonyms: string | null;
   description: string | null;
+  folderName: string;
   coverPath: string | null;
+  sortTitle: string;
+  createdAt: Date;
+  updatedAt: Date;
+  ownerId: string;
+  // Flattened User Settings
   bookmarked: boolean;
-  organized: boolean; // New Flag
-  status: number; // 0=Unread, 1=Reading, 2=Finished
-  updatedAt: string;
-  lastReadAt?: string | null;
-  canEdit?: boolean; // True if user owns this series (not admin-owned)
+  status: number;
+  organized: boolean;
+  lastReadAt: Date;
+  isOfficial: boolean;
+  canEdit: boolean;
+  // Progress Stats (Cached)
+  totalPageCount: number;
+  totalVolumeCount: number;
+  readPageCount: number;
+  completedVolumeCount: number;
 
-  // Relations
   volumes?: Volume[]; // Optional, present in Detail View
-  _count?: {
-    volumes: number;
-  };
+}
+
+export type PaginationData = {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 // Union for Selection State
@@ -140,11 +147,11 @@ export interface SeriesMetadata {
 
 // Fine Values: Used for 'replace' operations on leaf nodes.
 export type FineValue =
-  | string  // For text content
+  | string // For text content
   | boolean // For 'vertical' flag
-  | number  // For 'font_size'
-  | Rect    // For block 'box'
-  | Quad;   // For line 'coords'
+  | number // For 'font_size'
+  | Rect // For block 'box'
+  | Quad; // For line 'coords'
 
 // --- 2. Coarse / Unified Values ---
 

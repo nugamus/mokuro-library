@@ -1,13 +1,23 @@
 import type { FastifyInstance } from 'fastify';
-import type { LibraryQuery } from '../../types/library';
+import type { LibraryQuery, PaginationData, SeriesWithOptionalSettings } from '../../types/library';
 import { Prisma } from '../../generated/prisma/client';
-import { transformSeries } from './seriesTransform';
+import { transformSeriesForLibraryQuery } from './seriesTransform';
+import { SeriesInclude } from '../../generated/prisma/models';
 
-export async function getLibraryList(
+type DefaultTransformResult = ReturnType<typeof transformSeriesForLibraryQuery>;
+export async function queryLibrary<T = DefaultTransformResult>(
   fastify: FastifyInstance,
   userId: string,
-  query: LibraryQuery
-) {
+  query: LibraryQuery,
+  options?: {
+    transform?: (series: SeriesWithOptionalSettings, userId: string) => T,
+    include?: SeriesInclude,
+  }
+): Promise<{
+  meta: PaginationData,
+  data: T[]
+}> {
+  const transform = options?.transform ?? transformSeriesForLibraryQuery as (series: SeriesWithOptionalSettings, userId: string) => T;
   const page = Math.max(1, query.page ?? 1);
   const limit = Math.max(1, Math.min(100, query.limit ?? 20));
   const q = query.q?.trim() ?? '';
@@ -94,22 +104,16 @@ export async function getLibraryList(
         skip: (page - 1) * limit,
         include: {
           series: {
-            include: {
-              volumes: {
-                orderBy: { sortTitle: 'asc' },
-                select: {
-                  pageCount: true,
-                  progress: { where: { userId }, select: { completed: true, page: true } }
-                }
-              },
-              _count: { select: { volumes: true } }
-            }
+            include: options?.include ?? {}
           }
         }
       })
     ]);
 
-    const data = settings.map((setting: any) => transformSeries(setting.series, userId, setting));
+    const data = settings.map((setting: any) => {
+      const { series, ...cleanSettings } = setting;
+      return transform({ ...series, userSettings: cleanSettings }, userId)
+    });
 
     return {
       data,
@@ -130,20 +134,13 @@ export async function getLibraryList(
       take: limit,
       skip: (page - 1) * limit,
       include: {
-        userSettings: { where: { userId } },
-        volumes: {
-          orderBy: { sortTitle: 'asc' },
-          select: {
-            pageCount: true,
-            progress: { where: { userId }, select: { completed: true, page: true } }
-          }
-        },
-        _count: { select: { volumes: true } }
+        ...(options?.include ?? {}),
+        userSettings: { where: { userId } }
       }
     })
   ]);
 
-  const data = seriesList.map((series: any) => transformSeries(series, userId));
+  const data = seriesList.map((series: any) => transform(series, userId));
 
   return {
     data,

@@ -55,11 +55,25 @@ export async function updateVolumeProgress(
   userId: string,
   data: ProgressBody
 ) {
-  const upsertedProgress = await fastify.prisma.userProgress.upsert({
-    where: { userId_volumeId: { userId, volumeId } },
-    update: { ...data },
-    create: { userId, volumeId, ...data },
-  });
+  const { timeRead, charsRead, ...restData } = data;
+
+  const updatePayload: any = { ...restData, lastReadAt: new Date() };
+  if (timeRead !== undefined) {
+    updatePayload.timeRead = { increment: timeRead };
+  }
+  if (charsRead !== undefined) {
+    updatePayload.charsRead = { increment: charsRead };
+  }
+
+  const createPayload = {
+    userId,
+    volumeId,
+    page: data.page,
+    timeRead: data.timeRead ?? 0,
+    charsRead: data.charsRead ?? 0,
+    completed: data.completed,
+    lastReadAt: new Date(),
+  };
 
   const volume = await fastify.prisma.volume.findUnique({
     where: { id: volumeId },
@@ -73,12 +87,17 @@ export async function updateVolumeProgress(
         userId,
         seriesId: volume.seriesId,
         lastReadAt: new Date()
-        // Extension default for status is 0 (Unread), but extension 'upsert' hook
-        // might immediately flip it to Reading if progress > 0.
       },
       update: { lastReadAt: new Date() }
     });
   }
+
+  const upsertedProgress = await fastify.prisma.userProgress.upsert({
+    where: { userId_volumeId: { userId, volumeId } },
+    update: updatePayload,
+    create: createPayload,
+  });
+
 
   return { ...upsertedProgress, seriesId: volume?.seriesId };
 }

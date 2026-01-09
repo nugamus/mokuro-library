@@ -3,121 +3,119 @@
 @plugin "@tailwindcss/forms";
 
 @theme {
-  /* --- Base Theme (Catppuccin Mocha / Dark) --- */
-  --color-theme-main: #1e1e2e;          /* Mocha Base */
-  --color-theme-surface: #181825;       /* Mocha Mantle */
-  --color-theme-surface-hover: #313244; /* Mocha Surface0 */
+	/* --- Base Theme (Catppuccin Mocha / Dark) --- */
+	--color-theme-main: #1e1e2e; /* Mocha Base */
+	--color-theme-surface: #181825; /* Mocha Mantle */
+	--color-theme-surface-hover: #313244; /* Mocha Surface0 */
 
-  --color-theme-border: #313244;       /* Mocha Surface0 */
-  --color-theme-border-light: #45475a; /* Mocha Surface1 */
-  --color-theme-border-active: #89b4fa; /* Mocha Blue (Brighter) */
+	--color-theme-border: #313244; /* Mocha Surface0 */
+	--color-theme-border-light: #45475a; /* Mocha Surface1 */
+	--color-theme-border-active: #89b4fa; /* Mocha Blue (Brighter) */
 
-  --color-theme-primary: #cdd6f4;      /* Mocha Text */
-  --color-theme-secondary: #bac2de;    /* Mocha Subtext1 */
-  --color-theme-tertiary: #a6adc8;     /* Mocha Subtext0 */
+	--color-theme-primary: #cdd6f4; /* Mocha Text */
+	--color-theme-secondary: #bac2de; /* Mocha Subtext1 */
+	--color-theme-tertiary: #a6adc8; /* Mocha Subtext0 */
 
-  --color-accent: #89b4fa;             /* Mocha Blue */
-  --color-accent-hover: #b4befe;       /* Mocha Lavender (Glowing interaction) */
-  --color-accent-surface: #242f4a;     /* Deep Blue Surface */
-  --color-progress: #89b4fa;           /* Mocha Blue */
+	--color-accent: #89b4fa; /* Mocha Blue */
+	--color-accent-hover: #b4befe; /* Mocha Lavender (Glowing interaction) */
+	--color-accent-surface: #242f4a; /* Deep Blue Surface */
+	--color-progress: #89b4fa; /* Mocha Blue */
 
-  /* --- Functional Colors --- */
-  /* Status Indicators */
-  --color-status-success: #10b981;   /* Emerald */
-  --color-status-warning: #f59e0b;   /* Amber */
-  --color-status-danger: #ef4444;    /* Red */
-  --color-status-unread: #0ea5e9;    /* Sky (Used for Unread indicators) */
+	/* --- Functional Colors --- */
+	/* Status Indicators */
+	--color-status-success: #10b981; /* Emerald */
+	--color-status-warning: #f59e0b; /* Amber */
+	--color-status-danger: #ef4444; /* Red */
+	--color-status-unread: #0ea5e9; /* Sky (Used for Unread indicators) */
 
-  /* Icon/Feature Identifiers */
-  --color-icon-stats: #3b82f6;       /* Blue (Used for Stats icons) */
-  --color-icon-appearance: #8b5cf6;  /* Violet (Used for Appearance/Settings) */
-  --color-stat-metadata: #a855f7;    /* Purple (Used for Character counts/Metadata) */
+	/* Icon/Feature Identifiers */
+	--color-icon-stats: #3b82f6; /* Blue (Used for Stats icons) */
+	--color-icon-appearance: #8b5cf6; /* Violet (Used for Appearance/Settings) */
+	--color-stat-metadata: #a855f7; /* Purple (Used for Character counts/Metadata) */
 }
 
 /* --- Font Faces --- */
 @font-face {
-  font-family: 'Noto Sans JP';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/noto-sans-jp-v55-japanese_latin-regular.woff2') format('woff2');
+	font-family: 'Noto Sans JP';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/noto-sans-jp-v55-japanese_latin-regular.woff2') format('woff2');
 }
 
 @font-face {
-  font-family: 'Noto Sans JP';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/noto-sans-jp-v55-japanese_latin-500.woff2') format('woff2');
+	font-family: 'Noto Sans JP';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('/fonts/noto-sans-jp-v55-japanese_latin-500.woff2') format('woff2');
 }
 
 @font-face {
-  font-family: 'Noto Sans JP';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/noto-sans-jp-v55-japanese_latin-600.woff2') format('woff2');
+	font-family: 'Noto Sans JP';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/noto-sans-jp-v55-japanese_latin-600.woff2') format('woff2');
 }
 
 @font-face {
-  font-family: 'Noto Serif JP';
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url('/fonts/noto-serif-jp-v32-japanese_latin-regular.woff2') format('woff2');
+	font-family: 'Noto Serif JP';
+	font-style: normal;
+	font-weight: 400;
+	font-display: swap;
+	src: url('/fonts/noto-serif-jp-v32-japanese_latin-regular.woff2') format('woff2');
 }
 
 @font-face {
-  font-family: 'Noto Serif JP';
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url('/fonts/noto-serif-jp-v32-japanese_latin-500.woff2') format('woff2');
+	font-family: 'Noto Serif JP';
+	font-style: normal;
+	font-weight: 500;
+	font-display: swap;
+	src: url('/fonts/noto-serif-jp-v32-japanese_latin-500.woff2') format('woff2');
 }
 
 @font-face {
-  font-family: 'Noto Serif JP';
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url('/fonts/noto-serif-jp-v32-japanese_latin-600.woff2') format('woff2');
+	font-family: 'Noto Serif JP';
+	font-style: normal;
+	font-weight: 600;
+	font-display: swap;
+	src: url('/fonts/noto-serif-jp-v32-japanese_latin-600.woff2') format('woff2');
 }
 
 @font-face {
-  font-family: 'Source Han Serif JP';
-  font-style: normal;
-  font-weight: 400 900;
-  font-display: swap;
-  src: url('/fonts/SourceHanSerif-VF.otf.woff2') format('woff2');
+	font-family: 'Source Han Serif JP';
+	font-style: normal;
+	font-weight: 400 900;
+	font-display: swap;
+	src: url('/fonts/SourceHanSerif-VF.otf.woff2') format('woff2');
 }
 
 /* --- Global Styles --- */
 body {
-  background-color: var(--color-theme-main);
-  color: var(--color-theme-primary);
-  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+	background-color: var(--color-theme-main);
+	color: var(--color-theme-primary);
+	font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
 }
 
 .neon-glow {
-  filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor, transparent 20%))
-    drop-shadow(0 0 3px color-mix(in srgb, currentColor, transparent 40%))
-    drop-shadow(0 0 6px color-mix(in srgb, currentColor, transparent 60%));
+	filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor, transparent 20%))
+		drop-shadow(0 0 3px color-mix(in srgb, currentColor, transparent 40%))
+		drop-shadow(0 0 6px color-mix(in srgb, currentColor, transparent 60%));
 }
-
-
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+	width: 8px;
+	height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--color-theme-main);
+	background: var(--color-theme-main);
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--color-theme-border-light);
-  border-radius: 4px;
+	background: var(--color-theme-border-light);
+	border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-theme-tertiary);
+	background: var(--color-theme-tertiary);
 }

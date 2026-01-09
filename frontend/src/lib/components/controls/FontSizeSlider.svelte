@@ -17,62 +17,62 @@
 	// --- Synchronization ---
 	// Sync internal state when opening, using the coordinates to find the block
 	$effect(() => {
-		if (isOpen && readerState.focusedLineCoord && readerState.mokuroStagingData) {
-			const [pIdx, bIdx] = readerState.focusedLineCoord;
-			const block = readerState.mokuroStagingData.pages[pIdx]?.blocks[bIdx];
-			if (block) {
-				internalFontSize = block.font_size ?? 16;
-			}
-		}
+	  if (isOpen && readerState.focusedLineCoord && readerState.mokuroStagingData) {
+	    const [pIdx, bIdx] = readerState.focusedLineCoord;
+	    const block = readerState.mokuroStagingData.pages[pIdx]?.blocks[bIdx];
+	    if (block) {
+	      internalFontSize = block.font_size ?? 16;
+	    }
+	  }
 	});
 
 	// Keep the slider in the viewport
 	$effect(() => {
-		if (isOpen && sliderElement && browser) {
-			const { x, y } = position;
-			const menuWidth = sliderElement.offsetWidth;
-			const menuHeight = sliderElement.offsetHeight;
-			const viewportWidth = window.innerWidth;
-			const viewportHeight = window.innerHeight;
+	  if (isOpen && sliderElement && browser) {
+	    const { x, y } = position;
+	    const menuWidth = sliderElement.offsetWidth;
+	    const menuHeight = sliderElement.offsetHeight;
+	    const viewportWidth = window.innerWidth;
+	    const viewportHeight = window.innerHeight;
 
-			// Calculate final X
-			if (x + menuWidth > viewportWidth) {
-				finalX = x - menuWidth;
-			} else {
-				finalX = x;
-			}
+	    // Calculate final X
+	    if (x + menuWidth > viewportWidth) {
+	      finalX = x - menuWidth;
+	    } else {
+	      finalX = x;
+	    }
 
-			// Calculate final Y
-			if (y + menuHeight > viewportHeight) {
-				finalY = y - menuHeight;
-			} else {
-				finalY = y;
-			}
+	    // Calculate final Y
+	    if (y + menuHeight > viewportHeight) {
+	      finalY = y - menuHeight;
+	    } else {
+	      finalY = y;
+	    }
 
-			if (finalX < 0) finalX = 0;
-			if (finalY < 0) finalY = 0;
-		}
+	    if (finalX < 0) finalX = 0;
+	    if (finalY < 0) finalY = 0;
+	  }
 	});
 
 	// --- Handlers ---
 
 	const handleSliderChange = () => {
-		if (!readerState.focusedLineCoord || !readerState.mokuroStagingData) return;
+	  if (!readerState.focusedLineCoord || !readerState.mokuroStagingData) return;
 
-		const [pIdx, bIdx] = readerState.focusedLineCoord;
-		const block = readerState.mokuroStagingData.pages[pIdx]?.blocks[bIdx];
+	  const [pIdx, bIdx] = readerState.focusedLineCoord;
+	  const block = readerState.mokuroStagingData.pages[pIdx]?.blocks[bIdx];
 
-		if (!block || internalFontSize === block.font_size) return;
+	  if (!block || internalFontSize === block.font_size) return;
 
-		// Dispatch using the exact indices from the coordinate system
-		readerState.dispatch([
-			{
-				op: 'replace',
-				path: `/pages/${pIdx}/blocks/${bIdx}/font_size`,
-				value: internalFontSize,
-				old_value: block.font_size ?? 16
-			}
-		]);
+	  // Dispatch using the exact indices from the coordinate system
+	  readerState.dispatch([
+	    {
+	      op: 'replace',
+	      path: `/pages/${pIdx}/blocks/${bIdx}/font_size`,
+	      value: internalFontSize,
+	      old_value: block.font_size ?? 16
+	    }
+	  ]);
 	};
 </script>
 

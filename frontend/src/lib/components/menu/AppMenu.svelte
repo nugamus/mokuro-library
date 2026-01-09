@@ -4,6 +4,7 @@
 	import { apiFetch, triggerDownload } from '$lib/services/api';
 	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { apiCache } from '$lib/utils/caching/apiCache';
 	import MenuWrapper from '$lib/components/menu/MenuWrapper.svelte';
 	import MenuItem from '$lib/components/menu/MenuItem.svelte';
@@ -14,36 +15,36 @@
 	import { contributionsStore } from '$lib/stores/contributionsStore';
 
 	let isDownloadOpen = $state(false);
-	let isAdmin = $derived($user?.role === 'admin');
+	let isAdmin = $derived($user?.id === 'admin');
 
 	const handleLogout = async () => {
-		try {
-			await apiFetch('/api/auth/logout', { method: 'POST', body: {} });
-		} catch (e) {
-			console.error('Logout failed:', e);
-		}
-		user.set(null);
-		apiCache.clearAllCache();
-		contextMenu.close();
-		goto('/login');
+	  try {
+	    await apiFetch('/api/auth/logout', { method: 'POST', body: {} });
+	  } catch (e) {
+	    console.error('Logout failed:', e);
+	  }
+	  user.set(null);
+	  apiCache.clearAllCache();
+	  contextMenu.close();
+	  goto(resolve('/login'));
 	};
 
 	const handleDownload = (type: 'zip' | 'meta' | 'pdf') => {
-		let url = '';
-		if (uiState.context === 'library') {
-			if (type === 'zip') url = '/api/export/zip';
-			if (type === 'meta') url = '/api/export/zip?include_images=false';
-			if (type === 'pdf') url = '/api/export/pdf';
-		} else if (uiState.context === 'series' && uiState.activeId) {
-			if (type === 'zip') url = `/api/export/series/${uiState.activeId}/zip`;
-			if (type === 'meta') url = `/api/export/series/${uiState.activeId}/zip?include_images=false`;
-			if (type === 'pdf') url = `/api/export/series/${uiState.activeId}/pdf`;
-		}
+	  let url = '';
+	  if (uiState.context === 'library') {
+	    if (type === 'zip') url = '/api/export/zip';
+	    if (type === 'meta') url = '/api/export/zip?include_images=false';
+	    if (type === 'pdf') url = '/api/export/pdf';
+	  } else if (uiState.context === 'series' && uiState.activeId) {
+	    if (type === 'zip') url = `/api/export/series/${uiState.activeId}/zip`;
+	    if (type === 'meta') url = `/api/export/series/${uiState.activeId}/zip?include_images=false`;
+	    if (type === 'pdf') url = `/api/export/series/${uiState.activeId}/pdf`;
+	  }
 
-		if (url) {
-			triggerDownload(url);
-			contextMenu.close();
-		}
+	  if (url) {
+	    triggerDownload(url);
+	    contextMenu.close();
+	  }
 	};
 </script>
 
@@ -132,8 +133,8 @@
 
 	{@const menuItems =
 		uiState.context === 'reader'
-			? ['upload', 'stats', 'appearance']
-			: ['upload', 'download', 'stats', 'appearance']}
+		  ? ['upload', 'stats', 'appearance']
+		  : ['upload', 'download', 'stats', 'appearance']}
 	{@const layout = menuItems.length === 4 ? [2, 2] : [2, 1]}
 
 	<MenuGrid items={menuItems} {layout}>
@@ -143,8 +144,8 @@
 					label="Upload"
 					variant="primary"
 					onClick={() => {
-						uiState.isUploadOpen = true;
-						contextMenu.close();
+					  uiState.isUploadOpen = true;
+					  contextMenu.close();
 					}}
 				>
 					{#snippet icon()}{@render iconUpload()}{/snippet}
@@ -162,8 +163,8 @@
 					label="Stats (WIP)"
 					variant="stats"
 					onClick={() => {
-						uiState.isStatsOpen = true;
-						contextMenu.close();
+					  uiState.isStatsOpen = true;
+					  contextMenu.close();
 					}}
 				>
 					{#snippet icon()}{@render iconStats()}{/snippet}
@@ -173,8 +174,8 @@
 					label="Appearance"
 					variant="warning"
 					onClick={() => {
-						uiState.isAppearanceOpen = true;
-						contextMenu.close();
+					  uiState.isAppearanceOpen = true;
+					  contextMenu.close();
 					}}
 				>
 					{#snippet icon()}{@render iconAppearanceGrid()}{/snippet}
@@ -213,8 +214,8 @@
 		<MenuItem
 			label="Settings"
 			onClick={() => {
-				goto('/settings');
-				contextMenu.close();
+			  goto(resolve('/settings'));
+			  contextMenu.close();
 			}}
 			className="rounded-xl"
 		>
@@ -239,8 +240,8 @@
 		<MenuItem
 			label="Contributions"
 			onClick={() => {
-				goto('/contributions');
-				contextMenu.close();
+			  goto(resolve('/contributions'));
+			  contextMenu.close();
 			}}
 			className="rounded-xl"
 		>
@@ -288,8 +289,8 @@
 		<MenuItem
 			label="Documentation"
 			onClick={() => {
-				window.open('https://nguyenston.github.io/mokuro-library/', '_blank');
-				contextMenu.close();
+			  window.open('https://nguyenston.github.io/mokuro-library/', '_blank');
+			  contextMenu.close();
 			}}
 			className="rounded-xl"
 		>
@@ -312,8 +313,8 @@
 		<MenuItem
 			label="GitHub Repository"
 			onClick={() => {
-				window.open('https://github.com/nguyenston/mokuro-library', '_blank');
-				contextMenu.close();
+			  window.open('https://github.com/nguyenston/mokuro-library', '_blank');
+			  contextMenu.close();
 			}}
 			className="rounded-xl"
 		>
@@ -338,7 +339,7 @@
 		<MenuItem
 			label="Discord Server"
 			onClick={() => {
-				contextMenu.close();
+			  contextMenu.close();
 			}}
 			className="rounded-xl"
 		>
@@ -359,8 +360,8 @@
 		<MenuItem
 			label="About"
 			onClick={() => {
-				uiState.isAboutOpen = true;
-				contextMenu.close();
+			  uiState.isAboutOpen = true;
+			  contextMenu.close();
 			}}
 			className="rounded-xl"
 		>
@@ -400,7 +401,3 @@
 		</MenuItem>
 	</MenuGroup>
 </MenuWrapper>
-
-
-
-

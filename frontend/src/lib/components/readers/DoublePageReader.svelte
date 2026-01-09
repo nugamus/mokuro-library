@@ -6,36 +6,44 @@
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
-		panzoomInstance = $bindable(),
-		navZoneWidth
+	  panzoomInstance = $bindable(),
+	  navZoneWidth
 	}: {
 		panzoomInstance: PanzoomObject | null;
 		navZoneWidth: number;
 	} = $props();
 
 	const handleClickLeft = () => {
-		readerState.readingDirection === 'rtl' ? readerState.nextPage() : readerState.prevPage();
+	  if (readerState.readingDirection === 'rtl') {
+	    readerState.nextPage();
+	  } else {
+	    readerState.prevPage();
+	  }
 	};
 
 	const handleClickRight = () => {
-		readerState.readingDirection === 'rtl' ? readerState.prevPage() : readerState.nextPage();
+	  if (readerState.readingDirection === 'rtl') {
+	    readerState.prevPage();
+	  } else {
+	    readerState.nextPage();
+	  }
 	};
 
 	function handleZoneClick(e: MouseEvent) {
-		// If text is selected, don't navigate
-		if (window.getSelection()?.toString()) return;
+	  // If text is selected, don't navigate
+	  if (window.getSelection()?.toString()) return;
 
-		const target = e.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const width = rect.width;
-		const percent = (x / width) * 100;
+	  const target = e.currentTarget as HTMLElement;
+	  const rect = target.getBoundingClientRect();
+	  const x = e.clientX - rect.left;
+	  const width = rect.width;
+	  const percent = (x / width) * 100;
 
-		if (percent <= navZoneWidth) {
-			handleClickLeft();
-		} else if (percent >= 100 - navZoneWidth) {
-			handleClickRight();
-		}
+	  if (percent <= navZoneWidth) {
+	    handleClickLeft();
+	  } else if (percent >= 100 - navZoneWidth) {
+	    handleClickRight();
+	  }
 	}
 </script>
 
@@ -50,15 +58,15 @@
 		class:flex-row-reverse={readerState.readingDirection === 'rtl'}
 		class:flex-row={readerState.readingDirection === 'ltr'}
 		use:panzoom={{
-			options: {
-				canvas: true,
-				maxScale: 10,
-				minScale: 0.5,
-				cursor: 'default',
-				origin: '50% 50%',
-				disableYAxis: false
-			},
-			onInit: (pz) => (panzoomInstance = pz)
+		  options: {
+		    canvas: true,
+		    maxScale: 10,
+		    minScale: 0.5,
+		    cursor: 'default',
+		    origin: '50% 50%',
+		    disableYAxis: false
+		  },
+		  onInit: (pz) => (panzoomInstance = pz)
 		}}
 	>
 		{#each readerState.visiblePages as page, i (i)}

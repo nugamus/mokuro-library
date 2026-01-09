@@ -1,11 +1,12 @@
 import type { UploadJob, SeriesMetadata, DirNode } from '$lib/types';
+import { SvelteMap } from 'svelte/reactivity';
 
-// We'll define these types here if they aren't in your global types yet, 
+// We'll define these types here if they aren't in your global types yet,
 // or you can move them to $lib/types.ts
 export type { UploadJob };
 
 export async function createJobsFromFiles(fileList: FileList): Promise<UploadJob[]> {
-  const rootChildren = new Map<string, DirNode>();
+  const rootChildren = new SvelteMap<string, DirNode>();
 
   // Step A: Build the Directory Tree
   for (const file of fileList) {
@@ -19,7 +20,14 @@ export async function createJobsFromFiles(fileList: FileList): Promise<UploadJob
     const isJunk = pathParts.some(
       (part) =>
         part.startsWith('.') ||
-        ['__MACOSX', 'node_modules', '$RECYCLE.BIN', 'System Volume Information', 'Thumbs.db', '_ocr'].includes(part)
+				[
+				  '__MACOSX',
+				  'node_modules',
+				  '$RECYCLE.BIN',
+				  'System Volume Information',
+				  'Thumbs.db',
+				  '_ocr'
+				].includes(part)
     );
 
     if (isJunk) continue;
@@ -38,13 +46,13 @@ export async function createJobsFromFiles(fileList: FileList): Promise<UploadJob
     for (const part of folderParts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
 
-      if (!currentMap.has(part)) {
-        currentMap.set(part, {
-          name: part,
-          fullPath: currentPath,
-          files: [],
-          children: new Map()
-        });
+            	if (!currentMap.has(part)) {
+            		currentMap.set(part, {
+            			name: part,
+            			fullPath: currentPath,
+            			files: [],
+            			children: new SvelteMap()
+            		});
       }
 
       node = currentMap.get(part)!;
@@ -62,7 +70,7 @@ export async function createJobsFromFiles(fileList: FileList): Promise<UploadJob
 }
 
 async function traverse(
-  map: Map<string, DirNode>,
+  map: SvelteMap<string, DirNode>,
   parentName: string | null,
   parentMetadata: SeriesMetadata | undefined,
   jobs: UploadJob[]
@@ -111,7 +119,8 @@ async function traverse(
       if (payloadFiles.length > 0) {
         const seriesFolder = parentName ?? node.name;
         const volumeFolder = node.name;
-        const displayName = seriesFolder === volumeFolder ? seriesFolder : `${seriesFolder}/${volumeFolder}`;
+        const displayName =
+					seriesFolder === volumeFolder ? seriesFolder : `${seriesFolder}/${volumeFolder}`;
 
         const seriesTitle = currentMetadata?.series?.title ?? null;
         const seriesDescription = currentMetadata?.series?.description ?? null;

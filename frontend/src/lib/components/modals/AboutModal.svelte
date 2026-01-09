@@ -1,5 +1,5 @@
 <script lang="ts">
-import Logo from '$lib/components/layout/Logo.svelte';
+	import Logo from '$lib/components/layout/Logo.svelte';
 	let { isOpen, onClose } = $props<{ isOpen: boolean; onClose: () => void }>();
 	const version = __COMMIT_HASH__ ?? 'dev';
 </script>

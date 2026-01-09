@@ -3,6 +3,7 @@
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { contextMenu } from '$lib/stores/contextMenuStore';
 	import { fade, scale } from 'svelte/transition';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
@@ -12,14 +13,15 @@
 	import FilterMenu from '$lib/components/menu/FilterMenu.svelte';
 	import AppMenu from '$lib/components/menu/AppMenu.svelte';
 
-	let isAdmin = $derived($user?.role === 'admin');
+	// Resolved navigation targets
+	// keep using resolve directly where needed
 
+	let isAdmin = $derived($user?.id === 'admin');
 
 	// --- Local State ---
 	let isMobileSearchOpen = $state(false);
 	let searchValue = $state(uiState.searchQuery);
 	let searchTimer: ReturnType<typeof setTimeout>;
-	let isScrolled = $state(false);
 	let scrollY = $state(0);
 	let lastScrollY = $state(0);
 	let isScrollingDown = $state(false);
@@ -29,7 +31,6 @@
 	$effect(() => {
 		const handleScroll = () => {
 			const currentScrollY = window.scrollY;
-			isScrolled = currentScrollY > 20;
 
 			// Only apply auto-hide behavior in library view
 			if (uiState.context === 'library') {
@@ -169,7 +170,7 @@
 						class="hidden h-8 w-1 rounded-full bg-accent sm:block shadow-[0_0_10px_rgba(99,102,241,0.5)]"
 					></div>
 					<div class="flex items-center gap-4 min-w-0">
-						<a href="/" class="flex-shrink-0" aria-label="Home">
+						<a href={resolve('/', {})} class="flex-shrink-0" aria-label="Home">
 							<Logo />
 						</a>
 					</div>
@@ -179,7 +180,7 @@
 					<div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
 
 					<button
-						onclick={() => goto('/')}
+						onclick={() => goto(resolve('/', {}))}
 						class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
 						title="Back to Library"
 						aria-label="Back to Library"
@@ -205,7 +206,7 @@
 					<div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
 
 					<button
-						onclick={() => goto('/')}
+						onclick={() => goto(resolve('/', {}))}
 						class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
 						title="Back to Library"
 						aria-label="Back to Library"
@@ -359,7 +360,7 @@
 
 				<!-- Filter Status Buttons (Desktop only) -->
 				<div class="hidden lg:flex items-center gap-2">
-					{#each ['unread', 'reading', 'read'] as filter}
+					{#each ['unread', 'reading', 'read'] as filter (filter)}
 						{@const isActive = uiState.filterStatus === filter}
 						{@const styles = filterConfig[filter as keyof typeof filterConfig]}
 
@@ -369,7 +370,7 @@
 						<button
 							onclick={() => {
 								// Toggle: If clicking the active one, revert to 'all'
-								uiState.filterStatus = isActive ? 'all' : (filter as any);
+								uiState.filterStatus = isActive ? 'all' : (filter as 'unread' | 'reading' | 'read');
 							}}
 							class="w-10 h-10 flex items-center justify-center rounded-2xl border-2 transition-all duration-200 hover:border-theme-primary/50 {iconColor} {borderColor}"
 							title={filter.replace('_', ' ')}
@@ -468,35 +469,37 @@
 					stroke-width="2"
 					stroke-linecap="round"
 					stroke-linejoin="round"
-									>
-										<line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line
-											x1="4"
-											x2="20"
-											y1="18"
-											y2="18"
-										/></svg
-									>
-									{#if $contributionsStore.behind > 0}
-										<span
-											class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
-											in:scale={{ duration: 200, start: 0.5 }}
-											title={$contributionsStore.behind > 1 ? `${$contributionsStore.behind} volumes need rebasing` : `${$contributionsStore.behind} volume needs rebasing`}
-										>
-											{$contributionsStore.behind}
-										</span>
-									{/if}
-									{#if isAdmin && $contributionsStore.pendingSubmissionsCount > 0}
-										<span
-											class="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-orange-500 text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
-											in:scale={{ duration: 200, start: 0.5 }}
-											title={`${$contributionsStore.pendingSubmissionsCount} pending submissions`}
-										>
-											{$contributionsStore.pendingSubmissionsCount}
-										</span>
-									{/if}
-								</button>
-							</div>
-						</div>
+				>
+					<line x1="4" x2="20" y1="12" y2="12" /><line x1="4" x2="20" y1="6" y2="6" /><line
+						x1="4"
+						x2="20"
+						y1="18"
+						y2="18"
+					/></svg
+				>
+				{#if $contributionsStore.behind > 0}
+					<span
+						class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
+						in:scale={{ duration: 200, start: 0.5 }}
+						title={$contributionsStore.behind > 1
+							? `${$contributionsStore.behind} volumes need rebasing`
+							: `${$contributionsStore.behind} volume needs rebasing`}
+					>
+						{$contributionsStore.behind}
+					</span>
+				{/if}
+				{#if isAdmin && $contributionsStore.pendingSubmissionsCount > 0}
+					<span
+						class="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-orange-500 text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
+						in:scale={{ duration: 200, start: 0.5 }}
+						title={`${$contributionsStore.pendingSubmissionsCount} pending submissions`}
+					>
+						{$contributionsStore.pendingSubmissionsCount}
+					</span>
+				{/if}
+			</button>
+		</div>
+	</div>
 
 	{#if isMobileSearchOpen}
 		<div
@@ -552,7 +555,3 @@
 		</div>
 	{/if}
 </header>
-
-
-
-

@@ -5,16 +5,16 @@
 	let isProcessing = $state(false);
 
 	async function handleConfirm() {
-		isProcessing = true;
-		try {
-			// Execute the callback passed to the store
-			await $confirmation.onConfirm();
-		} catch (error) {
-			console.error('Confirmation action failed:', error);
-		} finally {
-			isProcessing = false;
-			confirmation.close();
-		}
+	  isProcessing = true;
+	  try {
+	    // Execute the callback passed to the store
+	    await $confirmation.onConfirm();
+	  } catch (error) {
+	    console.error('Confirmation action failed:', error);
+	  } finally {
+	    isProcessing = false;
+	    confirmation.close();
+	  }
 	}
 </script>
 

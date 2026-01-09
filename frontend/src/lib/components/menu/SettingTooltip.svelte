@@ -15,62 +15,62 @@
 	let isOpen = $state(false);
 
 	function handlePointerEnter(e: PointerEvent) {
-		if (e.pointerType === 'mouse') {
-			isOpen = true;
-		}
+	  if (e.pointerType === 'mouse') {
+	    isOpen = true;
+	  }
 	}
 
 	function handlePointerLeave(e: PointerEvent) {
-		if (e.pointerType === 'mouse') {
-			isOpen = false;
-		}
+	  if (e.pointerType === 'mouse') {
+	    isOpen = false;
+	  }
 	}
 
 	function handlePointerDown(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return; // Ignore mouse
+	  if (e.pointerType === 'mouse') return; // Ignore mouse
 
-		startX = e.clientX;
-		startY = e.clientY;
+	  startX = e.clientX;
+	  startY = e.clientY;
 
-		// Start a timer to detect a long press
-		longPressTimer = setTimeout(() => {
-			isOpen = !isOpen; // Toggle visibility
-			longPressTimer = null;
-		}, LONG_PRESS_DURATION);
+	  // Start a timer to detect a long press
+	  longPressTimer = setTimeout(() => {
+	    isOpen = !isOpen; // Toggle visibility
+	    longPressTimer = null;
+	  }, LONG_PRESS_DURATION);
 	}
 
 	function handlePointerUp(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return; // Ignore mouse
+	  if (e.pointerType === 'mouse') return; // Ignore mouse
 
-		// If the timer is still running, the user lifted their finger
-		// before the long press duration. This was a "tap".
-		if (longPressTimer) {
-			clearTimeout(longPressTimer);
-			longPressTimer = null;
-		}
+	  // If the timer is still running, the user lifted their finger
+	  // before the long press duration. This was a "tap".
+	  if (longPressTimer) {
+	    clearTimeout(longPressTimer);
+	    longPressTimer = null;
+	  }
 	}
 
 	function handlePointerMove(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return; // Ignore mouse
+	  if (e.pointerType === 'mouse') return; // Ignore mouse
 
-		// If a long press is in progress...
-		if (longPressTimer) {
-			const deltaX = Math.abs(e.clientX - startX);
-			const deltaY = Math.abs(e.clientY - startY);
+	  // If a long press is in progress...
+	  if (longPressTimer) {
+	    const deltaX = Math.abs(e.clientX - startX);
+	    const deltaY = Math.abs(e.clientY - startY);
 
-			// If the user drags their finger too far, cancel the long press.
-			if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
-				clearTimeout(longPressTimer);
-				longPressTimer = null;
-			}
-		}
+	    // If the user drags their finger too far, cancel the long press.
+	    if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
+	      clearTimeout(longPressTimer);
+	      longPressTimer = null;
+	    }
+	  }
 	}
 
 	// Close on escape key
 	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape' && isOpen) {
-			isOpen = false;
-		}
+	  if (e.key === 'Escape' && isOpen) {
+	    isOpen = false;
+	  }
 	}
 </script>
 

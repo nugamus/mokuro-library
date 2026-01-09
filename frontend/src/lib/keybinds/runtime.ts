@@ -1,5 +1,6 @@
 import { get } from 'svelte/store';
 import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
 import { browser } from '$app/environment';
 import AppMenu from '$lib/components/menu/AppMenu.svelte';
 import { contextMenu } from '$lib/stores/contextMenuStore';
@@ -70,8 +71,8 @@ const readerNext = () => {
 const actions: Record<KeybindId, () => void> = {
   showShortcuts: () => shortcutsStore.open(),
   openMenu: () => openAppMenu(),
-  openSettings: () => goto('/settings'),
-  openContributions: () => goto('/contributions'),
+  openSettings: () => goto(resolve('/settings')),
+  openContributions: () => goto(resolve('/contributions')),
   openUpload: () => {
     uiState.isUploadOpen = true;
     contextMenu.close();
@@ -114,7 +115,10 @@ const actions: Record<KeybindId, () => void> = {
   toggleSmartResize: () => readerState.toggleSmartResizeMode()
 };
 
-const isAllowedInContext = (definitionContexts: KeybindContext[] | undefined, context: KeybindContext) => {
+const isAllowedInContext = (
+  definitionContexts: KeybindContext[] | undefined,
+  context: KeybindContext
+) => {
   if (!definitionContexts || definitionContexts.length === 0) return true;
   return definitionContexts.includes(context);
 };
@@ -134,9 +138,9 @@ export const handleGlobalKeydown = (event: KeyboardEvent) => {
   const isArrowCombo = combo.endsWith('ArrowLeft') || combo.endsWith('ArrowRight');
   if (
     context === 'reader' &&
-    isArrowCombo &&
-    readerState.readingDirection === 'rtl' &&
-    (actionId === 'readerPrevPage' || actionId === 'readerNextPage')
+		isArrowCombo &&
+		readerState.readingDirection === 'rtl' &&
+		(actionId === 'readerPrevPage' || actionId === 'readerNextPage')
   ) {
     actionId = actionId === 'readerPrevPage' ? 'readerNextPage' : 'readerPrevPage';
   }
@@ -154,7 +158,3 @@ export const handleGlobalKeydown = (event: KeyboardEvent) => {
   const handler = actions[actionId];
   handler?.();
 };
-
-
-
-

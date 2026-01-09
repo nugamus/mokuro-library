@@ -49,7 +49,7 @@ const parseVitestOutput = (output: string): { suites: TestSuite[]; summary?: Run
   let totalTests = 0;
   let totalPassed = 0;
   let totalFailed = 0;
-  let totalSkipped = 0;
+  const totalSkipped = 0;
 
   for (const line of lines) {
     // Match test file headers like "? src/__tests__/ocr.test.ts (3 tests)"

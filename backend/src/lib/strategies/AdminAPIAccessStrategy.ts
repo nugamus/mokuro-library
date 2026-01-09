@@ -313,7 +313,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     // Migrate if user snapshot was pointing at the cloned patch's original
     if (patchClone && newUserBranch && newUserBranch.snapshotPatchId === currentHeadId) {
       try {
-        let data = await loadSnapshot(this.fastify, newUserBranch);
+        const data = await loadSnapshot(this.fastify, newUserBranch);
         data.patch_id = patchClone.id;
         await saveSnapshot(this.fastify, newUserBranch.id, data, patchClone.id);
       } catch (e) {

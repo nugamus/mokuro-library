@@ -1,24 +1,36 @@
-import type { VolumeReaderResponse, MokuroData, MokuroPage, MokuroBlock, UserProgress, PatchOperation } from '$lib/types';
+import type {
+  VolumeReaderResponse,
+  MokuroData,
+  MokuroPage,
+  UserProgress,
+  PatchOperation
+} from '$lib/types';
 import { user, updateSettings, type ReaderSettingsData } from '$lib/stores/authStore';
 import { apiFetch } from '$lib/services/api';
-import { fromStore, get } from 'svelte/store';
+import { fromStore } from 'svelte/store';
 import { browser } from '$app/environment';
 import { untrack } from 'svelte';
 import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
 import { apiCache } from '$lib/utils/caching/apiCache';
 import { PatchApplicator } from '$lib/utils/ocr/PatchApplicator';
 import { toastStore } from '$lib/stores/toastStore.svelte';
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteDate } from 'svelte/reactivity';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
+export type UndoRedoResponse = {
+  success: boolean,
+  newHeadId: string,
+  newVersion: number,
+  patch: PatchOperation
+};
 
 // How many pages to keep ready in the cache
 const PREFETCH_COUNT = 3;
 interface PatchTask {
   ops: PatchOperation[];
   resolve: () => void;
-  reject: (reason: any) => void;
+  reject: (reason: unknown) => void;
 }
 
 class ReaderState {
@@ -45,21 +57,21 @@ class ReaderState {
     intensity: 100,
     redShift: 0,
     startHour: 22,
-    endHour: 6,
+    endHour: 6
   });
   invertColor = $state({
     enabled: false,
     scheduleEnabled: false,
     intensity: 100,
     startHour: 22,
-    endHour: 6,
+    endHour: 6
   });
 
   // --- Session State (Not Persisted) ---
   ocrMode = $state<'READ' | 'BOX' | 'TEXT'>('READ');
   isSmartResizeMode = $state(false);
-  smartFontCache: Map<string, number> = new Map();
-  now = $state(new Date()); // for scheduled settings
+  smartFontCache = new SvelteMap<string, number>();
+  now = $state(new SvelteDate()); // for scheduled settings
 
   isNightModeActive = $derived.by(() => {
     if (!readerState.nightMode.enabled) return false;
@@ -116,17 +128,10 @@ class ReaderState {
   branchVersion = $state(0);
   isPatching = $state(false);
   private patchQueue: PatchTask[] = [];
-  mokuroStagingData = $state<MokuroData | null>(null)
-  hasUndo = $derived(!!(
-    this.volume?.id &&
-    !this.isPatching
-  ));
+  mokuroStagingData = $state<MokuroData | null>(null);
+  hasUndo = $derived(!!(this.volume?.id && !this.isPatching));
 
-  hasRedo = $derived(!!(
-    this.volume?.id &&
-    !this.isPatching
-  ));
-
+  hasRedo = $derived(!!(this.volume?.id && !this.isPatching));
 
   // --- Internals ---
   private initialPageIndex = 0;
@@ -135,11 +140,11 @@ class ReaderState {
   private cleanupEffectRoot: (() => void) | null = null;
   private progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private settingsSaveTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastSaveTime: number = 0;
 
   constructor() {
     // Global Watchers: These run for the lifetime of the app
     $effect.root(() => {
-
       // 1. Sync Settings from User Store (One-way: DB -> State)
       // This ensures settings are loaded even if we are just on the Settings page
       $effect(() => {
@@ -180,6 +185,7 @@ class ReaderState {
           t: this.showTriggerOutline,
           ac: this.autoCompleteVolume
         };
+        void _;
 
         // Don't save if we haven't loaded initial values yet (prevents overwriting DB with defaults)
         if (!this.settingsInitialized) return;
@@ -194,7 +200,7 @@ class ReaderState {
       // Update "now" for scheduled settings
       $effect(() => {
         const interval = setInterval(() => {
-          this.now = new Date();
+          this.now = new SvelteDate();
         }, 60000);
         return () => clearInterval(interval);
       });
@@ -204,11 +210,10 @@ class ReaderState {
         if (!browser) return;
 
         // Whenever prefetchUrls changes, tell the store to fetch them
-        this.prefetchUrls.forEach(url => {
+        this.prefetchUrls.forEach((url) => {
           imageStore.get(url).catch(() => { });
         });
       });
-
     });
   }
 
@@ -220,8 +225,9 @@ class ReaderState {
     this.isLoading = true;
     this.error = null;
     this.canLazyServe = true;
+    this.lastSaveTime = Date.now();
 
-    const handleError = (e: any) => console.log(`Set fullscreen state failed ${e}`);
+    const handleError = (e: unknown) => console.log(`Set fullscreen state failed ${String(e)}`);
     const shouldFullscreen = untrack(() => this.autoFullscreen);
     if (browser && shouldFullscreen && !document.fullscreenElement)
       document.documentElement.requestFullscreen().catch(handleError);
@@ -245,7 +251,10 @@ class ReaderState {
     if (this.progressSaveTimer) {
       clearTimeout(this.progressSaveTimer);
       this.progressSaveTimer = null;
-      if (this.volume?.id) await this.saveProgress(this.volume.id);
+      if (this.volume?.id) {
+        const timeSpent = Math.round((Date.now() - this.lastSaveTime) / 1000);
+        await this.saveProgress(this.volume.id, timeSpent);
+      }
     }
 
     // 2. Kill volume-specific watchers
@@ -264,7 +273,7 @@ class ReaderState {
     this.smartFontCache = new SvelteMap();
 
     // 4. Exit fullscreen if automated
-    const handleError = (e: any) => console.log(`Set fullscreen state failed ${e}`);
+    const handleError = (e: unknown) => console.log(`Set fullscreen state failed ${String(e)}`);
     const shouldExitFullscreen = untrack(() => this.autoFullscreen);
     if (browser && shouldExitFullscreen && document.fullscreenElement)
       document.exitFullscreen().catch(handleError);
@@ -272,14 +281,15 @@ class ReaderState {
 
   private async loadVolumeData(volumeId: string, isPreview = false) {
     const promises: [Promise<VolumeReaderResponse>, Promise<UserProgress | undefined>] = [
-      apiFetch(`/api/library/volume/${volumeId}`, {
-        cache: true, onStaleRefetch: (data) => {
-          if (this.canLazyServe) this.volume = data;
+      apiFetch<VolumeReaderResponse>(`/api/library/volume/${volumeId}`, {
+        cache: true,
+        onStaleRefetch: (data) => {
+          if (this.canLazyServe) this.volume = data as VolumeReaderResponse;
         }
-      }) as Promise<VolumeReaderResponse>,
+      }),
       isPreview
         ? Promise.resolve(undefined)
-        : apiFetch(`/api/metadata/volume/${volumeId}/progress`) as Promise<UserProgress>
+        : (apiFetch(`/api/metadata/volume/${volumeId}/progress`) as Promise<UserProgress>)
     ];
 
     const [volData, progressData] = await Promise.all(promises);
@@ -306,7 +316,9 @@ class ReaderState {
           if (currentPage !== this.initialPageIndex && this.volume?.id === volumeId) {
             if (this.progressSaveTimer) clearTimeout(this.progressSaveTimer);
             this.progressSaveTimer = setTimeout(() => {
-              this.saveProgress(volumeId);
+              const timeSpent = Math.round((Date.now() - this.lastSaveTime) / 1000); // in seconds
+              this.saveProgress(volumeId, timeSpent);
+              this.lastSaveTime = Date.now();
             }, 2000);
           }
         });
@@ -340,7 +352,7 @@ class ReaderState {
     if (!this.volume?.id || ops.length === 0) return;
 
     if (!this.mokuroStagingData) {
-      console.error("ReaderState: Cannot dispatch, staging data missing.");
+      console.error('ReaderState: Cannot dispatch, staging data missing.');
       return;
     }
 
@@ -348,13 +360,13 @@ class ReaderState {
     // The UI updates instantly for all ops in the array
     try {
       PatchApplicator.applyAll(this.mokuroStagingData, ops);
-    } catch (e: any) {
-      console.error("ReaderState: Optimistic apply failed", e);
-      toastStore.error(`Ivalid Patch: ${e}`)
+    } catch (e) {
+      console.error('ReaderState: Optimistic apply failed', e);
+      toastStore.error(`Invalid Patch: ${String(e)}`);
       return;
     }
 
-    for (let op of ops) {
+    for (const op of ops) {
       toastStore.info(`applied patch ${op}`);
     }
 
@@ -386,7 +398,7 @@ class ReaderState {
       try {
         // Iterate through the batch and send 1-by-1
         for (const op of task.ops) {
-          const res = await apiFetch(`/api/library/volume/${this.volume!.id}/patch`, {
+          const res = await apiFetch<{ patch: PatchOperation, newVersion: number }>(`/api/library/volume/${this.volume!.id}/patch`, {
             method: 'POST',
             body: {
               operation: op,
@@ -408,7 +420,6 @@ class ReaderState {
 
         // Entire batch succeeded
         task.resolve();
-
       } catch (e) {
         console.error('Patch Dispatch Failed:', e);
         toastStore.error('Sync failed.');
@@ -441,7 +452,7 @@ class ReaderState {
     try {
       // 1. Call API
       // Response matches UserAPIAccessStrategy: { success, newHeadId, newVersion, patch }
-      const res = await apiFetch(`/api/library/volume/${this.volume!.id}/${op}`, {
+      const res = await apiFetch<UndoRedoResponse>(`/api/library/volume/${this.volume!.id}/${op}`, {
         method: 'POST',
         body: { branchVersion: this.branchVersion }
       });
@@ -469,20 +480,38 @@ class ReaderState {
         this.volume.versionInfo.branchVersion = res.newVersion;
         this.volume.versionInfo.headPatchId = res.newHeadId;
       }
-
-    } catch (e: any) {
+    } catch (e) {
       console.error(`${op} failed:`, e);
     } finally {
       this.isPatching = false;
     }
   }
 
-  private async saveProgress(volumeId: string) {
+  private async saveProgress(volumeId: string, timeSpent: number) {
     if (!this.volume) return;
+
+    let charsRead = 0;
+    if (this.mokuroData) {
+      for (let i = this.initialPageIndex; i < this.currentPageIndex; i++) {
+        const page = this.mokuroData.pages[i];
+        if (page) {
+          for (const block of page.blocks) {
+            for (const line of block.lines) {
+              charsRead += line.length;
+            }
+          }
+        }
+      }
+    }
+
     try {
-      const { seriesId } = await apiFetch(`/api/metadata/volume/${volumeId}/progress`, {
+      const { seriesId } = await apiFetch<{ seriesId: string }>(`/api/metadata/volume/${volumeId}/progress`, {
         method: 'PATCH',
-        body: { page: this.currentPageIndex + 1 }
+        body: {
+          page: this.currentPageIndex + 1,
+          timeRead: timeSpent,
+          charsRead: charsRead
+        }
       });
       apiCache.invalidateSeriesCache({ seriesId: seriesId ?? undefined });
       this.initialPageIndex = this.currentPageIndex;
@@ -536,13 +565,27 @@ class ReaderState {
 
   // --- Getters / Compatibility ---
 
-  get id() { return this.volume?.id ?? ''; }
-  get seriesId() { return this.volume?.seriesId ?? ''; }
-  get volumeTitle() { return this.volume?.title ?? ''; }
-  get seriesTitle() { return this.mokuroData?.title ?? ''; }
-  get mokuroData(): MokuroData | null { return this.volume?.mokuroData ?? null; }
-  get pages(): MokuroPage[] { return this.volume?.mokuroData.pages ?? []; }
-  get totalPages() { return this.mokuroData?.pages.length ?? 0; }
+  get id() {
+    return this.volume?.id ?? '';
+  }
+  get seriesId() {
+    return this.volume?.seriesId ?? '';
+  }
+  get volumeTitle() {
+    return this.volume?.title ?? '';
+  }
+  get seriesTitle() {
+    return this.mokuroData?.title ?? '';
+  }
+  get mokuroData(): MokuroData | null {
+    return this.volume?.mokuroData ?? null;
+  }
+  get pages(): MokuroPage[] {
+    return this.volume?.mokuroData.pages ?? [];
+  }
+  get totalPages() {
+    return this.mokuroData?.pages.length ?? 0;
+  }
 
   get visiblePages(): (MokuroPage & { index: number })[] {
     if (!this.mokuroStagingData) return [];
@@ -567,14 +610,20 @@ class ReaderState {
       if (!page2) {
         return [{ ...page1, index: page1Index }];
       }
-      return [{ ...page1, index: page1Index }, { ...page2, index: page2Index }];
+      return [
+        { ...page1, index: page1Index },
+        { ...page2, index: page2Index }
+      ];
     }
     return [];
   }
 
-  get hasNext() { return this.currentPageIndex < this.totalPages - 1; }
-  get hasPrev() { return this.currentPageIndex > 0; }
-
+  get hasNext() {
+    return this.currentPageIndex < this.totalPages - 1;
+  }
+  get hasPrev() {
+    return this.currentPageIndex > 0;
+  }
 
   // --- Actions ---
 
@@ -585,7 +634,11 @@ class ReaderState {
     if (this.layoutMode === 'single') {
       this.currentPageIndex += 1;
       // Auto-complete volume when reaching the last page
-      if (this.autoCompleteVolume && this.volume?.id && this.currentPageIndex === this.totalPages - 1) {
+      if (
+        this.autoCompleteVolume &&
+        this.volume?.id &&
+        this.currentPageIndex === this.totalPages - 1
+      ) {
         this.markVolumeComplete();
       }
       return;
@@ -599,7 +652,11 @@ class ReaderState {
     this.currentPageIndex = Math.min(this.totalPages - 1, this.currentPageIndex + jump);
 
     // Auto-complete volume when reaching the last page
-    if (this.autoCompleteVolume && this.volume?.id && this.currentPageIndex === this.totalPages - 1) {
+    if (
+      this.autoCompleteVolume &&
+      this.volume?.id &&
+      this.currentPageIndex === this.totalPages - 1
+    ) {
       this.markVolumeComplete();
     }
   }
@@ -648,7 +705,8 @@ class ReaderState {
   }
 
   unsetFocusedLine() {
-    if (this.volume?.mokuroData) this.mokuroStagingData = $state.snapshot(this.volume).mokuroData as MokuroData;
+    if (this.volume?.mokuroData)
+      this.mokuroStagingData = $state.snapshot(this.volume).mokuroData as MokuroData;
     this.focusedLineCoord = [-1, -1, -1];
   }
 

@@ -32,19 +32,19 @@
 			<h3 class="text-xl font-bold theme-primary">Reading Speed Over Time</h3>
 		</div>
 		<div class="flex gap-2">
-			{#each filters as filter}
+			{#each filters as filter (filter)}
 				{@const label =
 					filter === '3months'
-						? '3 Months'
-						: filter === '6months'
-							? '6 Months'
-							: filter.charAt(0).toUpperCase() + filter.slice(1)}
+					  ? '3 Months'
+					  : filter === '6months'
+					    ? '6 Months'
+					    : filter.charAt(0).toUpperCase() + filter.slice(1)}
 				<button
 					onclick={() => onFilterChange(filter)}
 					class="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors {selectedTimeFilter ===
 					filter
-						? 'bg-accent theme-primary'
-						: 'bg-theme-main text-theme-secondary hover:theme-primary hover:bg-theme-surface-hover'}"
+					  ? 'bg-accent theme-primary'
+					  : 'bg-theme-main text-theme-secondary hover:theme-primary hover:bg-theme-surface-hover'}"
 				>
 					{label}
 				</button>
@@ -58,7 +58,10 @@
 	{/if}
 	<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 		<LineChart
-			data={speedHistory.map((h) => ({ date: h.date, value: h.speed }))}
+			data={speedHistory.map((h: { date: string; speed: number }) => ({
+			  date: h.date,
+			  value: h.speed
+			}))}
 			label="Reading Speed (chars/min)"
 			color="#6366f1"
 			height={200}

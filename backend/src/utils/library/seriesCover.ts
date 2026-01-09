@@ -3,7 +3,6 @@ import path from 'path';
 import util from 'util';
 import { pipeline } from 'stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import { libraryCache } from '../../lib/caches/libraryCache';
 
 const pump = util.promisify(pipeline);
 

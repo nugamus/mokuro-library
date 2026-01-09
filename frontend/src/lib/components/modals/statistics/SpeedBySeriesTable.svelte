@@ -46,7 +46,7 @@
 							</td>
 						</tr>
 					{:else}
-						{#each speedBySeries.slice(0, 5) as item}
+						{#each speedBySeries.slice(0, 5) as item, i (item.seriesName ?? i)}
 							<tr class="hover:bg-white/5 transition-colors">
 								<td class="px-4 py-3 theme-primary font-medium">{item.seriesName}</td>
 								<td class="px-4 py-3 text-theme-secondary">{item.volumes}</td>

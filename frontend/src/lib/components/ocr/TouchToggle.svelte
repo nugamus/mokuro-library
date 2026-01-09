@@ -11,12 +11,12 @@
 	}
 
 	let {
-		trigger,
-		children,
-		class: className = '',
-		mode = 'tooltip',
-		childClass = '',
-		forceVisible = false
+	  trigger,
+	  children,
+	  class: className = '',
+	  mode = 'tooltip',
+	  childClass = '',
+	  forceVisible = false
 	}: Props = $props();
 
 	// --- State for long press detection ---
@@ -27,75 +27,75 @@
 	const MOVE_THRESHOLD = 10; // 10px drag tolerance
 
 	let isOpen = $state(false);
-	let containsFocus = $state(false);
+    
 
 	function handlePointerEnter(e: PointerEvent) {
-		if (e.pointerType === 'mouse') {
-			isOpen = true;
-		}
+	  if (e.pointerType === 'mouse') {
+	    isOpen = true;
+	  }
 	}
 
 	function handlePointerLeave(e: PointerEvent) {
-		if (e.pointerType === 'mouse') {
-			isOpen = false;
-		}
+	  if (e.pointerType === 'mouse') {
+	    isOpen = false;
+	  }
 	}
 
 	function handleFocusIn() {
-		containsFocus = true;
+	  // focus entered - no-op (kept for compatibility)
 	}
 
 	function handleFocusOut(e: FocusEvent) {
-		const wrapper = e.currentTarget as HTMLElement;
-		if (!e.relatedTarget || !wrapper.contains(e.relatedTarget as Node)) {
-			containsFocus = false;
-		}
+	  const wrapper = e.currentTarget as HTMLElement;
+	  if (!e.relatedTarget || !wrapper.contains(e.relatedTarget as Node)) {
+	    // focus left - no-op (kept for compatibility)
+	  }
 	}
 
 	function handlePointerDown(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return; // Ignore mouse
+	  if (e.pointerType === 'mouse') return; // Ignore mouse
 
-		// If the press started on a text line, ignore it
-		// and let the browser handle native text selection.
-		if ((e.target as HTMLElement).closest('[data-ignore-long-press="true"]')) {
-			return;
-		}
+	  // If the press started on a text line, ignore it
+	  // and let the browser handle native text selection.
+	  if ((e.target as HTMLElement).closest('[data-ignore-long-press="true"]')) {
+	    return;
+	  }
 
-		startX = e.clientX;
-		startY = e.clientY;
+	  startX = e.clientX;
+	  startY = e.clientY;
 
-		// Start a timer to detect a long press
-		longPressTimer = setTimeout(() => {
-			isOpen = !isOpen; // Toggle visibility
-			longPressTimer = null;
-		}, LONG_PRESS_DURATION);
+	  // Start a timer to detect a long press
+	  longPressTimer = setTimeout(() => {
+	    isOpen = !isOpen; // Toggle visibility
+	    longPressTimer = null;
+	  }, LONG_PRESS_DURATION);
 	}
 
 	function handlePointerUp(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return; // Ignore mouse
+	  if (e.pointerType === 'mouse') return; // Ignore mouse
 
-		// If the timer is still running, the user lifted their finger
-		// before the long press duration. This was a "tap".
-		if (longPressTimer) {
-			clearTimeout(longPressTimer);
-			longPressTimer = null;
-		}
+	  // If the timer is still running, the user lifted their finger
+	  // before the long press duration. This was a "tap".
+	  if (longPressTimer) {
+	    clearTimeout(longPressTimer);
+	    longPressTimer = null;
+	  }
 	}
 
 	function handlePointerMove(e: PointerEvent) {
-		if (e.pointerType === 'mouse') return; // Ignore mouse
+	  if (e.pointerType === 'mouse') return; // Ignore mouse
 
-		// If a long press is in progress...
-		if (longPressTimer) {
-			const deltaX = Math.abs(e.clientX - startX);
-			const deltaY = Math.abs(e.clientY - startY);
+	  // If a long press is in progress...
+	  if (longPressTimer) {
+	    const deltaX = Math.abs(e.clientX - startX);
+	    const deltaY = Math.abs(e.clientY - startY);
 
-			// If the user drags their finger too far, cancel the long press.
-			if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
-				clearTimeout(longPressTimer);
-				longPressTimer = null;
-			}
-		}
+	    // If the user drags their finger too far, cancel the long press.
+	    if (deltaX > MOVE_THRESHOLD || deltaY > MOVE_THRESHOLD) {
+	      clearTimeout(longPressTimer);
+	      longPressTimer = null;
+	    }
+	  }
 	}
 
 	let isVisible = $derived(isOpen || forceVisible);

@@ -25,9 +25,9 @@
 				bind:value={scrapingState.preferredProvider}
 				layout={isXs ? [3] : [1, 1, 1]}
 				options={[
-					{ value: 'anilist', label: 'AniList' },
-					{ value: 'mal', label: 'MyAnimeList' },
-					{ value: 'kitsu', label: 'Kitsu' }
+				  { value: 'anilist', label: 'AniList' },
+				  { value: 'mal', label: 'MyAnimeList' },
+				  { value: 'kitsu', label: 'Kitsu' }
 				]}
 			/>
 			<p class="mt-2 text-xs text-theme-tertiary px-1">

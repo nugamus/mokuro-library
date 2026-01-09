@@ -1,7 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
-import type { Series, Volume, LibraryItem } from '$lib/types';
+import type { Series, LibraryItem } from '$lib/types';
 
-export type AppContext = 'library' | 'series' | 'reader' | 'settings';
+export type AppContext = 'library' | 'series' | 'reader' | 'settings' | 'contributions';
 export type ViewMode = 'grid' | 'list';
 export type SortOrder = 'asc' | 'desc';
 export type SortKey = 'title' | 'updated' | 'lastRead' | 'progress';
@@ -71,7 +71,12 @@ class UiState {
     this.libraryVersion += 1;
   }
 
-  setContext(ctx: AppContext, title: string, sorts: { key: SortKey; label: string }[], id: string | null = null) {
+  setContext(
+    ctx: AppContext,
+    title: string,
+    sorts: { key: SortKey; label: string }[],
+    id: string | null = null
+  ) {
     if (this.context === ctx && this.activeId === id) return;
 
     this.context = ctx;

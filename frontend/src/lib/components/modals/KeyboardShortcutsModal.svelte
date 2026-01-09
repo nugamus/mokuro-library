@@ -2,38 +2,39 @@
 	import { keybindDefinitions } from '$lib/keybinds';
 	import { keybindStore } from '$lib/stores/keybindStore';
 	import { shortcutsStore } from '$lib/stores/shortcutsStore';
+	import { SvelteMap } from 'svelte/reactivity';
 
 	let dialog = $state<HTMLDialogElement | null>(null);
 
 	const shortcuts = $derived.by(() => {
-		const groups = new Map<string, { keys: string; description: string }[]>();
-		for (const def of keybindDefinitions) {
-			const keys = ($keybindStore?.[def.id] || []).join(' / ');
-			const items = groups.get(def.category) ?? [];
-			items.push({ keys, description: def.description });
-			groups.set(def.category, items);
-		}
+	  const groups = new SvelteMap<string, { keys: string; description: string }[]>();
+	  for (const def of keybindDefinitions) {
+	    const keys = ($keybindStore?.[def.id] || []).join(' / ');
+	    const items = groups.get(def.category) ?? [];
+	    items.push({ keys, description: def.description });
+	    groups.set(def.category, items);
+	  }
 
-		return Array.from(groups.entries()).map(([category, items]) => ({
-			category,
-			items
-		}));
+	  return Array.from(groups.entries()).map(([category, items]) => ({
+	    category,
+	    items
+	  }));
 	});
 
 	function close() {
-		shortcutsStore.close();
+	  shortcutsStore.close();
 	}
 
 	$effect(() => {
-		if ($shortcutsStore) {
-			if (dialog && !dialog.open) {
-				dialog.showModal();
-			}
-		} else {
-			if (dialog?.open) {
-				dialog.close();
-			}
-		}
+	  if ($shortcutsStore) {
+	    if (dialog && !dialog.open) {
+	      dialog.showModal();
+	    }
+	  } else {
+	    if (dialog?.open) {
+	      dialog.close();
+	    }
+	  }
 	});
 </script>
 
@@ -68,18 +69,20 @@
 		</div>
 
 		<div class="space-y-6">
-			{#each shortcuts as { category, items }}
+			{#each shortcuts as { category, items } (category)}
 				<div>
 					<h3 class="text-sm font-semibold text-theme-secondary uppercase tracking-wider mb-3">
 						{category}
 					</h3>
 					<dl class="space-y-2">
-						{#each items as { keys, description }}
+						{#each items as item, i (i)}
 							<div class="flex items-center justify-between gap-4">
-								<dt class="font-mono text-sm bg-theme-main px-3 py-1.5 rounded border border-theme-border">
-									{keys || '-'}
+								<dt
+									class="font-mono text-sm bg-theme-main px-3 py-1.5 rounded border border-theme-border"
+								>
+									{item.keys || '-'}
 								</dt>
-								<dd class="text-theme-secondary flex-1 text-right">{description}</dd>
+								<dd class="text-theme-secondary flex-1 text-right">{item.description}</dd>
 							</div>
 						{/each}
 					</dl>

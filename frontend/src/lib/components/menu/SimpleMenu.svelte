@@ -1,26 +1,25 @@
 <script lang="ts">
 	import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
 	import MenuWrapper from '$lib/components/menu/MenuWrapper.svelte';
-	import MenuSeparator from '$lib/components/menu/MenuSeparator.svelte';
 
 	// Accepts the raw options array
 	let { options } = $props<{ options: MenuOption[] }>();
 
 	const isSeparator = (option: MenuOption): option is { separator: true } => {
-		return (option as any).separator === true;
+	  return 'separator' in option && (option as { separator?: boolean }).separator === true;
 	};
 
-	const handleAction = (option: any) => {
-		if (!option.disabled) {
-			option.action();
-			contextMenu.close();
-		}
+	const handleAction = (option: MenuOption) => {
+	  if ('action' in option && !option.disabled) {
+	    option.action();
+	    contextMenu.close();
+	  }
 	};
 </script>
 
 <MenuWrapper className="max-w-60">
 	<div class="p-1.5 flex flex-col gap-0.5">
-		{#each options as option}
+		{#each options as option, i (isSeparator(option) ? `sep-${i}` : option.label)}
 			{#if isSeparator(option)}
 				<div class="h-px bg-theme-border-light my-1 mx-5 opacity-50"></div>
 			{:else}

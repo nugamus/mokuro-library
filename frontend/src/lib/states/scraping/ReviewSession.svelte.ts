@@ -1,31 +1,30 @@
-import { Deque } from "$lib/utils/collections/Deque.svelte.ts";
-import { apiFetch } from '$lib/services/api';
-import { metadataOps } from "../metadata/metadataOperations.svelte";
+import { Deque } from '$lib/utils/collections/Deque.svelte.ts';
+import { metadataOps } from '../metadata/metadataOperations.svelte';
 
 export interface ScrapedPreview {
-  id: string; // Unique ID for the preview card
-  seriesId: string;
-  seriesTitle: string;
-  searchQuery: string;
-  current: {
-    title: string | null;
-    japaneseTitle?: string | null;
-    romajiTitle?: string | null;
-    synonyms?: string | null;
-    description: string | null;
-    hasCover: boolean;
-    coverPath?: string | null;
-  };
-  scraped: {
-    title?: string;
-    japaneseTitle?: string;
-    romajiTitle?: string;
-    synonyms?: string;
-    description?: string;
-    hasCover?: boolean;
-    tempCoverPath?: string;
-  };
-  status: 'scraping' | 'pending' | 'applying' | 'applied' | 'error' | 'denied';
+	id: string; // Unique ID for the preview card
+	seriesId: string;
+	seriesTitle: string;
+	searchQuery: string;
+	current: {
+		title: string | null;
+		japaneseTitle?: string | null;
+		romajiTitle?: string | null;
+		synonyms?: string | null;
+		description: string | null;
+		hasCover: boolean;
+		coverPath?: string | null;
+	};
+	scraped: {
+		title?: string;
+		japaneseTitle?: string;
+		romajiTitle?: string;
+		synonyms?: string;
+		description?: string;
+		hasCover?: boolean;
+		tempCoverPath?: string;
+	};
+	status: 'scraping' | 'pending' | 'applying' | 'applied' | 'error' | 'denied';
 }
 
 export class ReviewSession {
@@ -133,7 +132,3 @@ export class ReviewSession {
     }
   }
 }
-
-
-
-

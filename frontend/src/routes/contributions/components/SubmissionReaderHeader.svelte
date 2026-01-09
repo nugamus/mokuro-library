@@ -17,23 +17,23 @@
   text-white touch-none transition-opacity duration-300 bg-gradient-to-b from-black/80 via-black/40 to-transparent"
 	class:opacity-0={!headerIsVisible}
 	onpointerenter={(e) => {
-		if (e.pointerType === 'mouse') headerForceVisible = true;
+	  if (e.pointerType === 'mouse') headerForceVisible = true;
 	}}
 	onpointerleave={(e) => {
-		if (e.pointerType === 'mouse') headerForceVisible = false;
+	  if (e.pointerType === 'mouse') headerForceVisible = false;
 	}}
 	onpointerup={(e: PointerEvent) => {
-		if (e.pointerType !== 'mouse') {
-			setTimeout(() => {
-				headerForceVisible = true;
-			}, 100);
-			if (headerTimer) clearTimeout(headerTimer);
+	  if (e.pointerType !== 'mouse') {
+	    setTimeout(() => {
+	      headerForceVisible = true;
+	    }, 100);
+	    if (headerTimer) clearTimeout(headerTimer);
 
-			headerTimer = setTimeout(() => {
-				headerForceVisible = false;
-				headerTimer = null;
-			}, 4000);
-		}
+	    headerTimer = setTimeout(() => {
+	      headerForceVisible = false;
+	      headerTimer = null;
+	    }, 4000);
+	  }
 	}}
 >
 	<!-- Close Button -->
@@ -41,11 +41,11 @@
 		<button
 			disabled={!headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				on_close();
+			  e.stopPropagation();
+			  on_close();
 			}}
 			class="group flex items-center gap-2 pr-4 text-theme-secondary hover:text-theme-primary transition-colors"
-            title="Close Preview"
+			title="Close Preview"
 		>
 			<div class="p-2 rounded-xl group-hover:bg-white/10 transition-colors">
 				<X class="w-5 h-5" />
@@ -56,8 +56,8 @@
 
 	<!-- Title -->
 	<div class="flex-1 flex justify-center text-sm font-bold text-white/90 truncate px-4">
-        {readerState.volumeTitle}
-    </div>
+		{readerState.volumeTitle}
+	</div>
 
 	<!-- Page Count & Settings -->
 	<div class="flex flex-1 justify-end gap-2 items-center">
@@ -67,8 +67,8 @@
 		>
 			<span class="mr-1">
 				{readerState.currentPageIndex + 1}{readerState.visiblePages.length === 2
-					? `-${readerState.currentPageIndex + 2}`
-					: ''}
+				  ? `-${readerState.currentPageIndex + 2}`
+				  : ''}
 			</span>
 			<span>/ {readerState.totalPages}</span>
 		</span>
@@ -76,8 +76,8 @@
 		<button
 			disabled={!headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				settingsOpen = true;
+			  e.stopPropagation();
+			  settingsOpen = true;
 			}}
 			class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 transition-colors"
 			title="Settings"

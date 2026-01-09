@@ -1,8 +1,8 @@
 <script lang="ts">
 	let {
-		label,
-		value = $bindable(),
-		placeholder = ''
+	  label,
+	  value = $bindable(),
+	  placeholder = ''
 	} = $props<{
 		label: string;
 		value: string;
@@ -11,7 +11,9 @@
 </script>
 
 <div>
-	<div class="block text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-2">{label}</div>
+	<div class="block text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] mb-2">
+		{label}
+	</div>
 	<input
 		type="text"
 		bind:value

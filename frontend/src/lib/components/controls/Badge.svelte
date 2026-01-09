@@ -6,9 +6,8 @@
 		children?: Snippet;
 	}>();
 
-	let badgeClass = $derived(
-		() =>
-			`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${className}`.trim()
+	let badgeClass = $derived(() =>
+	  `inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${className}`.trim()
 	);
 </script>
 

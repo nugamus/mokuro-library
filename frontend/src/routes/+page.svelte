@@ -7,9 +7,9 @@
 	import backgroundImage from './home/assets/background.png';
 
 	$effect(() => {
-		if (browser && $user === null) {
-			metadataOps.flush();
-		}
+	  if (browser && $user === null) {
+	    metadataOps.flush();
+	  }
 	});
 </script>
 

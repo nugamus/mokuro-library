@@ -117,6 +117,6 @@ describe('metadata routes', () => {
     });
 
     expect(response.statusCode).toBe(401);
-    expect(response.json().message).toBe('Device fingerprint required');
+    expect(response.json().message).toBe('Device fingerprint required for all authenticated requests');
   });
 });

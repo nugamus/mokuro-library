@@ -6,8 +6,8 @@
 	import MetadataComparisonCard from './MetadataComparisonCard.svelte';
 
 	let {
-		onClose,
-		provider = 'anilist'
+	  onClose,
+	  provider = 'anilist'
 	}: {
 		onClose: () => void;
 		provider?: 'anilist' | 'mal' | 'kitsu';
@@ -23,39 +23,39 @@
 	// --- Lifecycle ---
 
 	onMount(() => {
-		// Auto-start the machine when the panel opens
-		scrapingState.startScrapingQueue(provider);
+	  // Auto-start the machine when the panel opens
+	  scrapingState.startScrapingQueue(provider);
 	});
 
 	onDestroy(() => {
-		// Safety: Ensure we stop fetching if the user force-closes the modal
-		scrapingState.stopScraping();
+	  // Safety: Ensure we stop fetching if the user force-closes the modal
+	  scrapingState.stopScraping();
 	});
 
 	// --- Inputs ---
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (document.activeElement?.tagName === 'INPUT') {
-			if (e.key === 'Escape') (document.activeElement as HTMLElement).blur();
-			return;
-		}
+	  if (document.activeElement?.tagName === 'INPUT') {
+	    if (e.key === 'Escape') (document.activeElement as HTMLElement).blur();
+	    return;
+	  }
 
-		switch (e.key) {
-			case 'ArrowRight':
-				session.defer();
-				break;
-			case 'ArrowLeft':
-				session.rewind();
-				break;
-			case 'Enter':
-				e.preventDefault();
-				session.confirmCurrent();
-				break;
-			case 'Escape':
-				e.preventDefault();
-				session.skipCurrent();
-				break;
-		}
+	  switch (e.key) {
+	  case 'ArrowRight':
+	    session.defer();
+	    break;
+	  case 'ArrowLeft':
+	    session.rewind();
+	    break;
+	  case 'Enter':
+	    e.preventDefault();
+	    session.confirmCurrent();
+	    break;
+	  case 'Escape':
+	    e.preventDefault();
+	    session.skipCurrent();
+	    break;
+	  }
 	}
 </script>
 
@@ -163,8 +163,8 @@
 					{#each session.upcoming.items as item, i (item.id)}
 						<div
 							class="px-3 py-2 rounded text-xs truncate transition-colors {i === 0
-								? 'bg-accent text-white shadow-md'
-								: 'text-theme-secondary opacity-70'}"
+							  ? 'bg-accent text-white shadow-md'
+							  : 'text-theme-secondary opacity-70'}"
 						>
 							<div class="flex justify-between items-center gap-1">
 								<span class="truncate max-w-[94%]">{item.seriesTitle}</span>
@@ -209,8 +209,8 @@
 
 			<div
 				class="flex-1 bg-theme-main {isXs
-					? 'p-4'
-					: 'p-2'} flex items-center justify-center overflow-hidden"
+				  ? 'p-4'
+				  : 'p-2'} flex items-center justify-center overflow-hidden"
 			>
 				{#if session.current}
 					<div class="flex flex-col w-full h-full max-w-3xl">
@@ -263,7 +263,3 @@
 		</div>
 	</div>
 </div>
-
-
-
-

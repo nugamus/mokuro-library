@@ -1,5 +1,5 @@
 /**
- * Dumb Deque implementation. 
+ * Dumb Deque implementation.
  * Future optimization: Replace internal array with Ring Buffer or Doubly Linked List.
  */
 export class Deque<T> {

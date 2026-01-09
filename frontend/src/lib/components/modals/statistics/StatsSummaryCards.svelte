@@ -1,7 +1,10 @@
 <script lang="ts">
 	import type { ReadingStats } from './types';
 
-	let { stats, formatTime } = $props<{ stats: ReadingStats; formatTime: (minutes: number) => string }>();
+	let { stats, formatTime } = $props<{
+		stats: ReadingStats;
+		formatTime: (minutes: number) => string;
+	}>();
 </script>
 
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -28,9 +31,7 @@
 
 	<div class="rounded-2xl bg-theme-main p-6 border border-theme-border-light">
 		<div class="flex items-center justify-between mb-4">
-			<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">
-				Characters Read
-			</p>
+			<p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em]">Characters Read</p>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
 				width="20"

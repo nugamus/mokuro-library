@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { apiFetch } from '$lib/services/api';
+	import { SvelteSet } from 'svelte/reactivity';
 	import type { TestResult } from './test-runner/types';
 	import TestRunnerHeader from './test-runner/TestRunnerHeader.svelte';
 	import TestRunnerActions from './test-runner/TestRunnerActions.svelte';
@@ -10,70 +11,70 @@
 	let lastResults = $state<TestResult[]>([]);
 	let lastSuccess = $state<boolean | null>(null);
 	let errorMessage = $state<string | null>(null);
-	let expandedResults = $state<Set<string>>(new Set());
-	let expandedSuites = $state<Set<string>>(new Set());
-	let showRawOutput = $state<Set<string>>(new Set());
+	let expandedResults = new SvelteSet<string>();
+	let expandedSuites = new SvelteSet<string>();
+	let showRawOutput = new SvelteSet<string>();
 
 	const runTests = async (target: 'backend' | 'frontend' | 'all') => {
-		if (isRunning) return;
-		isRunning = true;
-		errorMessage = null;
-		lastSuccess = null;
-		lastResults = [];
-		expandedResults = new Set();
-		expandedSuites = new Set();
-		showRawOutput = new Set();
+	  if (isRunning) return;
+	  isRunning = true;
+	  errorMessage = null;
+	  lastSuccess = null;
+	  lastResults = [];
+	  expandedResults = new SvelteSet();
+	  expandedSuites = new SvelteSet();
+	  showRawOutput = new SvelteSet();
 
-		try {
-			const response = await apiFetch('/api/tests/run', {
-				method: 'POST',
-				body: { target }
-			});
-			lastResults = response.results || [];
-			lastSuccess = Boolean(response.success);
-		} catch (error) {
-			errorMessage = (error as Error).message;
-		} finally {
-			isRunning = false;
-		}
+	  try {
+	    const response = await apiFetch('/api/tests/run', {
+	      method: 'POST',
+	      body: { target }
+	    });
+	    lastResults = response.results || [];
+	    lastSuccess = Boolean(response.success);
+	  } catch (error) {
+	    errorMessage = (error as Error).message;
+	  } finally {
+	    isRunning = false;
+	  }
 	};
 
 	const toggleExpanded = (target: string) => {
-		const next = new Set(expandedResults);
-		if (next.has(target)) {
-			next.delete(target);
-		} else {
-			next.add(target);
-		}
-		expandedResults = next;
+	  const next = new SvelteSet(expandedResults);
+	  if (next.has(target)) {
+	    next.delete(target);
+	  } else {
+	    next.add(target);
+	  }
+	  expandedResults = next;
 	};
 
 	const toggleSuite = (suiteKey: string) => {
-		const next = new Set(expandedSuites);
-		if (next.has(suiteKey)) {
-			next.delete(suiteKey);
-		} else {
-			next.add(suiteKey);
-		}
-		expandedSuites = next;
+	  const next = new SvelteSet(expandedSuites);
+	  if (next.has(suiteKey)) {
+	    next.delete(suiteKey);
+	  } else {
+	    next.add(suiteKey);
+	  }
+	  expandedSuites = next;
 	};
 
 	const toggleRawOutput = (target: string) => {
-		const next = new Set(showRawOutput);
-		if (next.has(target)) {
-			next.delete(target);
-		} else {
-			next.add(target);
-		}
-		showRawOutput = next;
+	  const next = new SvelteSet(showRawOutput);
+	  if (next.has(target)) {
+	    next.delete(target);
+	  } else {
+	    next.add(target);
+	  }
+	  showRawOutput = next;
 	};
 
 	const copyOutput = async (output: string) => {
-		try {
-			await navigator.clipboard.writeText(output);
-		} catch (err) {
-			console.error('Failed to copy:', err);
-		}
+	  try {
+	    await navigator.clipboard.writeText(output);
+	  } catch (err) {
+	    console.error('Failed to copy:', err);
+	  }
 	};
 </script>
 
@@ -81,7 +82,7 @@
 	<TestRunnerHeader />
 
 	<div class="rounded-2xl bg-theme-main border border-theme-border-light p-6 space-y-6">
-		<TestRunnerActions isRunning={isRunning} onRun={runTests} />
+		<TestRunnerActions {isRunning} onRun={runTests} />
 		<TestRunnerStatus {errorMessage} {lastSuccess} />
 		<TestRunnerResults
 			results={lastResults}

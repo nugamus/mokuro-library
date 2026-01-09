@@ -30,101 +30,102 @@
 	}
 
 	let statistics = $state<Statistics>({
-		totalMangas: 0,
-		totalPages: 0,
-		totalUsers: 0,
-		readingTime: 0
+	  totalMangas: 0,
+	  totalPages: 0,
+	  totalUsers: 0,
+	  readingTime: 0
 	});
 
 	let storageUsage = $state<StorageUsage>({
-		total: 124.5,
-		categories: {
-			images: 80.2,
-			mokuro: 25.8,
-			mokuroLib: 12.1,
-			metadata: 4.2,
-			database: 2.2
-		}
+	  total: 124.5,
+	  categories: {
+	    images: 80.2,
+	    mokuro: 25.8,
+	    mokuroLib: 12.1,
+	    metadata: 4.2,
+	    database: 2.2
+	  }
 	});
 
 	let recentActivity = $state<RecentActivity[]>([
-		{ username: 'Maxou', action: 'Read pages 0-24 of The Eminence in Shadow', timeAgo: 'just now' },
-		{
-			username: 'MightyMoogle',
-			action: 'Finished Shiroyama to Mita-san',
-			timeAgo: 'in 1 hr 27 mins'
-		},
-		{ username: 'Admin', action: 'Read pages 1040-1055 of One Piece', timeAgo: '2 hours ago' },
-		{ username: 'Viewer', action: 'Read pages 1-15 of Berserk', timeAgo: '5 hours ago' }
+	  { username: 'Maxou', action: 'Read pages 0-24 of The Eminence in Shadow', timeAgo: 'just now' },
+	  {
+	    username: 'MightyMoogle',
+	    action: 'Finished Shiroyama to Mita-san',
+	    timeAgo: 'in 1 hr 27 mins'
+	  },
+	  { username: 'Admin', action: 'Read pages 1040-1055 of One Piece', timeAgo: '2 hours ago' },
+	  { username: 'Viewer', action: 'Read pages 1-15 of Berserk', timeAgo: '5 hours ago' }
 	]);
 
 	let isLoading = $state(true);
-	let users = $state<Array<{ id: string; username: string }>>([]);
+	let _users = $state<Array<{ id: string; username: string }>>([]);
+	void _users;
 
 	// Fetch statistics from the database
 	async function fetchStatistics() {
-		if (!browser) return;
+	  if (!browser) return;
 
-		try {
-			isLoading = true;
+	  try {
+	    isLoading = true;
 
-			// Fetch all series to calculate statistics
-			const libraryData = await apiFetch('/api/library?limit=10000');
-			const series = libraryData.data || [];
+	    // Fetch all series to calculate statistics
+	    const libraryData = await apiFetch('/api/library?limit=10000');
+	    const series = libraryData.data || [];
 
-			// Calculate total pages
-			let totalPages = 0;
-			for (const s of series) {
-				if (s.volumes) {
-					for (const vol of s.volumes) {
-						totalPages += vol.pageCount || 0;
-					}
-				}
-			}
+	    // Calculate total pages
+	    let totalPages = 0;
+	    for (const s of series) {
+	      if (s.volumes) {
+	        for (const vol of s.volumes) {
+	          totalPages += vol.pageCount || 0;
+	        }
+	      }
+	    }
 
-			// Fetch users (we'll need to create an endpoint or use auth endpoint)
-			// For now, we'll use a placeholder
-			// TODO: Create a users endpoint if needed
-			const totalUsers = 3; // Placeholder
+	    // Fetch users (we'll need to create an endpoint or use auth endpoint)
+	    // For now, we'll use a placeholder
+	    // TODO: Create a users endpoint if needed
+	    const totalUsers = 3; // Placeholder
 
-			// Calculate reading time from progress
-			// We'll need to aggregate timeRead from UserProgress
-			// For now, using a calculated value based on pages
-			const readingTime = Math.round((totalPages * 0.11) / 60); // Rough estimate: 0.11 min per page
+	    // Calculate reading time from progress
+	    // We'll need to aggregate timeRead from UserProgress
+	    // For now, using a calculated value based on pages
+	    const readingTime = Math.round((totalPages * 0.11) / 60); // Rough estimate: 0.11 min per page
 
-			statistics = {
-				totalMangas: series.length,
-				totalPages,
-				totalUsers,
-				readingTime
-			};
-		} catch (error) {
-			console.error('Failed to fetch statistics:', error);
-		} finally {
-			isLoading = false;
-		}
+	    statistics = {
+	      totalMangas: series.length,
+	      totalPages,
+	      totalUsers,
+	      readingTime
+	    };
+	  } catch (error) {
+	    console.error('Failed to fetch statistics:', error);
+	  } finally {
+	    isLoading = false;
+	  }
 	}
 
 	onMount(() => {
-		fetchStatistics();
+	  fetchStatistics();
 	});
 
 	// Calculate storage percentages
 	const storagePercentages = $derived({
-		images: (storageUsage.categories.images / storageUsage.total) * 100,
-		mokuro: (storageUsage.categories.mokuro / storageUsage.total) * 100,
-		mokuroLib: (storageUsage.categories.mokuroLib / storageUsage.total) * 100,
-		metadata: (storageUsage.categories.metadata / storageUsage.total) * 100,
-		database: (storageUsage.categories.database / storageUsage.total) * 100
+	  images: (storageUsage.categories.images / storageUsage.total) * 100,
+	  mokuro: (storageUsage.categories.mokuro / storageUsage.total) * 100,
+	  mokuroLib: (storageUsage.categories.mokuroLib / storageUsage.total) * 100,
+	  metadata: (storageUsage.categories.metadata / storageUsage.total) * 100,
+	  database: (storageUsage.categories.database / storageUsage.total) * 100
 	});
 
 	// Calculate cumulative positions for the progress bar
 	const cumulativePositions = $derived({
-		images: 0,
-		mokuro: storagePercentages.images,
-		mokuroLib: storagePercentages.images + storagePercentages.mokuro,
-		metadata: storagePercentages.images + storagePercentages.mokuro + storagePercentages.mokuroLib,
-		database:
+	  images: 0,
+	  mokuro: storagePercentages.images,
+	  mokuroLib: storagePercentages.images + storagePercentages.mokuro,
+	  metadata: storagePercentages.images + storagePercentages.mokuro + storagePercentages.mokuroLib,
+	  database:
 			storagePercentages.images +
 			storagePercentages.mokuro +
 			storagePercentages.mokuroLib +

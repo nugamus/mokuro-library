@@ -1,5 +1,4 @@
 import { readerState } from '$lib/states/reader/ReaderState.svelte';
-import type { MokuroBlock } from '$lib/types';
 
 /**
  * Replaces predetermined sequences with their combined character
@@ -11,7 +10,7 @@ export const ligaturize = (text: string): string => {
   const exclQuest = '\u2049';
 
   const regexes = new Map<RegExp, string>();
-  regexes.set(/[\.．。]{2,}/g, ellipsis);
+  regexes.set(/[.．。]{2,}/g, ellipsis);
   regexes.set(/[!！]{2,}/g, doubleExcl);
   regexes.set(/[!！][?？]/g, exclQuest);
 
@@ -51,7 +50,7 @@ export const getRelativeCoords = (
   event: MouseEvent,
   containerElement: HTMLElement,
   imgWidth: number,
-  imgHeight: number,
+  imgHeight: number
 ) => {
   if (!containerElement.parentElement) {
     return { imgX: 0, imgY: 0 };
@@ -78,10 +77,10 @@ export const getRelativeCoords = (
  * accounting for the current panzoom scale.
  */
 export const getImageDeltas = (
-  moveEvent: { movementX: number, movementY: number },
+  moveEvent: { movementX: number; movementY: number },
   containerElement: HTMLElement,
   imgWidth: number,
-  imgHeight: number,
+  imgHeight: number
 ) => {
   const { scaleRatioX, scaleRatioY } = getScaleRatios(containerElement, imgWidth, imgHeight);
 

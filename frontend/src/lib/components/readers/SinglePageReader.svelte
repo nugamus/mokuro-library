@@ -1,14 +1,14 @@
 <script lang="ts">
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
-	import type { MokuroBlock, MokuroPage } from '$lib/types';
+	// removed unused imports
 	import type { PanzoomObject } from '@panzoom/panzoom';
 	import CachedImage from '$lib/components/media/CachedImage.svelte';
 	import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
 	import { panzoom } from '$lib/actions/panzoom';
 
 	let {
-		panzoomInstance = $bindable(),
-		navZoneWidth
+	  panzoomInstance = $bindable(),
+	  navZoneWidth
 	}: {
 		panzoomInstance: PanzoomObject | null;
 		navZoneWidth: number;
@@ -16,28 +16,36 @@
 
 	// Navigation handlers derived from reading direction
 	const handleClickLeft = () => {
-		readerState.readingDirection === 'rtl' ? readerState.nextPage() : readerState.prevPage();
+	  if (readerState.readingDirection === 'rtl') {
+	    readerState.nextPage();
+	  } else {
+	    readerState.prevPage();
+	  }
 	};
 
 	const handleClickRight = () => {
-		readerState.readingDirection === 'rtl' ? readerState.prevPage() : readerState.nextPage();
+	  if (readerState.readingDirection === 'rtl') {
+	    readerState.prevPage();
+	  } else {
+	    readerState.nextPage();
+	  }
 	};
 
 	function handleZoneClick(e: MouseEvent) {
-		// If text is selected, don't navigate
-		if (window.getSelection()?.toString()) return;
+	  // If text is selected, don't navigate
+	  if (window.getSelection()?.toString()) return;
 
-		const target = e.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const width = rect.width;
-		const percent = (x / width) * 100;
+	  const target = e.currentTarget as HTMLElement;
+	  const rect = target.getBoundingClientRect();
+	  const x = e.clientX - rect.left;
+	  const width = rect.width;
+	  const percent = (x / width) * 100;
 
-		if (percent <= navZoneWidth) {
-			handleClickLeft();
-		} else if (percent >= 100 - navZoneWidth) {
-			handleClickRight();
-		}
+	  if (percent <= navZoneWidth) {
+	    handleClickLeft();
+	  } else if (percent >= 100 - navZoneWidth) {
+	    handleClickRight();
+	  }
 	}
 </script>
 
@@ -50,15 +58,15 @@
 	<div
 		class="relative flex h-full flex-1 items-center justify-center"
 		use:panzoom={{
-			options: {
-				canvas: true,
-				maxScale: 10,
-				minScale: 0.5,
-				cursor: 'default',
-				origin: '50% 50%',
-				disableYAxis: false
-			},
-			onInit: (pz) => (panzoomInstance = pz)
+		  options: {
+		    canvas: true,
+		    maxScale: 10,
+		    minScale: 0.5,
+		    cursor: 'default',
+		    origin: '50% 50%',
+		    disableYAxis: false
+		  },
+		  onInit: (pz) => (panzoomInstance = pz)
 		}}
 	>
 		{#if readerState.visiblePages[0]}

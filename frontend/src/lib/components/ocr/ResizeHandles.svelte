@@ -1,8 +1,8 @@
 <script lang="ts">
 	let {
-		variant = 'block',
-		forceVisible = false,
-		onResizeStart
+	  variant = 'block',
+	  forceVisible = false,
+	  onResizeStart
 	} = $props<{
 		variant?: 'block' | 'line';
 		forceVisible?: boolean;
@@ -14,36 +14,36 @@
 	// Line: h-1.5 w-1.5 bg-yellow-400 z-20 (positioned at -left-0.75 etc which is approx -3px)
 
 	const baseClass = $derived(
-		`absolute rounded-full ${forceVisible ? 'opacity-100' : 'opacity-0'} transition-opacity`
+	  `absolute rounded-full ${forceVisible ? 'opacity-100' : 'opacity-0'} transition-opacity`
 	);
 
 	const variantClass =
 		variant === 'block'
-			? 'z-10 h-2 w-2 bg-blue-500 group-hover/block:opacity-100'
-			: 'z-20 h-1.5 w-1.5 bg-yellow-400 group-hover/line:opacity-100 ';
+		  ? 'z-10 h-2 w-2 bg-blue-500 group-hover/block:opacity-100'
+		  : 'z-20 h-1.5 w-1.5 bg-yellow-400 group-hover/line:opacity-100 ';
 
 	// Offset classes
 
 	const pos = (type: string) => {
-		switch (type) {
-			case 'tl':
-				return '-left-1 -top-1';
-			case 'tc':
-				return '-top-1 left-1/2 -translate-x-1/2';
-			case 'tr':
-				return '-right-1 -top-1';
-			case 'ml':
-				return '-left-1 top-1/2 -translate-y-1/2';
-			case 'mr':
-				return '-right-1 top-1/2 -translate-y-1/2';
-			case 'bl':
-				return '-bottom-1 -left-1';
-			case 'bc':
-				return '-bottom-1 left-1/2 -translate-x-1/2';
-			case 'br':
-				return '-bottom-1 -right-1';
-		}
-		return '';
+	  switch (type) {
+	  case 'tl':
+	    return '-left-1 -top-1';
+	  case 'tc':
+	    return '-top-1 left-1/2 -translate-x-1/2';
+	  case 'tr':
+	    return '-right-1 -top-1';
+	  case 'ml':
+	    return '-left-1 top-1/2 -translate-y-1/2';
+	  case 'mr':
+	    return '-right-1 top-1/2 -translate-y-1/2';
+	  case 'bl':
+	    return '-bottom-1 -left-1';
+	  case 'bc':
+	    return '-bottom-1 left-1/2 -translate-x-1/2';
+	  case 'br':
+	    return '-bottom-1 -right-1';
+	  }
+	  return '';
 	};
 </script>
 

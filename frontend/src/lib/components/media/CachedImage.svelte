@@ -9,18 +9,18 @@
 	let optimizedSrc = $derived.by(() => optimizeSrc(src, browser));
 
 	$effect(() => {
-		if (!browser) return;
+	  if (!browser) return;
 
-		// Call the store's 'get' method.
-		// This handles all caching and deduplication.
-		imageStore
-			.get(optimizedSrc)
-			.then((url) => {
-				localUrl = url;
-			})
-			.catch((e) => {
-				error = (e as Error).message;
-			});
+	  // Call the store's 'get' method.
+	  // This handles all caching and deduplication.
+	  imageStore
+	    .get(optimizedSrc)
+	    .then((url) => {
+	      localUrl = url;
+	    })
+	    .catch((e) => {
+	      error = (e as Error).message;
+	    });
 	});
 </script>
 

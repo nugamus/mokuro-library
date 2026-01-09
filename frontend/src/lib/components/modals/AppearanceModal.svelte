@@ -7,10 +7,10 @@
 	let { isOpen, onClose } = $props<{ isOpen: boolean; onClose: () => void }>();
 
 	let width = $state(0);
-	let isXs = $derived(width >= 480);
+	let _isXs = $derived(width >= 480);
 	let isSm = $derived(width >= 640);
-	let isMd = $derived(width >= 768);
-	let isLg = $derived(width >= 1024);
+	let _isMd = $derived(width >= 768);
+	let _isLg = $derived(width >= 1024);
 
 	// State for appearance settings
 	// Fix: Explicitly type this as keyof ThemeColors to avoid index errors
@@ -24,7 +24,7 @@
 	const colorMode = $derived(store.colorMode);
 	// We handle theme selection via a proxy to support the store's method
 	let selectedThemeId = $derived(
-		store.isCustomThemeEnabled ? 'custom' : store.currentTheme?.id || 'mokuro'
+	  store.isCustomThemeEnabled ? 'custom' : store.currentTheme?.id || 'mokuro'
 	);
 	const customThemeEnabled = $derived(store.isCustomThemeEnabled);
 	const customColors = $derived(store.customColors);
@@ -33,108 +33,113 @@
 
 	// Fix: Type the array so 'key' is known to be a valid ThemeColors key
 	const colorEntries: { key: keyof ThemeColors; label: string; description: string }[] = [
-		{
-			key: 'main-background',
-			label: 'MAIN BACKGROUND',
-			description: 'Page background, library view background'
-		},
-		{
-			key: 'card-background',
-			label: 'CARD BACKGROUND',
-			description: 'Series cards, modal backgrounds, settings panels'
-		},
-		{
-			key: 'card-highlight',
-			label: 'CARD HIGHLIGHT',
-			description: 'Card hover states, surface highlights'
-		},
-		{
-			key: 'border-color',
-			label: 'BORDER COLOR',
-			description: 'Card borders, dividers, input borders'
-		},
-		{
-			key: 'primary-color',
-			label: 'PRIMARY COLOR',
-			description: 'Buttons, links, active states, progress circles'
-		},
-		{
-			key: 'primary-hover',
-			label: 'PRIMARY HOVER',
-			description: 'Button hover states, link hover colors'
-		},
-		{
-			key: 'main-text',
-			label: 'MAIN TEXT',
-			description: 'Primary text, titles, headings'
-		},
-		{
-			key: 'muted-text',
-			label: 'MUTED TEXT',
-			description: 'Secondary text, descriptions, metadata'
-		},
-		{
-			key: 'reading-color',
-			label: 'READING COLOR',
-			description: 'Progress indicators, reading status circles'
-		}
+	  {
+	    key: 'main-background',
+	    label: 'MAIN BACKGROUND',
+	    description: 'Page background, library view background'
+	  },
+	  {
+	    key: 'card-background',
+	    label: 'CARD BACKGROUND',
+	    description: 'Series cards, modal backgrounds, settings panels'
+	  },
+	  {
+	    key: 'card-highlight',
+	    label: 'CARD HIGHLIGHT',
+	    description: 'Card hover states, surface highlights'
+	  },
+	  {
+	    key: 'border-color',
+	    label: 'BORDER COLOR',
+	    description: 'Card borders, dividers, input borders'
+	  },
+	  {
+	    key: 'primary-color',
+	    label: 'PRIMARY COLOR',
+	    description: 'Buttons, links, active states, progress circles'
+	  },
+	  {
+	    key: 'primary-hover',
+	    label: 'PRIMARY HOVER',
+	    description: 'Button hover states, link hover colors'
+	  },
+	  {
+	    key: 'main-text',
+	    label: 'MAIN TEXT',
+	    description: 'Primary text, titles, headings'
+	  },
+	  {
+	    key: 'muted-text',
+	    label: 'MUTED TEXT',
+	    description: 'Secondary text, descriptions, metadata'
+	  },
+	  {
+	    key: 'reading-color',
+	    label: 'READING COLOR',
+	    description: 'Progress indicators, reading status circles'
+	  }
 	];
 
 	function resetDefaults() {
-		store.resetCustomColors();
+	  store.resetCustomColors();
 	}
 
 	function handleColorModeChange(mode: 'dark' | 'light' | 'system') {
-		store.setColorMode(mode);
+	  store.setColorMode(mode);
 	}
 
 	function handleThemeSelect(themeId: string) {
-		if (themeId === 'custom') {
-			store.isCustomThemeEnabled = true;
-			store.applyCustomTheme();
-		} else {
-			store.setTheme(themeId);
-		}
+	  if (themeId === 'custom') {
+	    store.isCustomThemeEnabled = true;
+	    store.applyCustomTheme();
+	  } else {
+	    store.setTheme(themeId);
+	  }
 	}
 
 	function handleCustomColorChange(mode: 'dark' | 'light', key: string, value: string) {
-		store.updateCustomColor(mode, key as keyof ThemeColors, value);
+	  store.updateCustomColor(mode, key as keyof ThemeColors, value);
 	}
 
 	// Wrapper for MenuToggle to handle the store logic
 	let customThemeToggle = $derived({
-		get value() {
-			return customThemeEnabled;
-		},
-		set value(v: boolean) {
-			if (!v) {
-				store.isCustomThemeEnabled = false;
-				if (store.currentTheme) store.applyTheme(store.currentTheme);
-			} else {
-				handleThemeSelect('custom');
-			}
-		}
+	  get value() {
+	    return customThemeEnabled;
+	  },
+	  set value(v: boolean) {
+	    if (!v) {
+	      store.isCustomThemeEnabled = false;
+	      if (store.currentTheme) store.applyTheme(store.currentTheme);
+	    } else {
+	      handleThemeSelect('custom');
+	    }
+	  }
 	});
 
 	// Wrapper for Color Mode Radio
 	let colorModeValue = $derived({
-		get value() {
-			return colorMode;
-		},
-		set value(v) {
-			handleColorModeChange(v);
-		}
+	  get value() {
+	    return colorMode;
+	  },
+	  set value(v) {
+	    handleColorModeChange(v);
+	  }
 	});
 
 	// Wrapper for Theme Radio
 	let themeValue = $derived({
-		get value() {
-			return selectedThemeId;
-		},
-		set value(v) {
-			handleThemeSelect(v);
-		}
+	  get value() {
+	    return selectedThemeId;
+	  },
+	  set value(v) {
+	    handleThemeSelect(v);
+	  }
 	});
+
+	// Mark intentionally-unused breakpoint flags as used to satisfy linter
+	void _isXs;
+	void _isMd;
+	void _isLg;
 </script>
 
 <svelte:window bind:innerWidth={width} />
@@ -261,9 +266,9 @@
 					layout={isSm ? [3] : [1, 1, 1]}
 					itemClass="flex flex-row items-center gap-3 px-4 py-3"
 					options={[
-						{ value: 'dark', label: 'Dark', icon: darkIcon },
-						{ value: 'light', label: 'Light', icon: lightIcon },
-						{ value: 'system', label: 'System', icon: systemIcon }
+					  { value: 'dark', label: 'Dark', icon: darkIcon },
+					  { value: 'light', label: 'Light', icon: lightIcon },
+					  { value: 'system', label: 'System', icon: systemIcon }
 					]}
 				>
 					{#snippet children(option, isSelected)}
@@ -282,9 +287,9 @@
 					layout={[2, 2]}
 					itemClass="flex items-center gap-3 sm:px-4 py-3"
 					options={themes.map((t) => ({
-						value: t.id,
-						label: t.name,
-						colors: t.previewColors[resolvedColorMode]
+					  value: t.id,
+					  label: t.name,
+					  colors: t.previewColors[resolvedColorMode]
 					}))}
 				>
 					{#snippet children(option, isSelected)}
@@ -292,11 +297,11 @@
 						<div class="flex flex-1 flex-col items-center sm:flex-row sm:justify-between gap-2">
 							<span
 								class="font-medium flex-shrink-0 text-left {isSelected
-									? 'text-accent'
-									: 'text-theme-primary'}">{option.label}</span
+								  ? 'text-accent'
+								  : 'text-theme-primary'}">{option.label}</span
 							>
 							<div class="flex gap-0 sm:gap-1 flex-shrink-0">
-								{#each colors as color}
+								{#each colors as color (color)}
 									<div
 										class="w-3 h-4 sm:w-4 sm:rounded sm:border border-theme-border-light"
 										style="background-color: {color};"
@@ -315,8 +320,8 @@
 							stroke-linecap="round"
 							stroke-linejoin="round"
 							class="hidden sm:inline text-accent flex-shrink-0 ml-1 {!isSelected
-								? 'opacity-0'
-								: ''}"
+							  ? 'opacity-0'
+							  : ''}"
 						>
 							<polyline points="20 6 9 17 4 12" />
 						</svg>
@@ -416,20 +421,20 @@
 										stroke-linecap="round"
 										stroke-linejoin="round"
 										class="text-theme-secondary transition-transform {isDarkColorsExpanded
-											? 'rotate-180'
-											: ''}"
+										  ? 'rotate-180'
+										  : ''}"
 									>
 										<polyline points="6 9 12 15 18 9" />
 									</svg>
 								</button>
 								{#if isDarkColorsExpanded}
 									<div class="px-4 pb-4 pt-2 space-y-3 border-t border-theme-border-light">
-										{#each colorEntries as entry}
+										{#each colorEntries as entry (entry.key)}
 											{@const colorValue = customColors.dark[entry.key]}
 											<button
 												onclick={() => {
-													openColorPicker = entry.key;
-													openColorPickerMode = 'dark';
+												  openColorPicker = entry.key;
+												  openColorPickerMode = 'dark';
 												}}
 												class="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-theme-border-light bg-theme-surface hover:bg-theme-surface-hover hover:border-theme-border transition-all text-left group"
 											>
@@ -516,20 +521,20 @@
 										stroke-linecap="round"
 										stroke-linejoin="round"
 										class="text-theme-secondary transition-transform {isLightColorsExpanded
-											? 'rotate-180'
-											: ''}"
+										  ? 'rotate-180'
+										  : ''}"
 									>
 										<polyline points="6 9 12 15 18 9" />
 									</svg>
 								</button>
 								{#if isLightColorsExpanded}
 									<div class="px-4 pb-4 pt-2 space-y-3 border-t border-theme-border-light">
-										{#each colorEntries as entry}
+										{#each colorEntries as entry (entry.key)}
 											{@const colorValue = customColors.light[entry.key]}
 											<button
 												onclick={() => {
-													openColorPicker = entry.key;
-													openColorPickerMode = 'light';
+												  openColorPicker = entry.key;
+												  openColorPickerMode = 'light';
 												}}
 												class="w-full flex items-center gap-4 px-4 py-3 rounded-xl border border-theme-border-light bg-theme-surface hover:bg-theme-surface-hover hover:border-theme-border transition-all text-left group"
 											>
@@ -583,10 +588,10 @@
 	<ColorPicker
 		color={currentColor}
 		onClose={() => {
-			openColorPicker = null;
-			openColorPickerMode = null;
+		  openColorPicker = null;
+		  openColorPickerMode = null;
 		}}
 		onColorChange={(color) =>
-			handleCustomColorChange(openColorPickerMode!, openColorPicker!, color)}
+		  handleCustomColorChange(openColorPickerMode!, openColorPicker!, color)}
 	/>
 {/if}

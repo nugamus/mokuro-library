@@ -166,7 +166,7 @@ export function buildServer(options: BuildOptions = {}) {
   });
 
   // Readiness probe
-  fastify.get('/api/ready', async (request, reply) => {
+  fastify.get('/api/ready', async (_request, _reply) => {
     return { ready: true };
   });
 

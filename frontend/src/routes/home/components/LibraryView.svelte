@@ -2,9 +2,11 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { apiFetch } from '$lib/services/api';
-	import type { Series as GlobalSeries, Volume as GlobalVolume } from '$lib/types';
+	import type { Series, PaginationData } from '$lib/types';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
 	import Footer from '$lib/components/layout/Footer.svelte';
@@ -13,24 +15,9 @@
 	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 	import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
 	import SubmitVolumesModal from '../../../routes/contributions/components/modals/SubmitVolumesModal.svelte';
-	import type {
-		FilterStatus,
-		FilterMissing,
-		FilterOrganization
-	} from '$lib/states/ui/uiState.svelte.ts';
+	import type { FilterStatus, FilterMissing } from '$lib/states/ui/uiState.svelte.ts';
 	import { formatLastReadDate } from '$lib/utils/helpers/date';
-	import { apiCache } from '$lib/utils/caching/apiCache';
-
-	interface UserProgress {
-		page: number;
-		completed: boolean;
-	}
-
-	type Volume = Pick<GlobalVolume, 'pageCount' | 'progress'>;
-
-	type Series = Omit<GlobalSeries, 'volumes'> & {
-		volumes: Volume[];
-	};
+	import { SvelteMap } from 'svelte/reactivity';
 
 	let library = $state<Series[]>([]);
 	let meta = $state({ total: 0, page: 1, limit: 24, totalPages: 1 });
@@ -47,35 +34,14 @@
 	let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	const computeSeriesProgress = (series: Series) => {
-		let totalPages = 0;
-		let readPages = 0;
-		let completedCount = 0;
-
-		if (!series.volumes || series.volumes.length === 0) return { percent: 0, isRead: false };
-
-		for (const vol of series.volumes) {
-			const pCount = vol.pageCount || 0;
-			totalPages += pCount;
-
-			const progress = vol.progress?.[0] as UserProgress | undefined;
-			if (progress) {
-				if (progress.completed) {
-					readPages += pCount;
-					completedCount += 1;
-				} else {
-					readPages += progress.page || 0;
-				}
-			}
-		}
-
-		if (totalPages === 0) return { percent: 0, isRead: false };
+		if (series.totalPageCount === 0) return { percent: 0, isRead: false };
 		return {
-			percent: Math.min(100, Math.max(0, (readPages / totalPages) * 100)),
-			isRead: completedCount === series.volumes.length
+			percent: Math.min(100, Math.max(0, (series.readPageCount / series.totalPageCount) * 100)),
+			isRead: series.status === 2
 		};
 	};
 
-	let seriesProgressMap = $state(new Map<string, { percent: number; isRead: boolean }>());
+	let seriesProgressMap = new SvelteMap<string, { percent: number; isRead: boolean }>();
 
 	const getSeriesProgress = (series: Series) =>
 		seriesProgressMap.get(series.id) ?? computeSeriesProgress(series);
@@ -86,10 +52,6 @@
 			{ key: 'updated', label: 'Last Updated' },
 			{ key: 'lastRead', label: 'Recent' }
 		]);
-
-		// Soft invalidate library cache to ensure fresh data on mount
-		// This ensures we get updated series list when switching users or new content is added
-		apiCache.invalidateLibraryCache(false);
 	});
 
 	onMount(() => {
@@ -139,10 +101,8 @@
 	$effect(() => {
 		if (!browser) return;
 
-		const _version = uiState.libraryVersion;
-
-		const currentParams = new URLSearchParams(page.url.searchParams);
-		const newParams = new URLSearchParams(currentParams);
+		const currentParams = new SvelteURLSearchParams(page.url.searchParams);
+		const newParams = new SvelteURLSearchParams(currentParams);
 
 		if (uiState.searchQuery) newParams.set('q', uiState.searchQuery);
 		else newParams.delete('q');
@@ -193,7 +153,7 @@
 
 		const queryString = newParams.toString();
 		if (queryString !== currentParams.toString()) {
-			goto(`?${queryString}`, { replaceState: true, keepFocus: true, noScroll: true });
+			goto(resolve(`?${queryString}`, {}), { replaceState: true, keepFocus: true, noScroll: true });
 		}
 
 		if (filterDebounceTimer) clearTimeout(filterDebounceTimer);
@@ -213,10 +173,14 @@
 			if (!silent) isLoadingLibrary = true;
 			libraryError = null;
 
-			const response = await apiFetch(`/api/library${queryString}`, { cache: true });
-			const nextLibrary = response.data as Series[];
+			const response: { data: Series[]; meta: PaginationData } = await apiFetch(
+				`/api/library${queryString}`,
+				{ cache: true }
+			);
+
+			const nextLibrary = response.data;
 			library = nextLibrary;
-			seriesProgressMap = new Map(
+			seriesProgressMap = new SvelteMap(
 				nextLibrary.map((series) => [series.id, computeSeriesProgress(series)])
 			);
 			meta = response.meta;
@@ -258,12 +222,12 @@
 		if (uiState.isSelectionMode) {
 			e.preventDefault();
 			e.stopPropagation();
-			uiState.toggleSelection(series as GlobalSeries);
+			uiState.toggleSelection(series);
 		}
 	};
 
 	const handleRefresh = () => {
-		const params = new URLSearchParams(page.url.searchParams);
+		const params = new SvelteURLSearchParams(page.url.searchParams);
 		fetchLibrary(`?${params.toString()}`, true);
 	};
 
@@ -392,7 +356,7 @@
 
 						<LibraryEntry
 							onLongPress={() => {
-								uiState.enterSelectionMode(series as GlobalSeries);
+								uiState.enterSelectionMode(series);
 							}}
 							entry={{
 								id: series.id,
@@ -412,8 +376,8 @@
 								isRead: isRead,
 								showBar: percent > 0
 							}}
-							href={`/series/${series.id}`}
-							mainStat={`${series.volumes.length} ${series.volumes.length === 1 ? 'Vol' : 'Vols'}`}
+							href={resolve(`/series/${series.id}`, {})}
+							mainStat={`${series.totalVolumeCount ?? 0} ${series.totalVolumeCount <= 1 ? 'Vol' : 'Vols'}`}
 							subStat={formatLastReadDate(series.lastReadAt)}
 							onSelect={(e) => handleCardClick(e, series)}
 						>
@@ -480,7 +444,7 @@
 		<LibraryActionBar
 			type="series"
 			onRefresh={handleRefresh}
-			onSelectAll={() => uiState.selectAll(library as GlobalSeries[])}
+			onSelectAll={() => uiState.selectAll(library)}
 			onRename={handleOpenEdit}
 			onSubmit={handleOpenSubmit}
 		/>

@@ -27,49 +27,49 @@
 
 	// Reset state when modal opens
 	$effect(() => {
-		if (isOpen) {
-			title = volume?.title ?? '';
-			isSaving = false;
+	  if (isOpen) {
+	    title = volume?.title ?? '';
+	    isSaving = false;
 
-			// Store original value
-			originalTitle = volume?.title ?? '';
-		}
+	    // Store original value
+	    originalTitle = volume?.title ?? '';
+	  }
 	});
 
 	const handleClose = () => {
-		// Prevent closing if save is in progress
-		if (isSaving) {
-			return;
-		}
+	  // Prevent closing if save is in progress
+	  if (isSaving) {
+	    return;
+	  }
 
-		// Warn if there are unsaved changes
-		if (hasUnsavedChanges) {
-			const confirmed = confirm(
-				'You have unsaved changes. Are you sure you want to close without saving?'
-			);
-			if (!confirmed) {
-				return;
-			}
-		}
+	  // Warn if there are unsaved changes
+	  if (hasUnsavedChanges) {
+	    const confirmed = confirm(
+	      'You have unsaved changes. Are you sure you want to close without saving?'
+	    );
+	    if (!confirmed) {
+	      return;
+	    }
+	  }
 
-		onClose();
+	  onClose();
 	};
 
 	const saveVolumeMetadata = async () => {
-		if (!volume || isSaving) return;
+	  if (!volume || isSaving) return;
 
-		isSaving = true;
-		try {
-			await metadataOps.saveVolumeMetadata(volume.id, { title: title || null });
-			toastStore.success('Volume metadata updated successfully');
-			onRefresh();
-			onClose();
-		} catch (e: any) {
-			console.error(e);
-			toastStore.error('Failed to update volume metadata. Please try again.');
-		} finally {
-			isSaving = false;
-		}
+	  isSaving = true;
+	  try {
+	    await metadataOps.saveVolumeMetadata(volume.id, { title: title || null });
+	    toastStore.success('Volume metadata updated successfully');
+	    onRefresh();
+	    onClose();
+	  } catch (e) {
+	    console.error(e);
+	    toastStore.error('Failed to update volume metadata. Please try again.');
+	  } finally {
+	    isSaving = false;
+	  }
 	};
 </script>
 
@@ -144,10 +144,28 @@
 			<!-- Body -->
 			<div class="flex-1 overflow-y-auto p-6">
 				{#if isSaving}
-					<div class="flex items-center gap-2 text-sm text-blue-400 bg-blue-400/10 border border-blue-400/30 rounded-lg px-4 py-2 mb-4">
-						<svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+					<div
+						class="flex items-center gap-2 text-sm text-blue-400 bg-blue-400/10 border border-blue-400/30 rounded-lg px-4 py-2 mb-4"
+					>
+						<svg
+							class="animate-spin h-4 w-4"
+							xmlns="http://www.w3.org/2000/svg"
+							fill="none"
+							viewBox="0 0 24 24"
+						>
+							<circle
+								class="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								stroke-width="4"
+							></circle>
+							<path
+								class="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+							></path>
 						</svg>
 						<span class="font-medium">Saving changes - please wait...</span>
 					</div>
@@ -184,7 +202,3 @@
 		</div>
 	</div>
 {/if}
-
-
-
-

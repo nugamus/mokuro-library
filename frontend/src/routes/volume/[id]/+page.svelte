@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { beforeNavigate, goto } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { resolve } from '$app/paths';
 
 	// Stores & State
 	import { user } from '$lib/stores/authStore';
@@ -18,7 +19,6 @@
 	import LineOrderModal from '$lib/components/modals/LineOrderModal.svelte';
 	import ReaderHeader from '$lib/components/layout/ReaderHeader.svelte';
 	import type { PanzoomObject } from '@panzoom/panzoom';
-	import type { MokuroBlock, MokuroPage } from '$lib/types';
 
 	// --- Props ---
 	let { params } = $props<{ params: { id: string } }>();
@@ -40,7 +40,7 @@
 	// Auth Check
 	$effect(() => {
 		if ($user === null && browser) {
-			goto('/login');
+			goto(resolve('/login', {}));
 		}
 	});
 
@@ -61,7 +61,7 @@
 					readerState.hasUnsavedChanges = false;
 					await readerState.cleanup();
 					imageStore.clear();
-					if (to?.url) goto(to.url);
+					if (to?.url) goto(resolve(String(to.url), {}));
 				},
 				'Discard & Exit',
 				'Exiting...'
@@ -69,12 +69,12 @@
 			return;
 		}
 
-		readerState
+		void readerState
 			.cleanup()
 			.then(() => {
 				navigateLock = true;
 				imageStore.clear();
-				if (to?.url) goto(to.url);
+				if (to?.url) goto(resolve(String(to.url), {}));
 			})
 			.catch((error) => {
 				console.error("Save failed, sync code didn't run", error);
@@ -83,7 +83,7 @@
 
 	// Reset Panzoom
 	$effect(() => {
-		readerState.currentPageIndex; // Dependency
+		void readerState.currentPageIndex; // Dependency
 		if (panzoomInstance && readerState.layoutMode !== 'vertical') {
 			if (readerState.retainZoom) {
 				panzoomInstance.pan(0, 0, { animate: true });
@@ -94,18 +94,15 @@
 	});
 
 	// Touch/Hover Detection
-	let hasHover = $state(true);
 	onMount(() => {
 		if (browser) {
 			const mq = window.matchMedia('(hover: none)');
-			hasHover = !mq.matches;
 			showTouchZones = mq.matches;
 			if (mq.matches) {
 				touchHintTimer = setTimeout(() => {
 					showTouchZones = false;
 				}, 3000);
 			}
-			const listener = (e: MediaQueryListEvent) => (hasHover = !e.matches);
 			const hintListener = (e: MediaQueryListEvent) => {
 				if (e.matches) {
 					showTouchZones = true;
@@ -116,14 +113,12 @@
 				}
 			};
 
-			mq.addEventListener('change', listener);
 			mq.addEventListener('change', hintListener);
 
 			// Set Context for header
 			uiState.setContext('reader', 'Reader', []);
 
 			return () => {
-				mq.removeEventListener('change', listener);
 				mq.removeEventListener('change', hintListener);
 				if (touchHintTimer) clearTimeout(touchHintTimer);
 			};

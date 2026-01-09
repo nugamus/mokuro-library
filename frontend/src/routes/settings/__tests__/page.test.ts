@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Page from '../+page.svelte';
 
 type SimpleStore<T> = {
-  subscribe: (run: (value: T) => void) => () => void;
-  set: (value: T) => void;
-  update: (fn: (value: T) => T) => void;
+	subscribe: (run: (value: T) => void) => () => void;
+	set: (value: T) => void;
+	update: (fn: (value: T) => T) => void;
 };
 
 const { userStore, pageState, components } = vi.hoisted(() => {
@@ -26,17 +26,15 @@ const { userStore, pageState, components } = vi.hoisted(() => {
     }
   };
 
-  const makeStub =
-    (testId: string) =>
-    (anchor: Comment, _props: Record<string, unknown>) => {
-      const element = document.createElement('div');
-      element.dataset.testid = testId;
-      if (anchor?.parentNode) {
-        anchor.parentNode.insertBefore(element, anchor);
-        return;
-      }
-      document.body.appendChild(element);
-    };
+  const makeStub = (testId: string) => (anchor: Comment) => {
+    const element = document.createElement('div');
+    element.dataset.testid = testId;
+    if (anchor?.parentNode) {
+      anchor.parentNode.insertBefore(element, anchor);
+      return;
+    }
+    document.body.appendChild(element);
+  };
 
   return {
     userStore: store,

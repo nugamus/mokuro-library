@@ -1,9 +1,12 @@
 <script lang="ts">
 	import type { Submission } from '$lib/types';
 	import { apiFetch } from '$lib/services/api';
+	import { resolve } from '$app/paths';
+	import { SvelteDate } from 'svelte/reactivity';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
-import { toastStore } from '$lib/stores/toastStore.svelte.ts';
+	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	import { onMount } from 'svelte';
+	import { SvelteSet } from 'svelte/reactivity';
 
 	let { onOpenBulkReject } = $props<{
 		onOpenBulkReject: (selectedIds: string[]) => void;
@@ -12,130 +15,122 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	let submissions = $state<Submission[]>([]);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
-	let selectedIds = $state<Set<string>>(new Set());
+	let selectedIds = new SvelteSet<string>();
 
 	// Load pending submissions (admin view)
 	async function loadSubmissions() {
-		loading = true;
-		error = null;
-		try {
-			const data = await apiFetch<Submission[]>(
-				'/api/contributions/submissions?status=pending',
-				{
-					showErrorToast: false
-				}
-			);
-			submissions = data || [];
-		} catch (e: any) {
-			error = e.message || 'Failed to load submissions';
-			console.error('Failed to load submissions', e);
-		} finally {
-			loading = false;
-		}
+	  loading = true;
+	  error = null;
+	  try {
+	    const data = (await apiFetch('/api/contributions/submissions?status=pending', {
+	      showErrorToast: false
+	    })) as Submission[];
+	    submissions = data || [];
+	  } catch (e) {
+	    const msg = (e as Error).message || 'Failed to load submissions';
+	    error = msg;
+	    console.error('Failed to load submissions', e);
+	  } finally {
+	    loading = false;
+	  }
 	}
 
 	// Toggle selection
 	function toggleSelection(submissionId: string) {
-		if (selectedIds.has(submissionId)) {
-			selectedIds.delete(submissionId);
-		} else {
-			selectedIds.add(submissionId);
-		}
-		selectedIds = selectedIds; // Trigger reactivity
+	  if (selectedIds.has(submissionId)) {
+	    selectedIds.delete(submissionId);
+	  } else {
+	    selectedIds.add(submissionId);
+	  }
+	  selectedIds = selectedIds; // Trigger reactivity
 	}
 
 	// Select all
 	function selectAll() {
-		selectedIds = new Set(submissions.map((s) => s.id));
+	  selectedIds = new SvelteSet(submissions.map((s) => s.id));
 	}
 
 	// Deselect all
 	function deselectAll() {
-		selectedIds = new Set();
+	  selectedIds = new SvelteSet();
 	}
 
 	// Accept single submission
 	async function handleAccept(submissionId: string) {
-		if (!confirm('Accept this submission? Files will be moved to the admin library.')) return;
+	  if (!confirm('Accept this submission? Files will be moved to the admin library.')) return;
 
-		try {
-			await contributionsStore.acceptSubmission(submissionId);
-			toastStore.addToast('Submission accepted successfully', 'success');
-			// Reload submissions
-			await loadSubmissions();
-			// Clear selection if it was selected
-			selectedIds.delete(submissionId);
-			selectedIds = selectedIds;
-		} catch (e: any) {
-			toastStore.addToast(e.message || 'Failed to accept submission', 'error');
-		}
+	  try {
+	    await contributionsStore.acceptSubmission(submissionId);
+	    toastStore.addToast('Submission accepted successfully', 'success');
+	    // Reload submissions
+	    await loadSubmissions();
+	    // Clear selection if it was selected
+	    selectedIds.delete(submissionId);
+	    selectedIds = selectedIds;
+	  } catch (e) {
+	    toastStore.addToast((e as Error).message || 'Failed to accept submission', 'error');
+	  }
 	}
 
 	// Reject single submission (opens modal)
 	function handleReject(submissionId: string) {
-		onOpenBulkReject([submissionId]);
+	  onOpenBulkReject([submissionId]);
 	}
 
 	// Bulk accept selected submissions
 	async function handleBulkAccept() {
-		if (selectedIds.size === 0) return;
+	  if (selectedIds.size === 0) return;
 
-		if (
-			!confirm(
-				`Accept ${selectedIds.size} submission(s)? Files will be moved to the admin library.`
-			)
-		)
-			return;
+	  if (
+	    !confirm(
+	      `Accept ${selectedIds.size} submission(s)? Files will be moved to the admin library.`
+	    )
+	  )
+	    return;
 
-		try {
-			const result = await contributionsStore.bulkAcceptSubmissions(Array.from(selectedIds));
+	  try {
+	    const result = await contributionsStore.bulkAcceptSubmissions(Array.from(selectedIds));
 
-			if (result.failed > 0) {
-				toastStore.addToast(
-					`Accepted ${result.success}, failed ${result.failed}`,
-					'warning'
-				);
-			} else {
-				toastStore.addToast(
-					`Successfully accepted ${result.success} submission(s)`,
-					'success'
-				);
-			}
+	    if (result.failed > 0) {
+	      toastStore.addToast(`Accepted ${result.success}, failed ${result.failed}`, 'warning');
+	    } else {
+	      toastStore.addToast(`Successfully accepted ${result.success} submission(s)`, 'success');
+	    }
 
-			// Reload submissions
-			await loadSubmissions();
-			deselectAll();
-		} catch (e: any) {
-			toastStore.addToast(e.message || 'Failed to accept submissions', 'error');
-		}
+	    // Reload submissions
+	    await loadSubmissions();
+	    deselectAll();
+	  } catch (e) {
+	    toastStore.addToast((e as Error).message || 'Failed to accept submissions', 'error');
+	  }
 	}
 
 	// Bulk reject (opens modal)
 	function handleBulkReject() {
-		if (selectedIds.size === 0) return;
-		onOpenBulkReject(Array.from(selectedIds));
+	  if (selectedIds.size === 0) return;
+	  onOpenBulkReject(Array.from(selectedIds));
 	}
 
 	// Format date
 	function formatDate(dateString: string): string {
-		const date = new Date(dateString);
-		return date.toLocaleDateString('en-US', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
+	  const date = new SvelteDate(dateString);
+	  return date.toLocaleDateString('en-US', {
+	    year: 'numeric',
+	    month: 'short',
+	    day: 'numeric',
+	    hour: '2-digit',
+	    minute: '2-digit'
+	  });
 	}
 
 	// Reload when bulk reject completes
 	export function reload() {
-		loadSubmissions();
-		deselectAll();
+	  loadSubmissions();
+	  deselectAll();
 	}
 
 	onMount(() => {
-		loadSubmissions();
+	  loadSubmissions();
 	});
 </script>
 
@@ -213,13 +208,13 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
 		<!-- Submissions Grid -->
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-			{#each submissions as submission}
+			{#each submissions as submission (submission.id)}
 				<div
 					class="bg-theme-surface/30 border-2 rounded-lg overflow-hidden transition-all {selectedIds.has(
-						submission.id
+					  submission.id
 					)
-						? 'border-accent shadow-lg'
-						: 'border-theme-border hover:border-accent/30'}"
+					  ? 'border-accent shadow-lg'
+					  : 'border-theme-border hover:border-accent/30'}"
 				>
 					<div class="p-4">
 						<!-- Selection Checkbox & Header -->
@@ -227,10 +222,10 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 							<button
 								onclick={() => toggleSelection(submission.id)}
 								class="flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5 transition-all {selectedIds.has(
-									submission.id
+								  submission.id
 								)
-									? 'bg-accent border-accent'
-									: 'border-theme-border hover:border-accent'}"
+								  ? 'bg-accent border-accent'
+								  : 'border-theme-border hover:border-accent'}"
 							>
 								{#if selectedIds.has(submission.id)}
 									<span class="text-white text-xs font-bold">✓</span>
@@ -275,9 +270,7 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
 								<!-- Metadata -->
 								<div class="flex items-center gap-2 text-xs text-theme-tertiary flex-wrap">
-									<span class="font-semibold"
-										>{submission._count?.volumes || 0} volume(s)</span
-									>
+									<span class="font-semibold">{submission._count?.volumes || 0} volume(s)</span>
 									<span>•</span>
 									<span>{formatDate(submission.submittedAt)}</span>
 								</div>
@@ -287,7 +280,7 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 						<!-- Action Buttons -->
 						<div class="flex items-center gap-2 mt-4 pt-3 border-t border-theme-border">
 							<a
-								href="/contributions/submissions/{submission.id}"
+								href={resolve(`/contributions/submissions/${submission.id}`)}
 								class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold text-center bg-theme-surface text-theme-primary hover:bg-theme-surface-hover border border-theme-border transition-all"
 							>
 								👁️ Review

@@ -34,8 +34,8 @@
 		<div
 			class="absolute inset-0 transition-all duration-500 ease-out"
 			style="opacity: {isRegisterMode ? 0 : 1}; transform: translateY({isRegisterMode
-				? -20
-				: 0}px);"
+			  ? -20
+			  : 0}px);"
 		>
 			<h1 class="text-4xl font-black text-theme-primary mb-3 tracking-tight">
 				<span
@@ -50,9 +50,7 @@
 		</div>
 		<div
 			class="absolute inset-0 transition-all duration-500 ease-out"
-			style="opacity: {isRegisterMode ? 1 : 0}; transform: translateY({isRegisterMode
-				? 0
-				: 20}px);"
+			style="opacity: {isRegisterMode ? 1 : 0}; transform: translateY({isRegisterMode ? 0 : 20}px);"
 		>
 			<h1 class="text-4xl font-black text-theme-primary mb-3 tracking-tight">
 				<span

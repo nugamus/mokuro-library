@@ -50,7 +50,7 @@
 							</td>
 						</tr>
 					{:else}
-						{#each completedVolumes.slice(0, 5) as vol}
+						{#each completedVolumes.slice(0, 5) as vol, i (`${vol.seriesName}-${vol.volumeTitle}-${i}`)}
 							<tr class="hover:bg-white/5 transition-colors">
 								<td class="px-4 py-3 theme-primary font-medium">{vol.seriesName}</td>
 								<td class="px-4 py-3 text-theme-secondary">{vol.volumeTitle}</td>

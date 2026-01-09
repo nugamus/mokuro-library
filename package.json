@@ -21,7 +21,7 @@
       "npx prettier --write"
     ],
     "frontend/**/*.{ts,svelte}": [
-      "npx eslint --fix",
+      "npx eslint --config frontend/eslint.config.js --fix",
       "npx prettier --write"
     ],
     "**/*.{json,md,yml,yaml}": [
@@ -30,7 +30,9 @@
   },
   "devDependencies": {
     "czg": "^1.12.0",
-    "husky": "^9.0.11",
-    "lint-staged": "^15.2.0"
+    "eslint-config-prettier": "^10.1.8",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier-plugin-svelte": "^3.4.1"
   }
 }

@@ -1,11 +1,11 @@
 <script lang="ts">
 	import { contributionsStore } from '$lib/stores/contributionsStore';
-import { toastStore } from '$lib/stores/toastStore.svelte.ts';
+	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
 	let {
-		isOpen = $bindable(false),
-		submissionIds = $bindable<string[]>([]),
-		onComplete
+	  isOpen = $bindable(false),
+	  submissionIds = $bindable<string[]>([]),
+	  onComplete
 	} = $props<{
 		isOpen: boolean;
 		submissionIds: string[];
@@ -17,69 +17,80 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	let processing = $state(false);
 
 	const rejectionTemplates = [
-		{ id: 'duplicate', label: 'Duplicate content already exists', text: 'This content already exists in the shared library.' },
-		{ id: 'quality', label: 'Poor OCR quality', text: 'The OCR quality does not meet our standards. Please ensure the text is properly recognized.' },
-		{ id: 'inappropriate', label: 'Inappropriate content', text: 'This content does not align with our library guidelines.' },
-		{ id: 'incomplete', label: 'Incomplete series', text: 'Please submit the complete series rather than individual volumes.' },
-		{ id: 'custom', label: 'Custom reason', text: '' }
+	  {
+	    id: 'duplicate',
+	    label: 'Duplicate content already exists',
+	    text: 'This content already exists in the shared library.'
+	  },
+	  {
+	    id: 'quality',
+	    label: 'Poor OCR quality',
+	    text: 'The OCR quality does not meet our standards. Please ensure the text is properly recognized.'
+	  },
+	  {
+	    id: 'inappropriate',
+	    label: 'Inappropriate content',
+	    text: 'This content does not align with our library guidelines.'
+	  },
+	  {
+	    id: 'incomplete',
+	    label: 'Incomplete series',
+	    text: 'Please submit the complete series rather than individual volumes.'
+	  },
+	  { id: 'custom', label: 'Custom reason', text: '' }
 	];
 
 	// Apply template
 	function applyTemplate(templateId: string) {
-		selectedTemplate = templateId;
-		const template = rejectionTemplates.find((t) => t.id === templateId);
-		if (template && template.text) {
-			reason = template.text;
-		} else if (templateId === 'custom') {
-			reason = '';
-		}
+	  selectedTemplate = templateId;
+	  const template = rejectionTemplates.find((t) => t.id === templateId);
+	  if (template && template.text) {
+	    reason = template.text;
+	  } else if (templateId === 'custom') {
+	    reason = '';
+	  }
 	}
 
 	// Submit rejection
 	async function handleSubmit() {
-		if (!reason.trim()) {
-			toastStore.addToast('Please provide a rejection reason', 'error');
-			return;
-		}
+	  if (!reason.trim()) {
+	    toastStore.addToast('Please provide a rejection reason', 'error');
+	    return;
+	  }
 
-		processing = true;
-		try {
-			const result = await contributionsStore.bulkRejectSubmissions(submissionIds, reason);
+	  processing = true;
+	  try {
+	    const result = await contributionsStore.bulkRejectSubmissions(submissionIds, reason);
 
-			if (result.failed > 0) {
-				toastStore.addToast(
-					`Rejected ${result.success}, failed ${result.failed}`,
-					'warning'
-				);
-			} else {
-				toastStore.addToast(
-					`Successfully rejected ${result.success} submission(s)`,
-					'success'
-				);
-			}
+	    if (result.failed > 0) {
+	      toastStore.addToast(`Rejected ${result.success}, failed ${result.failed}`, 'warning');
+	    } else {
+	      toastStore.addToast(`Successfully rejected ${result.success} submission(s)`, 'success');
+	    }
 
-			close();
-			onComplete();
-		} catch (e: any) {
-			toastStore.addToast(e.message || 'Failed to reject submissions', 'error');
-		} finally {
-			processing = false;
-		}
+	    close();
+	    onComplete();
+	  } catch (e) {
+	    const msg = (e as Error).message || 'Failed to reject submissions';
+	    toastStore.addToast(msg, 'error');
+	  } finally {
+	    processing = false;
+	  }
 	}
 
 	// Close modal and reset state
 	function close() {
-		isOpen = false;
-		reason = '';
-		selectedTemplate = null;
-		submissionIds = [];
+	  isOpen = false;
+	  reason = '';
+	  selectedTemplate = null;
+	  submissionIds = [];
 	}
 
 	// Auto-select custom template when user types
 	$effect(() => {
-		if (reason && !selectedTemplate) {
-			selectedTemplate = 'custom';
-		}
+	  if (reason && !selectedTemplate) {
+	    selectedTemplate = 'custom';
+	  }
 	});
 </script>
 
@@ -132,19 +143,19 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 						Quick Templates:
 					</div>
 					<div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-						{#each rejectionTemplates as template}
+						{#each rejectionTemplates as template (template.id)}
 							<button
 								onclick={() => applyTemplate(template.id)}
 								disabled={processing}
 								class="p-3 rounded-lg border-2 transition-all text-left disabled:opacity-50 {selectedTemplate ===
 								template.id
-									? 'bg-status-danger/10 border-status-danger'
-									: 'bg-theme-surface/60 border-theme-border hover:bg-theme-surface-hover'}"
+								  ? 'bg-status-danger/10 border-status-danger'
+								  : 'bg-theme-surface/60 border-theme-border hover:bg-theme-surface-hover'}"
 							>
 								<div
 									class="text-xs font-semibold {selectedTemplate === template.id
-										? 'text-status-danger'
-										: 'text-theme-primary'}"
+									  ? 'text-status-danger'
+									  : 'text-theme-primary'}"
 								>
 									{template.label}
 								</div>
@@ -170,9 +181,7 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 				</div>
 
 				<!-- Warning -->
-				<div
-					class="bg-status-warning/10 border border-status-warning/30 rounded-lg p-3 sm:p-4"
-				>
+				<div class="bg-status-warning/10 border border-status-warning/30 rounded-lg p-3 sm:p-4">
 					<div class="flex items-start gap-3">
 						<div class="text-xl flex-shrink-0">⚠️</div>
 						<div class="flex-1 min-w-0">

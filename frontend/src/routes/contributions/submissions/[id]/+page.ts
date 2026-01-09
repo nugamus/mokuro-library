@@ -1,10 +1,11 @@
 // frontend/src/routes/contributions/submissions/[id]/+page.ts
 import type { PageLoad } from './$types';
+import type { Submission } from '$lib/types';
 
 export const load: PageLoad = async ({ params, fetch }) => {
   const { id } = params;
 
-  async function getSubmission(submissionId: string) {
+  async function getSubmission(submissionId: string): Promise<Submission> {
     const response = await fetch(`/api/contributions/submissions/${submissionId}`);
     if (!response.ok) {
       const errorData = await response.json();
@@ -14,6 +15,6 @@ export const load: PageLoad = async ({ params, fetch }) => {
   }
 
   return {
-    submission: await getSubmission(id),
+    submission: await getSubmission(id)
   };
 };

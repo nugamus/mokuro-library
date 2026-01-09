@@ -4,15 +4,15 @@
 	import type { TestResult } from './types';
 
 	let {
-		result,
-		index,
-		isExpanded,
-		showRaw,
-		expandedSuites,
-		onToggleExpanded,
-		onToggleSuite,
-		onToggleRawOutput,
-		onCopyOutput
+	  result,
+	  index,
+	  isExpanded,
+	  showRaw,
+	  expandedSuites,
+	  onToggleExpanded,
+	  onToggleSuite,
+	  onToggleRawOutput,
+	  onCopyOutput
 	} = $props<{
 		result: TestResult;
 		index: number;
@@ -30,8 +30,8 @@
 
 <div
 	class="group rounded-xl border-2 border-theme-border-light bg-theme-surface/60 hover:bg-theme-surface transition-all duration-300 overflow-hidden {isPassed
-		? 'hover:border-status-success/30'
-		: 'hover:border-status-danger/30'}"
+	  ? 'hover:border-status-success/30'
+	  : 'hover:border-status-danger/30'}"
 	in:fly={{ y: 20, duration: 300, delay: index * 100, easing: quintOut }}
 >
 	<button
@@ -41,8 +41,8 @@
 		<div class="flex items-center gap-4 flex-1">
 			<div
 				class="w-10 h-10 rounded-lg flex items-center justify-center transition-all duration-300 {isPassed
-					? 'bg-status-success/10 text-status-success group-hover:bg-status-success/20'
-					: 'bg-status-danger/10 text-status-danger group-hover:bg-status-danger/20'}"
+				  ? 'bg-status-success/10 text-status-success group-hover:bg-status-success/20'
+				  : 'bg-status-danger/10 text-status-danger group-hover:bg-status-danger/20'}"
 			>
 				{#if isPassed}
 					<svg
@@ -82,8 +82,8 @@
 					</h3>
 					<span
 						class="px-2 py-0.5 rounded-full text-xs font-semibold {isPassed
-							? 'bg-status-success/20 text-status-success'
-							: 'bg-status-danger/20 text-status-danger'}"
+						  ? 'bg-status-success/20 text-status-success'
+						  : 'bg-status-danger/20 text-status-danger'}"
 					>
 						{isPassed ? 'PASS' : 'FAIL'}
 					</span>
@@ -148,7 +148,7 @@
 		>
 			{#if result.suites && result.suites.length > 0}
 				<div class="p-5 space-y-3">
-					{#each result.suites as suite, suiteIdx}
+					{#each result.suites as suite, suiteIdx (suite.name ?? suiteIdx)}
 						{@const suiteKey = `${result.target}-${suiteIdx}`}
 						{@const isSuiteExpanded = expandedSuites.has(suiteKey)}
 						{@const suitePassed = suite.failed === 0}
@@ -163,8 +163,8 @@
 								<div class="flex items-center gap-3 flex-1">
 									<div
 										class="w-8 h-8 rounded flex items-center justify-center {suitePassed
-											? 'bg-status-success/10 text-status-success'
-											: 'bg-status-danger/10 text-status-danger'}"
+										  ? 'bg-status-success/10 text-status-success'
+										  : 'bg-status-danger/10 text-status-danger'}"
 									>
 										{#if suitePassed}
 											<svg
@@ -223,8 +223,8 @@
 									stroke-linecap="round"
 									stroke-linejoin="round"
 									class="text-theme-tertiary transition-transform duration-300 {isSuiteExpanded
-										? 'rotate-180'
-										: ''}"
+									  ? 'rotate-180'
+									  : ''}"
 								>
 									<polyline points="6 9 12 15 18 9" />
 								</svg>
@@ -235,7 +235,7 @@
 									class="border-t border-theme-border-light px-4 py-3 space-y-2"
 									in:fly={{ y: -5, duration: 200, easing: quintOut }}
 								>
-									{#each suite.tests as test, testIdx}
+									{#each suite.tests as test, testIdx (test.name ?? testIdx)}
 										<div
 											class="flex items-center justify-between py-2 px-3 rounded bg-theme-main/50"
 											in:fly={{ x: -5, duration: 150, delay: testIdx * 30, easing: quintOut }}
@@ -327,8 +327,8 @@
 							<button
 								onclick={() => onToggleRawOutput(result.target)}
 								class="px-3 py-1.5 text-xs font-semibold rounded-lg border-2 transition-all {showRaw
-									? 'border-accent/50 bg-accent/10 text-accent'
-									: 'border-theme-border-light text-theme-secondary hover:text-theme-primary hover:border-accent/50'}"
+								  ? 'border-accent/50 bg-accent/10 text-accent'
+								  : 'border-theme-border-light text-theme-secondary hover:text-theme-primary hover:border-accent/50'}"
 							>
 								{showRaw ? 'Show Structured' : 'Show Raw'}
 							</button>
@@ -356,8 +356,8 @@
 					</div>
 				</div>
 				<pre
-					class="max-h-96 overflow-auto rounded-lg bg-theme-main border border-theme-border px-4 py-3 text-xs text-theme-secondary whitespace-pre-wrap font-mono leading-relaxed"
-				>{result.output || 'No output.'}</pre>
+					class="max-h-96 overflow-auto rounded-lg bg-theme-main border border-theme-border px-4 py-3 text-xs text-theme-secondary whitespace-pre-wrap font-mono leading-relaxed">{result.output ||
+						'No output.'}</pre>
 			</div>
 		</div>
 	{/if}

@@ -38,6 +38,7 @@ jobs:
         run: |
           cd frontend
           npm ci
+        continue-on-error: true
 
       - name: Backend tests
         run: |
@@ -52,7 +53,6 @@ jobs:
         run: |
           cd frontend
           npm test
-        continue-on-error: true
 
       - name: Build backend
         run: |

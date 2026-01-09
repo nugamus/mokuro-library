@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Page from '../+page.svelte';
 
 type SimpleStore<T> = {
-  subscribe: (run: (value: T) => void) => () => void;
-  set: (value: T) => void;
-  update: (fn: (value: T) => T) => void;
+	subscribe: (run: (value: T) => void) => () => void;
+	set: (value: T) => void;
+	update: (fn: (value: T) => T) => void;
 };
 
 const { userStore } = vi.hoisted(() => {
@@ -23,7 +23,7 @@ const { userStore } = vi.hoisted(() => {
     },
     update(fn) {
       store.set(fn(value));
-    },
+    }
   };
   return { userStore: store };
 });
@@ -33,7 +33,7 @@ const gotoMock = vi.hoisted(() => vi.fn());
 
 vi.mock('$lib/services/api', () => ({
   apiFetch: apiFetchMock,
-  triggerDownload: vi.fn(),
+  triggerDownload: vi.fn()
 }));
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/navigation', () => ({ goto: gotoMock }));

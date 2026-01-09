@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import type { FastifyInstance } from 'fastify/types/instance';
-import { deleteBranchSnapshots } from '../../utils/ocrHelpers';
+import { deleteBranchSnapshots } from '../ocrHelpers';
 
 // Cleanup Helper (Rollback)
 export async function deleteFolder(pathStr: string) {

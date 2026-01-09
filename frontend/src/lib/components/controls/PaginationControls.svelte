@@ -2,6 +2,8 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
+	import { resolve } from '$app/paths';
 
 	let { meta } = $props<{
 		meta: {
@@ -51,11 +53,11 @@
 
 	// --- Handlers ---
 	const updateParams = (changes: Record<string, string>) => {
-		const params = new URLSearchParams(page.url.searchParams);
+		const params = new SvelteURLSearchParams(page.url.searchParams);
 		for (const [key, value] of Object.entries(changes)) {
 			params.set(key, value);
 		}
-		goto(`${page.url.pathname}?${params.toString()}`, { keepFocus: true });
+		goto(resolve(`${page.url.pathname}?${params.toString()}`, {}), { keepFocus: true });
 	};
 
 	const setPage = (p: number) => {
@@ -135,7 +137,7 @@
 			>
 				{meta.page}/{meta.totalPages}
 			</div>
-			{#each pages as pageNum}
+			{#each pages as pageNum (String(pageNum))}
 				{#if pageNum === '...'}
 					<div
 						class="w-8 h-9 hidden sm:flex items-center justify-center text-theme-secondary/50 font-bold select-none text-xs tracking-widest"
@@ -205,7 +207,7 @@
 					<div
 						class="absolute bottom-full right-0 mb-2 w-24 py-1 bg-theme-surface border border-theme-border rounded-xl shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 z-50"
 					>
-						{#each availableLimits as opt}
+						{#each availableLimits as opt (opt)}
 							<button
 								onclick={() => setLimit(opt)}
 								class={`w-full px-3 py-2 text-center text-[12px] font-bold transition-colors

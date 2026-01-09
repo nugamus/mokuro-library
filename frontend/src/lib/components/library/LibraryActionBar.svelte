@@ -12,11 +12,11 @@
 	import { apiCache } from '$lib/utils/caching/apiCache';
 
 	let {
-		type = 'series',
-		onRename,
-		onRefresh,
-		onSelectAll,
-		onSubmit
+	  type = 'series',
+	  onRename,
+	  onRefresh,
+	  onSelectAll,
+	  onSubmit
 	} = $props<{
 		type: 'series' | 'volume';
 		onRename: () => void;
@@ -32,149 +32,149 @@
 
 	// --- Hotkeys ---
 	const handleKeyDown = (e: KeyboardEvent) => {
-		if (e.key === 'Escape') {
-			if (showScrapeModal) return;
-			if (uiState.isSelectionMode) uiState.exitSelectionMode();
-		}
-		// Ctrl+A support
-		if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-			if (uiState.isSelectionMode && onSelectAll) {
-				e.preventDefault();
-				onSelectAll();
-			}
-		}
+	  if (e.key === 'Escape') {
+	    if (showScrapeModal) return;
+	    if (uiState.isSelectionMode) uiState.exitSelectionMode();
+	  }
+	  // Ctrl+A support
+	  if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+	    if (uiState.isSelectionMode && onSelectAll) {
+	      e.preventDefault();
+	      onSelectAll();
+	    }
+	  }
 	};
 
 	onMount(() => {
-		window.addEventListener('keydown', handleKeyDown);
+	  window.addEventListener('keydown', handleKeyDown);
 	});
 
 	onDestroy(() => {
-		window.removeEventListener('keydown', handleKeyDown);
+	  window.removeEventListener('keydown', handleKeyDown);
 	});
 
 	// --- Actions ---
 
 	// --- 1. Batch ZIP Logic (Ticket Pattern) ---
 	const executeBatchDownload = async (includeImages: boolean) => {
-		if (selectionCount === 0) return;
-		const ids = Array.from(uiState.selection.keys());
+	  if (selectionCount === 0) return;
+	  const ids = Array.from(uiState.selection.keys());
 
-		try {
-			isProcessing = true;
+	  try {
+	    isProcessing = true;
 
-			// A. Request Ticket
-			const response = await apiFetch('/api/export/batch/ticket', {
-				method: 'POST',
-				body: {
-					ids,
-					type,
-					options: { include_images: includeImages }
-				}
-			});
+	    // A. Request Ticket
+	    const response = await apiFetch('/api/export/batch/ticket', {
+	      method: 'POST',
+	      body: {
+	        ids,
+	        type,
+	        options: { include_images: includeImages }
+	      }
+	    });
 
-			const { ticket } = response as { ticket: string };
+	    const { ticket } = response as { ticket: string };
 
-			// B. Trigger Download via Link
-			triggerDownload(`/api/export/batch?ticket=${ticket}`);
-		} catch (e) {
-			console.error(e);
-			alert('Failed to start download.');
-		} finally {
-			isProcessing = false;
-		}
+	    // B. Trigger Download via Link
+	    triggerDownload(`/api/export/batch?ticket=${ticket}`);
+	  } catch (e) {
+	    console.error(e);
+	    alert('Failed to start download.');
+	  } finally {
+	    isProcessing = false;
+	  }
 	};
 
 	// --- 2. Single PDF Logic (Legacy GET) ---
 	const executePdfDownload = () => {
-		const id = Array.from(uiState.selection.keys())[0];
-		if (!id) return;
+	  const id = Array.from(uiState.selection.keys())[0];
+	  if (!id) return;
 
-		// Use existing GET endpoint for single PDF
-		triggerDownload(`/api/export/${type}/${id}/pdf`);
-		uiState.exitSelectionMode();
+	  // Use existing GET endpoint for single PDF
+	  triggerDownload(`/api/export/${type}/${id}/pdf`);
+	  uiState.exitSelectionMode();
 	};
 
 	// --- 3. Menu Trigger ---
 	const openDownloadMenu = (e: MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		const target = e.currentTarget as HTMLButtonElement;
-		const rect = target.getBoundingClientRect();
+	  e.preventDefault();
+	  e.stopPropagation();
+	  const target = e.currentTarget as HTMLButtonElement;
+	  const rect = target.getBoundingClientRect();
 
-		// Define Menu Options
-		const menuItems: any[] = [
-			{
-				label: `Download ZIP ${selectionCount > 1 ? '(Batch)' : ''}`,
-				action: () => executeBatchDownload(true)
-			},
-			{
-				label: 'Download Metadata',
-				action: () => executeBatchDownload(false)
-			}
-		];
+	  // Define Menu Options
+	  const menuItems: { label?: string; action?: () => void; separator?: boolean }[] = [
+	    {
+	      label: `Download ZIP ${selectionCount > 1 ? '(Batch)' : ''}`,
+	      action: () => executeBatchDownload(true)
+	    },
+	    {
+	      label: 'Download Metadata',
+	      action: () => executeBatchDownload(false)
+	    }
+	  ];
 
-		// Conditionally add PDF for Single Selection
-		if (selectionCount === 1) {
-			menuItems.push({ separator: true });
-			menuItems.push({
-				label: 'Download as PDF',
-				action: executePdfDownload
-			});
-		}
+	  // Conditionally add PDF for Single Selection
+	  if (selectionCount === 1) {
+	    menuItems.push({ separator: true });
+	    menuItems.push({
+	      label: 'Download as PDF',
+	      action: executePdfDownload
+	    });
+	  }
 
-		// Open Menu (Use rect.top to open UPWARDS since bar is at bottom)
-		// We subtract a small buffer to ensure it doesn't overlap the cursor/button weirdly
-		contextMenu.open(rect.left, rect.top, menuItems, { yEdgeAlign: 'top' }, target);
+	  // Open Menu (Use rect.top to open UPWARDS since bar is at bottom)
+	  // We subtract a small buffer to ensure it doesn't overlap the cursor/button weirdly
+	  contextMenu.open(rect.left, rect.top, menuItems, { yEdgeAlign: 'top' }, target);
 	};
 	const handleDelete = () => {
-		const ids = Array.from(uiState.selection.keys());
+	  const ids = Array.from(uiState.selection.keys());
 
-		confirmation.open(
-			`Delete ${selectionCount} item${selectionCount > 1 ? 's' : ''}?`,
-			'This action cannot be undone. Files and progress will be permanently removed.',
-			async () => {
-				try {
-					isProcessing = true;
-					// apiFetch automatically handles JSON.stringify for objects
-					await apiFetch('/api/library/batch/delete', {
-						method: 'POST',
-						body: { ids, type }
-					});
-					apiCache.invalidateSeriesCache({ seriesId: uiState.activeId ?? undefined });
-					apiCache.invalidateLibraryCache(true);
+	  confirmation.open(
+	    `Delete ${selectionCount} item${selectionCount > 1 ? 's' : ''}?`,
+	    'This action cannot be undone. Files and progress will be permanently removed.',
+	    async () => {
+	      try {
+	        isProcessing = true;
+	        // apiFetch automatically handles JSON.stringify for objects
+	        await apiFetch('/api/library/batch/delete', {
+	          method: 'POST',
+	          body: { ids, type }
+	        });
+	        apiCache.invalidateSeriesCache({ seriesId: uiState.activeId ?? undefined });
+	        apiCache.invalidateLibraryCache(true);
 
-					uiState.exitSelectionMode();
-					onRefresh();
-				} catch (e) {
-					console.error(e);
-					alert('Batch delete failed');
-				} finally {
-					isProcessing = false;
-				}
-			}
-		);
+	        uiState.exitSelectionMode();
+	        onRefresh();
+	      } catch (e) {
+	        console.error(e);
+	        alert('Batch delete failed');
+	      } finally {
+	        isProcessing = false;
+	      }
+	    }
+	  );
 	};
 
 	// Scrape Setup (The New Logic)
 	async function startScrapeSession() {
-		if (type !== 'series') return;
+	  if (type !== 'series') return;
 
-		// We cast to Series[] because we checked type === 'series' above
-		const selectedItems = Array.from(uiState.selection.values()) as Series[];
+	  // We cast to Series[] because we checked type === 'series' above
+	  const selectedItems = Array.from(uiState.selection.values()) as Series[];
 
-		// Initialize the state machine
-		scrapingState.initSession(selectedItems);
+	  // Initialize the state machine
+	  scrapingState.initSession(selectedItems);
 
-		// Open the UI (The Panel will auto-start the queue on mount)
-		showScrapeModal = true;
+	  // Open the UI (The Panel will auto-start the queue on mount)
+	  showScrapeModal = true;
 	}
 
 	function handleScrapeClose() {
-		showScrapeModal = false;
-		// Refresh library to show new covers/titles/organized status
-		onRefresh();
-		uiState.exitSelectionMode();
+	  showScrapeModal = false;
+	  // Refresh library to show new covers/titles/organized status
+	  onRefresh();
+	  uiState.exitSelectionMode();
 	}
 </script>
 
@@ -243,8 +243,8 @@
 						disabled={isProcessing || selectionCount > SCRAPE_LIMIT}
 						class="p-2.5 rounded-xl hover:bg-accent/10 text-theme-secondary hover:text-accent transition-colors disabled:opacity-50"
 						title={selectionCount > SCRAPE_LIMIT
-							? `Limit: ${SCRAPE_LIMIT} items`
-							: 'Scrape Metadata'}
+						  ? `Limit: ${SCRAPE_LIMIT} items`
+						  : 'Scrape Metadata'}
 					>
 						<svg
 							xmlns="http://www.w3.org/2000/svg"

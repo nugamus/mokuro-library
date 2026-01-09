@@ -16,5 +16,7 @@
 		</svg>
 		<h1 class="text-3xl font-bold text-theme-primary">Test Runner</h1>
 	</div>
-	<p class="text-base text-theme-secondary">Run the backend and frontend test suites from the app.</p>
+	<p class="text-base text-theme-secondary">
+		Run the backend and frontend test suites from the app.
+	</p>
 </div>

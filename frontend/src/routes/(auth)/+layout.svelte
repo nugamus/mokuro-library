@@ -1,19 +1,20 @@
 <script lang="ts">
 	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	let { children } = $props();
 
 	// This effect will run when the component mounts
 	// and re-run whenever the $user store changes.
 	$effect(() => {
-		// The root layout's checkAuth()
-		// is populating the $user store.
-		if ($user) {
-			// If $user is not null, the user is logged in.
-			// Redirect them away from the auth pages to the homepage.
-			goto('/');
-		}
+	  // The root layout's checkAuth()
+	  // is populating the $user store.
+	  if ($user) {
+	    // If $user is not null, the user is logged in.
+	    // Redirect them away from the auth pages to the homepage.
+	    goto(resolve('/'));
+	  }
 	});
 </script>
 

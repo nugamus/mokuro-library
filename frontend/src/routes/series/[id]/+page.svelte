@@ -1,12 +1,14 @@
 <script lang="ts">
 	import type { Series, Volume } from '$lib/types';
-	import { apiFetch, triggerDownload } from '$lib/services/api';
+	import { apiFetch } from '$lib/services/api';
 	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { resolve } from '$app/paths';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
 	import { formatLastReadDate } from '$lib/utils/helpers/date';
+	import { SvelteMap, SvelteDate } from 'svelte/reactivity';
 
 	import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
 	import EditVolumeModal from '$lib/components/modals/EditVolumeModal.svelte';
@@ -20,6 +22,7 @@
 	let { params } = $props<{ params: { id: string } }>();
 
 	// --- State ---
+	let isMounted: boolean = false;
 	let series = $state<Series | null>(null);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
@@ -40,7 +43,7 @@
 		const percent = isRead
 			? 100
 			: Math.min(100, Math.max(0, (currentPage / (vol.pageCount || 1)) * 100));
-		const lastRead = p?.lastReadAt ? new Date(p.lastReadAt).getTime() : 0;
+		const lastRead = p?.lastReadAt ? new SvelteDate(p.lastReadAt).getTime() : 0;
 		return { isRead, percent, lastRead };
 	};
 
@@ -48,7 +51,7 @@
 
 	// --- Derived State ---
 	const volumeStatsMap = $derived.by(() => {
-		const map = new Map<string, { isRead: boolean; percent: number; lastRead: number }>();
+		const map = new SvelteMap<string, { isRead: boolean; percent: number; lastRead: number }>();
 		if (!series?.volumes) return map;
 		for (const vol of series.volumes) {
 			map.set(vol.id, getVolumeStats(vol));
@@ -79,17 +82,18 @@
 			const statsA = volumeStatsMap.get(a.id) ?? defaultVolumeStats;
 			const statsB = volumeStatsMap.get(b.id) ?? defaultVolumeStats;
 			switch (uiState.sortKey) {
-				case 'title':
+				case 'title': {
 					const tA = a.sortTitle || a.title || a.folderName;
 					const tB = b.sortTitle || b.title || b.folderName;
 					return (
 						(uiState.sortOrder === 'asc' ? 1 : -1) *
 						tA.localeCompare(tB, undefined, { numeric: true })
 					);
+				}
 				case 'updated':
 					return (
 						(uiState.sortOrder === 'asc' ? 1 : -1) *
-						(new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+						(new SvelteDate(a.createdAt).getTime() - new SvelteDate(b.createdAt).getTime())
 					);
 				case 'lastRead':
 					return (uiState.sortOrder === 'asc' ? 1 : -1) * (statsA.lastRead - statsB.lastRead);
@@ -125,7 +129,7 @@
 			const data = await apiFetch(`/api/library/series/${id}`, {
 				cache: true,
 				onStaleRefetch: (data) => {
-					series = data as Series;
+					if (isMounted) series = data as Series;
 				}
 			});
 			series = data as Series;
@@ -142,7 +146,7 @@
 					series.id
 				);
 			}
-		} catch (e: any) {
+		} catch (e) {
 			error = (e as Error).message;
 		} finally {
 			isLoading = false;
@@ -157,8 +161,8 @@
 			await apiFetch(`/api/library/series/${series.id}/cover`, { method: 'POST', body: formData });
 			await fetchSeriesData(series.id);
 			coverRefreshTrigger++;
-		} catch (e: any) {
-			error = e.message;
+		} catch (e) {
+			error = (e as Error).message;
 		}
 		fileInput.value = '';
 	};
@@ -219,15 +223,18 @@
 	};
 
 	// --- Effects ---
+
 	$effect(() => {
-		if (browser && $user === null) goto('/login');
+		if (browser && $user === null) goto(resolve('/login', {}));
 	});
 	$effect(() => {
 		// Dependency tracking: include libraryVersion to force re-fetches
-		const _version = uiState.libraryVersion;
+
+		isMounted = true;
 		if (seriesId && $user) fetchSeriesData(seriesId);
 		// CLEANUP: Flush pending writes when leaving this page
 		return () => {
+			isMounted = false;
 			metadataOps.flush();
 		};
 	});
@@ -309,7 +316,7 @@
 								isRead: stats.isRead,
 								showBar: stats.percent > 0 || stats.isRead
 							}}
-							href={`/volume/${vol.id}`}
+							href={resolve(`/volume/${vol.id}`, {})}
 							mainStat={`${vol.progress[0]?.page ?? 0}/${vol.pageCount} P`}
 							subStat={formatLastReadDate(vol.progress[0]?.lastReadAt)}
 							onSelect={(e) => handleVolumeClick(e, vol)}

@@ -3,7 +3,7 @@ import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { libraryCache } from './caches/libraryCache';
 import { HttpError } from '../types/error';
 
-function extractTags(userId: string, data: any, hints: string[]): string[] {
+function extractTags(userId: string, data: Record<string, any>, hints: string[]): string[] {
   const tags = new Set<string>();
 
   for (const hint of hints) {
@@ -94,7 +94,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
     { timestampFormat: 'iso8601' }
   );
 
-  let basePrisma = new PrismaClient({ adapter });
+  const basePrisma = new PrismaClient({ adapter });
 
   // --- EXTENSION 1: Stats & Counters ---
   const statsClient = basePrisma.$extends({
@@ -260,9 +260,11 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
 
           if (mutations.includes(operation)) {
             const m = model.toLowerCase();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const userId = (args as any).where?.userId || (args as any).data?.userId || (args as any).where?.ownerId;
 
             // The ID of the primary record being mutated
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const id = (args as any).where?.id || (args as any).data?.id || (result as any)?.id;
             const tagsToClear = new Set<string>();
             const uid = userId?.toLowerCase();

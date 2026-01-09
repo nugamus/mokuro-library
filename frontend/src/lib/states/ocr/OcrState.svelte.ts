@@ -1,5 +1,5 @@
 import type { PanzoomObject } from '@panzoom/panzoom';
-import type { MokuroBlock, MokuroPage, PatchOperation } from '$lib/types';
+import type { MokuroPage, PatchOperation } from '$lib/types';
 import { readerState } from '$lib/states/reader/ReaderState.svelte';
 
 export class OcrState {
@@ -28,25 +28,25 @@ export class OcrState {
     if (!rect.height) return 1;
 
     // Font scale is ratio of Rendered Height / Image Height / Zoom
-    return rect.height / this.page.img_height / this.panzoomInstance.getScale() * devicePixelRatio;
+    return (
+      (rect.height / this.page.img_height / this.panzoomInstance.getScale()) * devicePixelRatio
+    );
   });
 
   imgWidth = $derived(this.page?.img_width ?? 0);
   imgHeight = $derived(this.page?.img_height ?? 0);
 
-  // --- Actions ---
-
   dispatch(
     subPath: string,
     op: 'replace' | 'add' | 'remove' | 'reorder', // Added 'reorder'
-    value: any,
-    oldValue?: any,
+    value: unknown,
+    oldValue?: unknown,
     newOrder?: number[] // Added specific optional param
   ) {
     if (this.pageIndex === -1) return;
 
     const patch: PatchOperation = {
-      op: op as any,
+      op: op as PatchOperation['op'],
       path: `/pages/${this.pageIndex}/${subPath}`,
       ...(op === 'reorder' ? { new_order: newOrder } : { value, old_value: oldValue })
     } as PatchOperation;

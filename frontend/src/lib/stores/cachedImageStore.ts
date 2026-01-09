@@ -1,4 +1,5 @@
 import { browser } from '$app/environment';
+import { apiFetch } from '$lib/services/api';
 
 // This map stores the *promises* of the blob URLs.
 // This is the key to deduplicating requests.
@@ -16,15 +17,18 @@ async function fetchAndCreateBlob(src: string): Promise<string> {
   if (!browser) return '';
 
   try {
-    const response = await fetch(src);
-    if (!response.ok) throw new Error(`Failed to fetch ${src}`);
+    const response = await apiFetch(src);
 
-    const blob = await response.blob();
-    const blobUrl = URL.createObjectURL(blob);
+    if (response instanceof Response) {
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
 
-    // Track this blob URL for cleanup
-    createdBlobUrls.add(blobUrl);
-    return blobUrl;
+      // Track this blob URL for cleanup
+      createdBlobUrls.add(blobUrl);
+      return blobUrl;
+    }
+
+    throw new Error(`Invalid response type for image fetch - expected Response object`);
   } catch (e) {
     console.error('Failed to load image:', e);
     throw e;
@@ -41,10 +45,11 @@ export const optimizeSrc = (src: string, browser: boolean) => {
   try {
     const url = new URL(src, window.location.origin);
     const isOptimizable =
-      url.pathname.startsWith('/api/files/volume/') ||
-      url.pathname.startsWith('/api/files/series/');
+			url.pathname.startsWith('/api/files/volume/') ||
+			url.pathname.startsWith('/api/files/series/');
     if (!isOptimizable) return src;
-    if (url.searchParams.has('w') || url.searchParams.has('h') || url.searchParams.has('format')) return src;
+    if (url.searchParams.has('w') || url.searchParams.has('h') || url.searchParams.has('format'))
+      return src;
 
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const viewportHeight = window.innerHeight || 900;
@@ -57,12 +62,12 @@ export const optimizeSrc = (src: string, browser: boolean) => {
   } catch {
     return src;
   }
-}
+};
 
 export const imageStore = {
   /**
-   * Gets an image blob URL from the session cache or network.
-   */
+	 * Gets an image blob URL from the session cache or network.
+	 */
   get: (src: string): Promise<string> => {
     // 1. Check if a promise for this src already exists.
     let request = imagePromiseCache.get(src);
@@ -80,9 +85,9 @@ export const imageStore = {
   },
 
   /**
-   * Clears the session cache and revokes all blob URLs.
-   * This is called on navigation to prevent memory leaks.
-   */
+	 * Clears the session cache and revokes all blob URLs.
+	 * This is called on navigation to prevent memory leaks.
+	 */
   clear: () => {
     console.log('Clearing image store, revoking URLs...');
     for (const url of createdBlobUrls) {

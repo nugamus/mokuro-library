@@ -29,107 +29,107 @@
 	let { children } = $props();
 
 	// Lazy-loaded modal components
-	let UploadModal = $state<any>(null);
-	let StatisticsModal = $state<any>(null);
-	let AboutModal = $state<any>(null);
-	let AppearanceModal = $state<any>(null);
+	let UploadModal = $state<unknown>(null);
+	let StatisticsModal = $state<unknown>(null);
+	let AboutModal = $state<unknown>(null);
+	let AppearanceModal = $state<unknown>(null);
 	let didPrefetch = $state(false);
 
 	// Load modals when needed
 	$effect(() => {
-		if (uiState.isUploadOpen && !UploadModal) {
-			loadUploadModal().then((m) => (UploadModal = m.default));
-		}
+	  if (uiState.isUploadOpen && !UploadModal) {
+	    loadUploadModal().then((m) => (UploadModal = m.default));
+	  }
 	});
 
 	$effect(() => {
-		if (uiState.isStatsOpen && !StatisticsModal) {
-			loadStatisticsModal().then((m) => (StatisticsModal = m.default));
-		}
+	  if (uiState.isStatsOpen && !StatisticsModal) {
+	    loadStatisticsModal().then((m) => (StatisticsModal = m.default));
+	  }
 	});
 
 	$effect(() => {
-		if (uiState.isAboutOpen && !AboutModal) {
-			loadAboutModal().then((m) => (AboutModal = m.default));
-		}
+	  if (uiState.isAboutOpen && !AboutModal) {
+	    loadAboutModal().then((m) => (AboutModal = m.default));
+	  }
 	});
 
 	$effect(() => {
-		if (uiState.isAppearanceOpen && !AppearanceModal) {
-			loadAppearanceModal().then((m) => (AppearanceModal = m.default));
-		}
+	  if (uiState.isAppearanceOpen && !AppearanceModal) {
+	    loadAppearanceModal().then((m) => (AppearanceModal = m.default));
+	  }
 	});
 
 	onMount(() => {
-		checkAuth();
+	  checkAuth();
 
-		// Start periodic auth monitoring
-		const stopMonitoring = startAuthMonitoring();
-		// Initialize theme (themeStore constructor applies saved theme)
-		// This ensures theme is applied on page load
-		let lastMessage = '';
-		let lastAt = 0;
+	  // Start periodic auth monitoring
+	  const stopMonitoring = startAuthMonitoring();
+	  // Initialize theme (themeStore constructor applies saved theme)
+	  // This ensures theme is applied on page load
+	  let lastMessage = '';
+	  let lastAt = 0;
 
-		const notify = (message: string) => {
-			const now = Date.now();
-			if (message && (message !== lastMessage || now - lastAt > 2000)) {
-				toastStore.error(message);
-				lastMessage = message;
-				lastAt = now;
-			}
-		};
+	  const notify = (message: string) => {
+	    const now = Date.now();
+	    if (message && (message !== lastMessage || now - lastAt > 2000)) {
+	      toastStore.error(message);
+	      lastMessage = message;
+	      lastAt = now;
+	    }
+	  };
 
-		const onError = (event: ErrorEvent) => {
-			if (event?.error?.message) {
-				notify(event.error.message);
-			} else {
-				notify('Unexpected error occurred.');
-			}
-		};
+	  const onError = (event: ErrorEvent) => {
+	    if (event?.error?.message) {
+	      notify(event.error.message);
+	    } else {
+	      notify('Unexpected error occurred.');
+	    }
+	  };
 
-		const onRejection = (event: PromiseRejectionEvent) => {
-			if (event?.reason instanceof Error) {
-				notify(event.reason.message);
-			} else {
-				notify('Unexpected error occurred.');
-			}
-		};
+	  const onRejection = (event: PromiseRejectionEvent) => {
+	    if (event?.reason instanceof Error) {
+	      notify(event.reason.message);
+	    } else {
+	      notify('Unexpected error occurred.');
+	    }
+	  };
 
-		const handleKeydown = (event: KeyboardEvent) => {
-			handleGlobalKeydown(event);
-		};
+	  const handleKeydown = (event: KeyboardEvent) => {
+	    handleGlobalKeydown(event);
+	  };
 
-		window.addEventListener('error', onError);
-		window.addEventListener('unhandledrejection', onRejection);
-		window.addEventListener('keydown', handleKeydown);
+	  window.addEventListener('error', onError);
+	  window.addEventListener('unhandledrejection', onRejection);
+	  window.addEventListener('keydown', handleKeydown);
 
-		return () => {
-			stopMonitoring();
-			window.removeEventListener('error', onError);
-			window.removeEventListener('unhandledrejection', onRejection);
-			window.removeEventListener('keydown', handleKeydown);
-		};
+	  return () => {
+	    stopMonitoring();
+	    window.removeEventListener('error', onError);
+	    window.removeEventListener('unhandledrejection', onRejection);
+	    window.removeEventListener('keydown', handleKeydown);
+	  };
 	});
 
 	$effect(() => {
-		if (!$user || didPrefetch) return;
-		didPrefetch = true;
+	  if (!$user || didPrefetch) return;
+	  didPrefetch = true;
 
-		contributionsStore.refresh();
+	  contributionsStore.refresh();
 
-		// Prefetch app data after login
-		prefetchAppData();
-		prefetchCommonRoutes();
+	  // Prefetch app data after login
+	  prefetchAppData();
+	  prefetchCommonRoutes();
 	});
 
 	$effect(() => {
-		if ($user === null) {
-			didPrefetch = false;
-		}
+	  if ($user === null) {
+	    didPrefetch = false;
+	  }
 	});
 
 	$effect(() => {
-		keybindStore.setFromSettings($user?.settings ?? null);
+	  keybindStore.setFromSettings($user?.settings ?? null);
 	});
 </script>
 
@@ -157,9 +157,9 @@
 				isOpen={uiState.isUploadOpen}
 				onClose={() => (uiState.isUploadOpen = false)}
 				onUploadSuccess={() => {
-					apiCache.invalidateSeriesCache();
-					apiCache.invalidateLibraryCache(true);
-					uiState.refreshLibrary();
+				  apiCache.invalidateSeriesCache();
+				  apiCache.invalidateLibraryCache(true);
+				  uiState.refreshLibrary();
 				}}
 			/>
 		{/if}

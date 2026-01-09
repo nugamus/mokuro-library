@@ -32,19 +32,25 @@
 			role="presentation"
 		>
 			<!-- Header -->
-			<div class="bg-gradient-to-r from-accent/20 to-accent/10 p-3 sm:p-6 border-b border-accent/30 flex-shrink-0">
+			<div
+				class="bg-gradient-to-r from-accent/20 to-accent/10 p-3 sm:p-6 border-b border-accent/30 flex-shrink-0"
+			>
 				<div class="flex items-start justify-between gap-2 sm:gap-4">
 					<div class="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
 						<div class="text-xl sm:text-3xl flex-shrink-0">🔄</div>
 						<div class="flex-1 min-w-0">
-							<h2 class="text-base sm:text-xl font-extrabold text-theme-primary mb-0.5 sm:mb-1">Rebase Conflict</h2>
+							<h2 class="text-base sm:text-xl font-extrabold text-theme-primary mb-0.5 sm:mb-1">
+								Rebase Conflict
+							</h2>
 							<p class="text-xs sm:text-sm text-theme-secondary truncate">
 								{rebaseModal.seriesTitle} - {rebaseModal.volumeTitle}
 							</p>
 						</div>
 					</div>
 					<div class="flex items-center gap-2 flex-shrink-0">
-						<span class="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-accent/20 text-accent text-[10px] sm:text-xs font-bold border border-accent/30">
+						<span
+							class="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-accent/20 text-accent text-[10px] sm:text-xs font-bold border border-accent/30"
+						>
 							{rebaseModal.currentConflictIndex + 1} / {rebaseModal.conflicts.length}
 						</span>
 					</div>
@@ -55,7 +61,9 @@
 			<div class="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-4">
 				<!-- Conflict Type Badge & Location -->
 				<div class="flex items-center justify-between gap-2 sm:gap-3 flex-wrap">
-					<span class="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-status-warning/20 text-status-warning text-[10px] sm:text-sm font-bold border border-status-warning/30">
+					<span
+						class="px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg bg-status-warning/20 text-status-warning text-[10px] sm:text-sm font-bold border border-status-warning/30"
+					>
 						{getConflictTypeLabel(currentConflict.type)}
 					</span>
 					<span class="text-[10px] sm:text-xs text-theme-tertiary font-semibold">
@@ -91,13 +99,17 @@
 				<!-- Visual Comparison -->
 				<div class="grid grid-cols-2 gap-2 sm:gap-3">
 					<!-- Admin Version -->
-					<div class="bg-theme-surface/30 border border-accent/30 sm:border-2 rounded-lg sm:rounded-xl overflow-hidden">
+					<div
+						class="bg-theme-surface/30 border border-accent/30 sm:border-2 rounded-lg sm:rounded-xl overflow-hidden"
+					>
 						<div class="bg-accent/20 px-2 py-1.5 sm:px-3 sm:py-2 border-b border-accent/30">
 							<span class="text-[10px] sm:text-xs font-bold text-accent">✓ Official</span>
 						</div>
 						<div class="p-2 sm:p-3 space-y-2">
 							<!-- Readable Image -->
-							<div class="bg-theme-main border border-theme-border rounded-md overflow-hidden w-full h-32 sm:h-40 md:h-48 lg:h-56 flex items-center justify-center flex-shrink-0">
+							<div
+								class="bg-theme-main border border-theme-border rounded-md overflow-hidden w-full h-32 sm:h-40 md:h-48 lg:h-56 flex items-center justify-center flex-shrink-0"
+							>
 								<div class="text-center text-theme-tertiary">
 									<div class="text-3xl sm:text-4xl md:text-5xl mb-2">📄</div>
 									<div class="text-xs sm:text-sm">Panel</div>
@@ -105,9 +117,13 @@
 							</div>
 							<!-- Text -->
 							<div class="bg-theme-main border border-theme-border rounded-md p-2 sm:p-3">
-								<div class="text-[9px] sm:text-xs text-theme-tertiary mb-1 sm:mb-1.5 font-semibold">Text:</div>
+								<div class="text-[9px] sm:text-xs text-theme-tertiary mb-1 sm:mb-1.5 font-semibold">
+									Text:
+								</div>
 								{#if currentConflict.adminValue !== null}
-									<div class="text-xs sm:text-base md:text-sm text-theme-primary font-medium leading-snug sm:leading-relaxed break-words max-h-24 sm:max-h-32 md:max-h-40 overflow-y-auto">
+									<div
+										class="text-xs sm:text-base md:text-sm text-theme-primary font-medium leading-snug sm:leading-relaxed break-words max-h-24 sm:max-h-32 md:max-h-40 overflow-y-auto"
+									>
 										{currentConflict.adminValue}
 									</div>
 								{:else}
@@ -118,13 +134,19 @@
 					</div>
 
 					<!-- User Version -->
-					<div class="bg-theme-surface/30 border border-theme-primary/30 sm:border-2 rounded-lg sm:rounded-xl overflow-hidden">
-						<div class="bg-theme-primary/20 px-2 py-1.5 sm:px-3 sm:py-2 border-b border-theme-primary/30">
+					<div
+						class="bg-theme-surface/30 border border-theme-primary/30 sm:border-2 rounded-lg sm:rounded-xl overflow-hidden"
+					>
+						<div
+							class="bg-theme-primary/20 px-2 py-1.5 sm:px-3 sm:py-2 border-b border-theme-primary/30"
+						>
 							<span class="text-[10px] sm:text-xs font-bold text-theme-primary">✏️ Your Edit</span>
 						</div>
 						<div class="p-2 sm:p-3 space-y-2">
 							<!-- Readable Image -->
-							<div class="bg-theme-main border border-theme-border rounded-md overflow-hidden w-full h-32 sm:h-40 md:h-48 lg:h-56 flex items-center justify-center flex-shrink-0">
+							<div
+								class="bg-theme-main border border-theme-border rounded-md overflow-hidden w-full h-32 sm:h-40 md:h-48 lg:h-56 flex items-center justify-center flex-shrink-0"
+							>
 								<div class="text-center text-theme-tertiary">
 									<div class="text-3xl sm:text-4xl md:text-5xl mb-2">📄</div>
 									<div class="text-xs sm:text-sm">Panel</div>
@@ -132,8 +154,12 @@
 							</div>
 							<!-- Text -->
 							<div class="bg-theme-main border border-theme-border rounded-md p-2 sm:p-3">
-								<div class="text-[9px] sm:text-xs text-theme-tertiary mb-1 sm:mb-1.5 font-semibold">Text:</div>
-								<div class="text-xs sm:text-base md:text-sm text-theme-primary font-medium leading-snug sm:leading-relaxed break-words max-h-24 sm:max-h-32 md:max-h-40 overflow-y-auto">
+								<div class="text-[9px] sm:text-xs text-theme-tertiary mb-1 sm:mb-1.5 font-semibold">
+									Text:
+								</div>
+								<div
+									class="text-xs sm:text-base md:text-sm text-theme-primary font-medium leading-snug sm:leading-relaxed break-words max-h-24 sm:max-h-32 md:max-h-40 overflow-y-auto"
+								>
 									{currentConflict.userValue}
 								</div>
 							</div>
@@ -147,16 +173,16 @@
 						Choose Resolution:
 					</div>
 					<div class="grid grid-cols-1 gap-2">
-						{#each availableResolutions as resolution}
+						{#each availableResolutions as resolution (resolution)}
 							<button
 								onclick={() => onResolve(resolution)}
 								class="p-3 rounded-lg border-2 transition-all text-left {resolution === 'keep_admin'
-									? 'bg-accent/10 border-accent/30 hover:bg-accent/20 hover:border-accent'
-									: resolution === 'keep_mine'
-										? 'bg-theme-primary/10 border-theme-primary/30 hover:bg-theme-primary/20 hover:border-theme-primary'
-										: resolution === 'resurrect'
-											? 'bg-status-success/10 border-status-success/30 hover:bg-status-success/20 hover:border-status-success'
-											: 'bg-theme-surface/60 border-theme-border hover:bg-theme-surface-hover'}"
+								  ? 'bg-accent/10 border-accent/30 hover:bg-accent/20 hover:border-accent'
+								  : resolution === 'keep_mine'
+								    ? 'bg-theme-primary/10 border-theme-primary/30 hover:bg-theme-primary/20 hover:border-theme-primary'
+								    : resolution === 'resurrect'
+								      ? 'bg-status-success/10 border-status-success/30 hover:bg-status-success/20 hover:border-status-success'
+								      : 'bg-theme-surface/60 border-theme-border hover:bg-theme-surface-hover'}"
 							>
 								<div class="flex items-center gap-3">
 									<div class="text-xl flex-shrink-0">
@@ -171,13 +197,15 @@
 										{/if}
 									</div>
 									<div class="flex-1 min-w-0">
-										<div class="font-bold text-sm {resolution === 'keep_admin'
-											? 'text-accent'
-											: resolution === 'keep_mine'
-												? 'text-theme-primary'
-												: resolution === 'resurrect'
-													? 'text-status-success'
-													: 'text-theme-secondary'}">
+										<div
+											class="font-bold text-sm {resolution === 'keep_admin'
+											  ? 'text-accent'
+											  : resolution === 'keep_mine'
+											    ? 'text-theme-primary'
+											    : resolution === 'resurrect'
+											      ? 'text-status-success'
+											      : 'text-theme-secondary'}"
+										>
 											{#if resolution === 'keep_admin'}
 												Keep Official
 											{:else if resolution === 'keep_mine'}
@@ -197,7 +225,9 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="p-3 sm:p-6 bg-theme-surface/30 border-t border-theme-border flex gap-2 sm:gap-3 flex-shrink-0 items-center">
+			<div
+				class="p-3 sm:p-6 bg-theme-surface/30 border-t border-theme-border flex gap-2 sm:gap-3 flex-shrink-0 items-center"
+			>
 				<button
 					onclick={onAbort}
 					class="px-3 py-1.5 sm:px-6 sm:py-2.5 rounded-lg font-semibold text-xs sm:text-sm bg-theme-surface text-theme-primary hover:bg-theme-surface-hover border sm:border-2 border-theme-border transition-all"

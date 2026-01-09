@@ -1,8 +1,8 @@
 <script lang="ts">
 	let {
-		color = '#1e293b',
-		onClose,
-		onColorChange
+	  color = '#1e293b',
+	  onClose,
+	  onColorChange
 	} = $props<{
 		color?: string;
 		onClose: () => void;
@@ -16,79 +16,79 @@
 
 	// Convert hex to HSL
 	function hexToHsl(hex: string): { h: number; s: number; l: number } {
-		// Handle hex with or without alpha
-		const cleanHex = hex.length === 9 ? hex.slice(0, 7) : hex;
-		const r = parseInt(cleanHex.slice(1, 3), 16) / 255;
-		const g = parseInt(cleanHex.slice(3, 5), 16) / 255;
-		const b = parseInt(cleanHex.slice(5, 7), 16) / 255;
+	  // Handle hex with or without alpha
+	  const cleanHex = hex.length === 9 ? hex.slice(0, 7) : hex;
+	  const r = parseInt(cleanHex.slice(1, 3), 16) / 255;
+	  const g = parseInt(cleanHex.slice(3, 5), 16) / 255;
+	  const b = parseInt(cleanHex.slice(5, 7), 16) / 255;
 
-		const max = Math.max(r, g, b);
-		const min = Math.min(r, g, b);
-		let h = 0;
-		let s = 0;
-		const l = (max + min) / 2;
+	  const max = Math.max(r, g, b);
+	  const min = Math.min(r, g, b);
+	  let h = 0;
+	  let s = 0;
+	  const l = (max + min) / 2;
 
-		if (max !== min) {
-			const d = max - min;
-			s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-			switch (max) {
-				case r:
-					h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
-					break;
-				case g:
-					h = ((b - r) / d + 2) / 6;
-					break;
-				case b:
-					h = ((r - g) / d + 4) / 6;
-					break;
-			}
-		}
+	  if (max !== min) {
+	    const d = max - min;
+	    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+	    switch (max) {
+	    case r:
+	      h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+	      break;
+	    case g:
+	      h = ((b - r) / d + 2) / 6;
+	      break;
+	    case b:
+	      h = ((r - g) / d + 4) / 6;
+	      break;
+	    }
+	  }
 
-		return { h: h * 360, s: s * 100, l: l * 100 };
+	  return { h: h * 360, s: s * 100, l: l * 100 };
 	}
 
 	// Convert HSL to hex
 	function hslToHex(h: number, s: number, l: number): string {
-		s /= 100;
-		l /= 100;
-		const c = (1 - Math.abs(2 * l - 1)) * s;
-		const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-		const m = l - c / 2;
-		let r = 0;
-		let g = 0;
-		let b = 0;
+	  s /= 100;
+	  l /= 100;
+	  const c = (1 - Math.abs(2 * l - 1)) * s;
+	  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+	  const m = l - c / 2;
+	  let r = 0;
+	  let g = 0;
+	  let b = 0;
 
-		if (0 <= h && h < 60) {
-			r = c;
-			g = x;
-			b = 0;
-		} else if (60 <= h && h < 120) {
-			r = x;
-			g = c;
-			b = 0;
-		} else if (120 <= h && h < 180) {
-			r = 0;
-			g = c;
-			b = x;
-		} else if (180 <= h && h < 240) {
-			r = 0;
-			g = x;
-			b = c;
-		} else if (240 <= h && h < 300) {
-			r = x;
-			g = 0;
-			b = c;
-		} else if (300 <= h && h < 360) {
-			r = c;
-			g = 0;
-			b = x;
-		}
+	  if (0 <= h && h < 60) {
+	    r = c;
+	    g = x;
+	    b = 0;
+	  } else if (60 <= h && h < 120) {
+	    r = x;
+	    g = c;
+	    b = 0;
+	  } else if (120 <= h && h < 180) {
+	    r = 0;
+	    g = c;
+	    b = x;
+	  } else if (180 <= h && h < 240) {
+	    r = 0;
+	    g = x;
+	    b = c;
+	  } else if (240 <= h && h < 300) {
+	    r = x;
+	    g = 0;
+	    b = c;
+	  } else if (300 <= h && h < 360) {
+	    r = c;
+	    g = 0;
+	    b = x;
+	  }
 
-		r = Math.round((r + m) * 255);
-		g = Math.round((g + m) * 255);
-		b = Math.round((b + m) * 255);
+	  r = Math.round((r + m) * 255);
+	  g = Math.round((g + m) * 255);
+	  b = Math.round((b + m) * 255);
 
-		return `#${[r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+	  return `#${[r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
 	}
 
 	// Initialize HSL from current color (only once on mount)
@@ -96,145 +96,145 @@
 
 	// Update color when HSL changes and notify parent
 	$effect(() => {
-		const newColor = hslToHex(currentHsl.h, currentHsl.s, currentHsl.l);
-		if (newColor !== color && onColorChange) {
-			onColorChange(newColor);
-		}
+	  const newColor = hslToHex(currentHsl.h, currentHsl.s, currentHsl.l);
+	  if (newColor !== color && onColorChange) {
+	    onColorChange(newColor);
+	  }
 	});
 
 	function handleColorPickerClick(e: MouseEvent) {
-		if (!colorPickerRef) {
-			console.log('ColorPicker: colorPickerRef is not defined');
-			return;
-		}
-		const rect = colorPickerRef.getBoundingClientRect();
-		const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-		const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+	  if (!colorPickerRef) {
+	    console.log('ColorPicker: colorPickerRef is not defined');
+	    return;
+	  }
+	  const rect = colorPickerRef.getBoundingClientRect();
+	  const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+	  const y = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
-		console.log('ColorPicker click:', { x, y, h: currentHsl.h, s: x * 100, l: (1 - y) * 100 });
+	  console.log('ColorPicker click:', { x, y, h: currentHsl.h, s: x * 100, l: (1 - y) * 100 });
 
-		currentHsl = {
-			h: currentHsl.h,
-			s: x * 100,
-			l: (1 - y) * 100
-		};
+	  currentHsl = {
+	    h: currentHsl.h,
+	    s: x * 100,
+	    l: (1 - y) * 100
+	  };
 	}
 
 	function handleColorPickerDrag(e: MouseEvent) {
-		if (!isDragging) return;
-		handleColorPickerClick(e);
+	  if (!isDragging) return;
+	  handleColorPickerClick(e);
 	}
 
 	function handleHueSliderClick(e: MouseEvent) {
-		if (!hueSliderRef) {
-			console.log('ColorPicker: hueSliderRef is not defined');
-			return;
-		}
-		const rect = hueSliderRef.getBoundingClientRect();
-		const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+	  if (!hueSliderRef) {
+	    console.log('ColorPicker: hueSliderRef is not defined');
+	    return;
+	  }
+	  const rect = hueSliderRef.getBoundingClientRect();
+	  const x = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
 
-		console.log('Hue slider click:', { x, newHue: x * 360 });
+	  console.log('Hue slider click:', { x, newHue: x * 360 });
 
-		currentHsl = {
-			...currentHsl,
-			h: x * 360
-		};
+	  currentHsl = {
+	    ...currentHsl,
+	    h: x * 360
+	  };
 	}
 
 	function handleHueSliderDrag(e: MouseEvent) {
-		if (!isDraggingHue) return;
-		handleHueSliderClick(e);
+	  if (!isDraggingHue) return;
+	  handleHueSliderClick(e);
 	}
 
 	function handleHexInput(e: Event) {
-		const value = (e.target as HTMLInputElement).value.replace('#', '');
-		if (/^[0-9A-Fa-f]{6}$/.test(value)) {
-			const hexColor = `#${value}`;
-			currentHsl = hexToHsl(hexColor);
-		}
+	  const value = (e.target as HTMLInputElement).value.replace('#', '');
+	  if (/^[0-9A-Fa-f]{6}$/.test(value)) {
+	    const hexColor = `#${value}`;
+	    currentHsl = hexToHsl(hexColor);
+	  }
 	}
 
 	function handleSet() {
-		console.log('handleSet called, current color:', displayColor);
-		onClose();
+	  console.log('handleSet called, current color:', displayColor);
+	  onClose();
 	}
 
 	function clamp(value: number, min: number, max: number) {
-		return Math.min(max, Math.max(min, value));
+	  return Math.min(max, Math.max(min, value));
 	}
 
 	function handlePickerKeydown(e: KeyboardEvent) {
-		const step = e.shiftKey ? 10 : 2;
-		if (e.key === 'ArrowLeft') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, s: clamp(currentHsl.s - step, 0, 100) };
-		} else if (e.key === 'ArrowRight') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, s: clamp(currentHsl.s + step, 0, 100) };
-		} else if (e.key === 'ArrowUp') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, l: clamp(currentHsl.l + step, 0, 100) };
-		} else if (e.key === 'ArrowDown') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, l: clamp(currentHsl.l - step, 0, 100) };
-		}
+	  const step = e.shiftKey ? 10 : 2;
+	  if (e.key === 'ArrowLeft') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, s: clamp(currentHsl.s - step, 0, 100) };
+	  } else if (e.key === 'ArrowRight') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, s: clamp(currentHsl.s + step, 0, 100) };
+	  } else if (e.key === 'ArrowUp') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, l: clamp(currentHsl.l + step, 0, 100) };
+	  } else if (e.key === 'ArrowDown') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, l: clamp(currentHsl.l - step, 0, 100) };
+	  }
 	}
 
 	function handleHueKeydown(e: KeyboardEvent) {
-		const step = e.shiftKey ? 15 : 5;
-		if (e.key === 'ArrowLeft') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, h: clamp(currentHsl.h - step, 0, 360) };
-		} else if (e.key === 'ArrowRight') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, h: clamp(currentHsl.h + step, 0, 360) };
-		} else if (e.key === 'Home') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, h: 0 };
-		} else if (e.key === 'End') {
-			e.preventDefault();
-			currentHsl = { ...currentHsl, h: 360 };
-		}
+	  const step = e.shiftKey ? 15 : 5;
+	  if (e.key === 'ArrowLeft') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, h: clamp(currentHsl.h - step, 0, 360) };
+	  } else if (e.key === 'ArrowRight') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, h: clamp(currentHsl.h + step, 0, 360) };
+	  } else if (e.key === 'Home') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, h: 0 };
+	  } else if (e.key === 'End') {
+	    e.preventDefault();
+	    currentHsl = { ...currentHsl, h: 360 };
+	  }
 	}
 
 	// Mouse event handlers
 	function startDrag() {
-		isDragging = true;
+	  isDragging = true;
 	}
 
 	function stopDrag() {
-		isDragging = false;
+	  isDragging = false;
 	}
 
 	function startHueDrag() {
-		isDraggingHue = true;
+	  isDraggingHue = true;
 	}
 
 	function stopHueDrag() {
-		isDraggingHue = false;
+	  isDraggingHue = false;
 	}
 
 	$effect(() => {
-		if (typeof window === 'undefined') return;
+	  if (typeof window === 'undefined') return;
 
-		const handleMouseMove = (e: MouseEvent) => {
-			handleColorPickerDrag(e);
-			handleHueSliderDrag(e);
-		};
+	  const handleMouseMove = (e: MouseEvent) => {
+	    handleColorPickerDrag(e);
+	    handleHueSliderDrag(e);
+	  };
 
-		const handleMouseUp = () => {
-			stopDrag();
-			stopHueDrag();
-		};
+	  const handleMouseUp = () => {
+	    stopDrag();
+	    stopHueDrag();
+	  };
 
-		if (isDragging || isDraggingHue) {
-			window.addEventListener('mousemove', handleMouseMove);
-			window.addEventListener('mouseup', handleMouseUp);
-			return () => {
-				window.removeEventListener('mousemove', handleMouseMove);
-				window.removeEventListener('mouseup', handleMouseUp);
-			};
-		}
+	  if (isDragging || isDraggingHue) {
+	    window.addEventListener('mousemove', handleMouseMove);
+	    window.addEventListener('mouseup', handleMouseUp);
+	    return () => {
+	      window.removeEventListener('mousemove', handleMouseMove);
+	      window.removeEventListener('mouseup', handleMouseUp);
+	    };
+	  }
 	});
 
 	// Calculate picker position
@@ -247,13 +247,13 @@
 
 	// Debug: Log when component mounts and when color changes
 	$effect(() => {
-		console.log('ColorPicker mounted/updated:', {
-			color,
-			currentHsl,
-			displayColor,
-			colorPickerRef: !!colorPickerRef,
-			hueSliderRef: !!hueSliderRef
-		});
+	  console.log('ColorPicker mounted/updated:', {
+	    color,
+	    currentHsl,
+	    displayColor,
+	    colorPickerRef: !!colorPickerRef,
+	    hueSliderRef: !!hueSliderRef
+	  });
 	});
 </script>
 
@@ -268,10 +268,10 @@
 		role="button"
 		tabindex="0"
 		onkeydown={(e) => {
-			if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
-				e.preventDefault();
-				onClose();
-			}
+		  if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+		    e.preventDefault();
+		    onClose();
+		  }
 		}}
 		aria-label="Close modal"
 	></div>
@@ -332,13 +332,13 @@
 				class="relative w-full h-48 rounded-xl overflow-hidden cursor-crosshair border border-theme-border"
 				style="background: linear-gradient(to bottom, transparent, black), linear-gradient(to right, white, hsl({currentHsl.h}, 100%, 50%));"
 				onclick={(e) => {
-					e.stopPropagation();
-					handleColorPickerClick(e);
+				  e.stopPropagation();
+				  handleColorPickerClick(e);
 				}}
 				onmousedown={(e) => {
-					e.stopPropagation();
-					startDrag();
-					handleColorPickerClick(e);
+				  e.stopPropagation();
+				  startDrag();
+				  handleColorPickerClick(e);
 				}}
 				onkeydown={handlePickerKeydown}
 				role="button"
@@ -358,13 +358,13 @@
 				class="relative w-full h-8 rounded-lg overflow-hidden cursor-pointer border border-theme-border"
 				style="background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000);"
 				onclick={(e) => {
-					e.stopPropagation();
-					handleHueSliderClick(e);
+				  e.stopPropagation();
+				  handleHueSliderClick(e);
 				}}
 				onmousedown={(e) => {
-					e.stopPropagation();
-					startHueDrag();
-					handleHueSliderClick(e);
+				  e.stopPropagation();
+				  startHueDrag();
+				  handleHueSliderClick(e);
 				}}
 				onkeydown={handleHueKeydown}
 				role="slider"
@@ -408,7 +408,9 @@
 		</div>
 
 		<!-- Footer -->
-		<div class="px-6 py-4 bg-theme-main border-t border-theme-border flex justify-end gap-2 flex-shrink-0">
+		<div
+			class="px-6 py-4 bg-theme-main border-t border-theme-border flex justify-end gap-2 flex-shrink-0"
+		>
 			<button
 				onclick={onClose}
 				class="px-4 py-2 rounded-lg border border-theme-border text-theme-primary hover:bg-theme-surface-hover transition-colors"

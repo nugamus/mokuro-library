@@ -1,16 +1,20 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 
-	let { title, description = '', class: className = '', children } = $props<{
+	let {
+	  title,
+	  description = '',
+	  class: className = '',
+	  children
+	} = $props<{
 		title: string;
 		description?: string;
 		class?: string;
 		children?: Snippet;
 	}>();
 
-	let wrapperClass = $derived(
-		() =>
-			`flex flex-col gap-3 md:flex-row md:items-center md:justify-between ${className}`.trim()
+	let wrapperClass = $derived(() =>
+	  `flex flex-col gap-3 md:flex-row md:items-center md:justify-between ${className}`.trim()
 	);
 </script>
 

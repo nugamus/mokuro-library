@@ -1,8 +1,10 @@
 <script lang="ts">
 	import type { Submission } from '$lib/types';
 	import { apiFetch } from '$lib/services/api';
+	import { SvelteDate } from 'svelte/reactivity';
+	import { resolve } from '$app/paths';
 	import { contributionsStore } from '$lib/stores/contributionsStore';
-import { toastStore } from '$lib/stores/toastStore.svelte.ts';
+	import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	import { onMount } from 'svelte';
 
 	let submissions = $state<Submission[]>([]);
@@ -12,84 +14,83 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
 	// Filtered submissions based on status
 	let filteredSubmissions = $derived(
-		statusFilter === 'all'
-			? submissions
-			: submissions.filter((s) => s.status === statusFilter)
+	  statusFilter === 'all' ? submissions : submissions.filter((s) => s.status === statusFilter)
 	);
 
 	// Load submissions
 	async function loadSubmissions() {
-		loading = true;
-		error = null;
-		try {
-			const data = await apiFetch<Submission[]>('/api/contributions/submissions', {
-				showErrorToast: false
-			});
-			submissions = data || [];
-		} catch (e: any) {
-			error = e.message || 'Failed to load submissions';
-			console.error('Failed to load submissions', e);
-		} finally {
-			loading = false;
-		}
+	  loading = true;
+	  error = null;
+	  try {
+	    const data = (await apiFetch('/api/contributions/submissions', {
+	      showErrorToast: false
+	    })) as Submission[];
+	    submissions = data || [];
+	  } catch (e) {
+	    const msg = (e as Error).message || 'Failed to load submissions';
+	    error = msg;
+	    console.error('Failed to load submissions', e);
+	  } finally {
+	    loading = false;
+	  }
 	}
 
 	// Cancel a pending submission
 	async function handleCancel(submissionId: string) {
-		if (!confirm('Are you sure you want to cancel this submission?')) return;
+	  if (!confirm('Are you sure you want to cancel this submission?')) return;
 
-		try {
-			await contributionsStore.cancelSubmission(submissionId);
-			toastStore.success('Submission cancelled successfully');
-			// Reload submissions
-			await loadSubmissions();
-		} catch (e: any) {
-			toastStore.error(e.message || 'Failed to cancel submission');
-		}
+	  try {
+	    await contributionsStore.cancelSubmission(submissionId);
+	    toastStore.success('Submission cancelled successfully');
+	    // Reload submissions
+	    await loadSubmissions();
+	  } catch (e) {
+	    toastStore.error((e as Error).message || 'Failed to cancel submission');
+	  }
 	}
 
 	// Format date
 	function formatDate(dateString: string): string {
-		const date = new Date(dateString);
-		return date.toLocaleDateString('en-US', {
-			year: 'numeric',
-			month: 'short',
-			day: 'numeric',
-			hour: '2-digit',
-			minute: '2-digit'
-		});
+	  const date = new SvelteDate(dateString);
+	  return date.toLocaleDateString('en-US', {
+	    year: 'numeric',
+	    month: 'short',
+	    day: 'numeric',
+	    hour: '2-digit',
+	    minute: '2-digit'
+	  });
 	}
 
 	// Get status badge styles
 	function getStatusStyles(status: string) {
-		switch (status) {
-			case 'pending':
-				return 'bg-status-warning/20 text-status-warning border-status-warning/30';
-			case 'accepted':
-				return 'bg-status-success/20 text-status-success border-status-success/30';
-			case 'rejected':
-				return 'bg-status-danger/20 text-status-danger border-status-danger/30';
-			default:
-				return 'bg-theme-surface text-theme-secondary border-theme-border';
-		}
+	  switch (status) {
+	  case 'pending':
+	    return 'bg-status-warning/20 text-status-warning border-status-warning/30';
+	  case 'accepted':
+	    return 'bg-status-success/20 text-status-success border-status-success/30';
+	  case 'rejected':
+	    return 'bg-status-danger/20 text-status-danger border-status-danger/30';
+	  default:
+	    return 'bg-theme-surface text-theme-secondary border-theme-border';
+	  }
 	}
 
 	// Get status emoji
 	function getStatusEmoji(status: string) {
-		switch (status) {
-			case 'pending':
-				return '⏳';
-			case 'accepted':
-				return '✅';
-			case 'rejected':
-				return '❌';
-			default:
-				return '❓';
-		}
+	  switch (status) {
+	  case 'pending':
+	    return '⏳';
+	  case 'accepted':
+	    return '✅';
+	  case 'rejected':
+	    return '❌';
+	  default:
+	    return '❓';
+	  }
 	}
 
 	onMount(() => {
-		loadSubmissions();
+	  loadSubmissions();
 	});
 </script>
 
@@ -97,13 +98,12 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 	<!-- Filter Bar -->
 	<div class="flex items-center gap-2 flex-wrap">
 		<div class="text-xs font-semibold text-theme-tertiary uppercase tracking-wide">Filter:</div>
-		{#each ['all', 'pending', 'accepted', 'rejected'] as filter}
+		{#each ['all', 'pending', 'accepted', 'rejected'] as filter (filter)}
 			<button
 				onclick={() => (statusFilter = filter as typeof statusFilter)}
-				class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {statusFilter ===
-				filter
-					? 'bg-accent text-white'
-					: 'bg-theme-surface text-theme-secondary hover:bg-theme-surface-hover border border-theme-border'}"
+				class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all {statusFilter === filter
+				  ? 'bg-accent text-white'
+				  : 'bg-theme-surface text-theme-secondary hover:bg-theme-surface-hover border border-theme-border'}"
 			>
 				{filter.charAt(0).toUpperCase() + filter.slice(1)}
 				{#if filter === 'all'}
@@ -143,14 +143,14 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 			</div>
 			<div class="text-xs text-theme-tertiary">
 				{statusFilter === 'all'
-					? 'Click "Submit to Library" to share your volumes with the admin'
-					: `You don't have any ${statusFilter} submissions`}
+				  ? 'Click "Submit to Library" to share your volumes with the admin'
+				  : `You don't have any ${statusFilter} submissions`}
 			</div>
 		</div>
 	{:else}
 		<!-- Submissions List -->
 		<div class="space-y-3">
-			{#each filteredSubmissions as submission}
+			{#each filteredSubmissions as submission (submission.id)}
 				<div
 					class="bg-theme-surface/30 border border-theme-border rounded-lg overflow-hidden hover:border-accent/30 transition-all"
 				>
@@ -162,7 +162,7 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 								<div class="flex items-center gap-2 mb-2">
 									<span
 										class="px-2 py-1 rounded-lg text-xs font-bold border {getStatusStyles(
-											submission.status
+										  submission.status
 										)}"
 									>
 										{getStatusEmoji(submission.status)}
@@ -207,9 +207,7 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
 						<!-- Review Note (if rejected) -->
 						{#if submission.status === 'rejected' && submission.reviewNote}
-							<div
-								class="bg-status-danger/10 border border-status-danger/30 rounded-lg p-3 mt-3"
-							>
+							<div class="bg-status-danger/10 border border-status-danger/30 rounded-lg p-3 mt-3">
 								<div class="text-xs font-bold text-status-danger mb-1">Rejection Reason:</div>
 								<div class="text-xs text-theme-secondary">{submission.reviewNote}</div>
 								{#if submission.reviewedAt}
@@ -222,12 +220,8 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
 						<!-- Acceptance Info -->
 						{#if submission.status === 'accepted' && submission.reviewedAt}
-							<div
-								class="bg-status-success/10 border border-status-success/30 rounded-lg p-3 mt-3"
-							>
-								<div class="text-xs font-bold text-status-success mb-1">
-									✅ Accepted by Admin
-								</div>
+							<div class="bg-status-success/10 border border-status-success/30 rounded-lg p-3 mt-3">
+								<div class="text-xs font-bold text-status-success mb-1">✅ Accepted by Admin</div>
 								<div class="text-[10px] text-theme-tertiary">
 									Reviewed {formatDate(submission.reviewedAt)}
 								</div>
@@ -241,7 +235,7 @@ import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 					<!-- View Details Button -->
 					<div class="bg-theme-surface/50 border-t border-theme-border px-4 py-2">
 						<a
-							href="/contributions/submissions/{submission.id}"
+							href={resolve(`/contributions/submissions/${submission.id}`)}
 							class="text-xs text-accent hover:text-accent-hover font-semibold transition-colors"
 						>
 							View Details →

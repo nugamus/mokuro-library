@@ -4,8 +4,8 @@ import util from 'util';
 import { pipeline } from 'stream';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { Prisma } from '../../generated/prisma/client';
-import { safeFilename } from '../../utils/safeFilename';
-import { drainStream } from '../../utils/stream';
+import { safeFilename } from '../safeFilename';
+import { drainStream } from '../stream';
 import { deleteFolder } from './delete';
 import { enqueueUploadJob } from '../../lib/uploadQueue';
 
@@ -154,7 +154,7 @@ export async function handleLibraryUpload(
         });
       } else {
         // Prepare partial update
-        let updateData: Prisma.SeriesUpdateInput = { updatedAt: new Date() };
+        const updateData: Prisma.SeriesUpdateInput = { updatedAt: new Date() };
         if (metadata.series_title && !series.title) {
           updateData.title = metadata.series_title;
           updateData.sortTitle = metadata.series_title;

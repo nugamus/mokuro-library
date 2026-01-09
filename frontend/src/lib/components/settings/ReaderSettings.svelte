@@ -9,12 +9,12 @@
 
 	// Helper Proxy for Zoom Mode (Boolean in State <-> String in UI)
 	class ZoomProxy {
-		get value() {
-			return readerState.retainZoom ? 'keep' : 'fit-screen';
-		}
-		set value(v: string) {
-			readerState.retainZoom = v === 'keep';
-		}
+	  get value() {
+	    return readerState.retainZoom ? 'keep' : 'fit-screen';
+	  }
+	  set value(v: string) {
+	    readerState.retainZoom = v === 'keep';
+	  }
 	}
 	const zoomProxy = new ZoomProxy();
 
@@ -22,24 +22,24 @@
 	let showTimer = $state(false);
 
 	const layoutOptions = $derived.by(() => [
-		{
-			value: 'single',
-			label: 'Single',
-			icon: singleIcon,
-			shortcut: ($keybindStore.layoutSingle || []).join(' / ')
-		},
-		{
-			value: 'double',
-			label: 'Double',
-			icon: doubleIcon,
-			shortcut: ($keybindStore.layoutDouble || []).join(' / ')
-		},
-		{
-			value: 'vertical',
-			label: 'Vertical',
-			icon: verticalIcon,
-			shortcut: ($keybindStore.layoutVertical || []).join(' / ')
-		}
+	  {
+	    value: 'single',
+	    label: 'Single',
+	    icon: singleIcon,
+	    shortcut: ($keybindStore.layoutSingle || []).join(' / ')
+	  },
+	  {
+	    value: 'double',
+	    label: 'Double',
+	    icon: doubleIcon,
+	    shortcut: ($keybindStore.layoutDouble || []).join(' / ')
+	  },
+	  {
+	    value: 'vertical',
+	    label: 'Vertical',
+	    icon: verticalIcon,
+	    shortcut: ($keybindStore.layoutVertical || []).join(' / ')
+	  }
 	]);
 </script>
 
@@ -112,8 +112,8 @@
 		bind:value={readerState.readingDirection}
 		layout={[2]}
 		options={[
-			{ value: 'ltr', label: 'Left to Right' },
-			{ value: 'rtl', label: 'Right to Left' }
+		  { value: 'ltr', label: 'Left to Right' },
+		  { value: 'rtl', label: 'Right to Left' }
 		]}
 	/>
 
@@ -124,11 +124,11 @@
 		bind:value={zoomProxy.value}
 		layout={[2]}
 		options={[
-			{ value: 'fit-screen', label: 'Fit to Screen' },
-			// { value: 'fit-width', label: 'Fit to Width' },
-			// { value: 'original', label: 'Original Size' },
-			{ value: 'keep', label: 'Keep Zoom' }
-			// { value: 'keep-pan', label: 'Keep Zoom & Pan Top' }
+		  { value: 'fit-screen', label: 'Fit to Screen' },
+		  // { value: 'fit-width', label: 'Fit to Width' },
+		  // { value: 'original', label: 'Original Size' },
+		  { value: 'keep', label: 'Keep Zoom' }
+		  // { value: 'keep-pan', label: 'Keep Zoom & Pan Top' }
 		]}
 	/>
 
@@ -410,7 +410,3 @@ Helps reduce eye strain during night reading."
 			sepia(var(--reader-red-shift, 0%)) hue-rotate(-20deg) saturate(120%);
 	}
 </style>
-
-
-
-

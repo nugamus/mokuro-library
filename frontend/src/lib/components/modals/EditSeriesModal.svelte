@@ -33,7 +33,7 @@
 
 	// Detect if there are unsaved changes
 	let hasUnsavedChanges = $derived(
-		title !== originalTitle ||
+	  title !== originalTitle ||
 			japaneseTitle !== originalJapaneseTitle ||
 			romajiTitle !== originalRomajiTitle ||
 			description !== originalDescription
@@ -41,60 +41,60 @@
 
 	// Reset state when modal opens
 	$effect(() => {
-		if (isOpen) {
-			title = series?.title ?? '';
-			japaneseTitle = series?.japaneseTitle ?? '';
-			romajiTitle = series?.romajiTitle ?? '';
-			description = series?.description ?? '';
-			isSaving = false;
+	  if (isOpen) {
+	    title = series?.title ?? '';
+	    japaneseTitle = series?.japaneseTitle ?? '';
+	    romajiTitle = series?.romajiTitle ?? '';
+	    description = series?.description ?? '';
+	    isSaving = false;
 
-			// Store original values
-			originalTitle = series?.title ?? '';
-			originalJapaneseTitle = series?.japaneseTitle ?? '';
-			originalRomajiTitle = series?.romajiTitle ?? '';
-			originalDescription = series?.description ?? '';
-		}
+	    // Store original values
+	    originalTitle = series?.title ?? '';
+	    originalJapaneseTitle = series?.japaneseTitle ?? '';
+	    originalRomajiTitle = series?.romajiTitle ?? '';
+	    originalDescription = series?.description ?? '';
+	  }
 	});
 
 	const handleClose = () => {
-		// Prevent closing if save is in progress
-		if (isSaving) {
-			return;
-		}
+	  // Prevent closing if save is in progress
+	  if (isSaving) {
+	    return;
+	  }
 
-		// Warn if there are unsaved changes
-		if (hasUnsavedChanges) {
-			const confirmed = confirm(
-				'You have unsaved changes. Are you sure you want to close without saving?'
-			);
-			if (!confirmed) {
-				return;
-			}
-		}
+	  // Warn if there are unsaved changes
+	  if (hasUnsavedChanges) {
+	    const confirmed = confirm(
+	      'You have unsaved changes. Are you sure you want to close without saving?'
+	    );
+	    if (!confirmed) {
+	      return;
+	    }
+	  }
 
-		onClose();
+	  onClose();
 	};
 
 	const saveSeriesMetadata = async () => {
-		if (!series || isSaving) return;
+	  if (!series || isSaving) return;
 
-		isSaving = true;
-		try {
-			await metadataOps.saveSeriesMetadata(series.id, {
-				title: title || null,
-				japaneseTitle: japaneseTitle || null,
-				romajiTitle: romajiTitle || null,
-				description: description || null
-			});
-			toastStore.success('Series metadata updated successfully');
-			onRefresh();
-			onClose();
-		} catch (e: any) {
-			console.error(e);
-			toastStore.error('Failed to update series metadata. Please try again.');
-		} finally {
-			isSaving = false;
-		}
+	  isSaving = true;
+	  try {
+	    await metadataOps.saveSeriesMetadata(series.id, {
+	      title: title || null,
+	      japaneseTitle: japaneseTitle || null,
+	      romajiTitle: romajiTitle || null,
+	      description: description || null
+	    });
+	    toastStore.success('Series metadata updated successfully');
+	    onRefresh();
+	    onClose();
+	  } catch (e) {
+	    console.error(e);
+	    toastStore.error('Failed to update series metadata. Please try again.');
+	  } finally {
+	    isSaving = false;
+	  }
 	};
 </script>
 

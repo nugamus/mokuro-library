@@ -1,5 +1,5 @@
 <script lang="ts">
-import PaginationControls from '$lib/components/controls/PaginationControls.svelte';
+	import PaginationControls from '$lib/components/controls/PaginationControls.svelte';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 
 	let { meta } = $props<{
@@ -20,7 +20,3 @@ import PaginationControls from '$lib/components/controls/PaginationControls.svel
 		<PaginationControls {meta} />
 	</div>
 </div>
-
-
-
-

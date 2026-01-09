@@ -8,8 +8,8 @@
 	}>();
 
 	function handleAction(action: () => void) {
-		action();
-		contextMenu.close();
+	  action();
+	  contextMenu.close();
 	}
 </script>
 

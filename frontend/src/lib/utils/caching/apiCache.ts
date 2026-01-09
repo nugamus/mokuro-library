@@ -11,7 +11,7 @@ interface CacheEntry<T> {
 }
 
 class APICache {
-  private cache = new Map<string, CacheEntry<any>>();
+  private cache = new Map<string, CacheEntry<unknown>>();
   private maxAge = 60 * 60 * 1000; // 60 minutes default
   private staleTime = 30 * 1000; // 30 seconds - serve stale while revalidating
   private currentUserId: string | null = null;
@@ -27,7 +27,7 @@ class APICache {
       maxAge?: number;
       staleTime?: number;
       skipCache?: boolean;
-      onStaleRefetch?: (data: any) => void;
+      onStaleRefetch?: (data: unknown) => void;
     }
   ): Promise<T> {
     const maxAge = options?.maxAge ?? this.maxAge;
@@ -46,7 +46,7 @@ class APICache {
     // No cache - fetch fresh
     if (!cached) {
       const promise = fetcher();
-      this.cache.set(key, { data: null as any, timestamp: now, promise });
+      this.cache.set(key, { data: null as unknown, timestamp: now, promise });
 
       const data = await promise;
       this.set(key, data);
@@ -62,6 +62,7 @@ class APICache {
 
     // Fresh data - return immediately
     if (age < staleTime && !cached.stale) {
+      console.log("HIT");
       return cached.data;
     }
 
@@ -123,7 +124,7 @@ class APICache {
     try {
       const promise = fetcher();
       this.cache.set(key, {
-        data: cached?.data ?? (null as any),
+        data: cached?.data ?? (null as unknown),
         timestamp: now,
         promise
       });
@@ -142,6 +143,7 @@ class APICache {
    * Invalidate cache entries by prefix
    */
   invalidate(prefix: string, hard: boolean = false): void {
+    console.log(`INVALIDATE ${prefix} ${hard}`);
     for (const key of this.cache.keys()) {
       if (key.startsWith(prefix)) {
         if (hard) this.cache.delete(key);
@@ -155,6 +157,7 @@ class APICache {
   }
 
   invalidateExact(key: string, hard?: boolean): void {
+    console.log(`INVALIDATE EXACT ${key} ${hard}`);
     if (hard) this.cache.delete(key);
     else {
       const entry = this.cache.get(key);
@@ -213,6 +216,7 @@ class APICache {
    * Invalidate cache when user makes changes
    */
   invalidateLibraryCache(hard?: boolean): void {
+    console.log("INVALIDATE LIBRARY");
     this.invalidate('GET:/api/library', hard);
   }
 
@@ -224,13 +228,15 @@ class APICache {
     this.invalidate('GET:/api/contributions', hard);
   }
 
-  invalidateSeriesCache(options?: { seriesId?: string, hard?: boolean }): void {
-    if (options?.seriesId) this.invalidateExact(`GET:/api/library/series/${options.seriesId}`, options.hard);
+  invalidateSeriesCache(options?: { seriesId?: string; hard?: boolean }): void {
+    if (options?.seriesId)
+      this.invalidateExact(`GET:/api/library/series/${options.seriesId}`, options.hard);
     else this.invalidate(`GET:/api/library/series`, options?.hard);
   }
 
-  invalidateVolumeCache(options?: { volumeId?: string, hard?: boolean }): void {
-    if (options?.volumeId) this.invalidateExact(`GET:/api/library/volume/${options.volumeId}`, options.hard);
+  invalidateVolumeCache(options?: { volumeId?: string; hard?: boolean }): void {
+    if (options?.volumeId)
+      this.invalidateExact(`GET:/api/library/volume/${options.volumeId}`, options.hard);
     else this.invalidate(`GET:/api/library/volume`, options?.hard);
   }
 }

@@ -2,6 +2,8 @@
 	import { type Snippet } from 'svelte';
 	import { longpress } from '$lib/actions/longPress';
 	import { vibrate, HAPTIC_PATTERNS } from '$lib/utils/interaction/haptics';
+	import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
+	import { resolve } from '$app/paths';
 
 	// --- Types ---
 	interface EntryData {
@@ -19,22 +21,22 @@
 
 	// --- Props ---
 	let {
-		entry,
-		type = 'volume',
-		viewMode = 'grid',
-		isSelected = false,
-		isSelectionMode = false,
-		progress = { percent: 0, isRead: false, showBar: false },
-		href = '#',
-		mainStat = '',
-		subStat = '',
-		onSelect,
-		onLongPress,
-		circleAction,
-		secondaryCircleAction,
-		titleAction,
-		listActions,
-		isPrivate = false
+	  entry,
+	  type = 'volume',
+	  viewMode = 'grid',
+	  isSelected = false,
+	  isSelectionMode = false,
+	  progress = { percent: 0, isRead: false, showBar: false },
+	  href = '#',
+	  mainStat = '',
+	  subStat = '',
+	  onSelect,
+	  onLongPress,
+	  circleAction,
+	  secondaryCircleAction,
+	  titleAction,
+	  listActions,
+	  isPrivate = false
 	} = $props<{
 		entry: EntryData;
 		type?: 'series' | 'volume';
@@ -54,11 +56,12 @@
 		isPrivate?: boolean;
 	}>();
 
+
 	// Determine read status for badge
 	const getStatusBadge = () => {
-		if (progress.isRead) return { label: 'READ', color: 'bg-status-success' };
-		if (progress.percent > 0) return { label: 'READING', color: 'bg-accent' };
-		return { label: 'UNREAD', color: 'bg-status-unread' };
+	  if (progress.isRead) return { label: 'READ', color: 'bg-status-success' };
+	  if (progress.percent > 0) return { label: 'READING', color: 'bg-accent' };
+	  return { label: 'UNREAD', color: 'bg-status-unread' };
 	};
 
 	const status = $derived(getStatusBadge());
@@ -70,23 +73,23 @@
 	<div
 		use:longpress
 		onlongpress={() => {
-			vibrate(HAPTIC_PATTERNS.medium);
-			onLongPress?.();
+		  vibrate(HAPTIC_PATTERNS.medium);
+		  onLongPress?.();
 		}}
 		class={`library-entry library-entry-grid group relative rounded-2xl border-2 border-theme-primary bg-theme-surface/20 flex flex-col transition-all duration-300 overflow-hidden 
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
 			isSelected
-				? 'border-accent/50 ring-1 ring-accent shadow-[0_0_20px_rgba(99,102,241,0.4)] z-30 scale-[1.02]'
-				: 'border-theme-primary/10 hover:border-theme-primary/20 z-10'
+			  ? 'border-accent/50 ring-1 ring-accent shadow-[0_0_20px_rgba(99,102,241,0.4)] z-30 scale-[1.02]'
+			  : 'border-theme-primary/10 hover:border-theme-primary/20 z-10'
 		}
     ${isSelectionMode && !isSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}`}
 	>
 		<a
-			{href}
+			href={resolve(href ?? '#')}
 			onpointerdown={onSelect}
 			onclick={(e) => {
-				if (isSelectionMode) e.preventDefault();
+			  if (isSelectionMode) e.preventDefault();
 			}}
 			class="absolute inset-0 z-10"
 			aria-label={`View ${entry.title || entry.folderName}`}
@@ -97,11 +100,10 @@
 			class={`${gridAspectClass} w-full bg-theme-main relative overflow-hidden pointer-events-none z-10`}
 		>
 			{#if entry.coverUrl}
-				<img
+				<AuthenticatedImage
 					src={entry.coverUrl}
 					alt={entry.folderName}
 					loading="lazy"
-					decoding="async"
 					class="h-full w-full object-cover transition-transform duration-700 md:group-hover:scale-110"
 				/>
 			{:else}
@@ -120,8 +122,8 @@
 			<div class="absolute top-2 left-2 z-20">
 				<span
 					class="px-2 py-1 rounded-md text-[10px] font-bold backdrop-blur-sm {isPrivate
-						? 'bg-blue-500/80 text-white border border-blue-400/50'
-						: 'bg-emerald-500/80 text-white border border-emerald-400/50'}"
+					  ? 'bg-blue-500/80 text-white border border-blue-400/50'
+					  : 'bg-emerald-500/80 text-white border border-emerald-400/50'}"
 					title={isPrivate ? 'Private Library' : 'Shared Library'}
 				>
 					{isPrivate ? 'P' : 'S'}
@@ -145,11 +147,11 @@
 				{#if mainStat}
 					<div
 						class={`text-[12px] font-bold uppercase tracking-[0.1em] leading-none ${
-							status.color === 'bg-status-success'
-								? 'text-status-success'
-								: status.color === 'bg-accent'
-									? 'text-accent'
-									: 'text-status-unread'
+						  status.color === 'bg-status-success'
+						    ? 'text-status-success'
+						    : status.color === 'bg-accent'
+						      ? 'text-accent'
+						      : 'text-status-unread'
 						}`}
 					>
 						{mainStat}
@@ -165,7 +167,9 @@
 
 			<div class="flex items-center gap-1">
 				{#if secondaryCircleAction}
-					<div class="z-30 pointer-events-auto opacity-60 hover:opacity-100 transition-opacity duration-200">
+					<div
+						class="z-30 pointer-events-auto opacity-60 hover:opacity-100 transition-opacity duration-200"
+					>
 						{@render secondaryCircleAction()}
 					</div>
 				{/if}
@@ -197,10 +201,10 @@
 							stroke-width="3.5"
 							fill="none"
 							class="neon-glow transition-all duration-700 {status.color === 'bg-status-success'
-								? 'text-status-success'
-								: status.color === 'bg-accent'
-									? 'text-accent'
-									: 'text-status-unread'}"
+							  ? 'text-status-success'
+							  : status.color === 'bg-accent'
+							    ? 'text-accent'
+							    : 'text-status-unread'}"
 							stroke-dasharray="113.10"
 							stroke-dashoffset={113.1 - (113.1 * (progress.isRead ? 100 : progress.percent)) / 100}
 							stroke-linecap="round"
@@ -214,24 +218,24 @@
 	<div
 		use:longpress
 		onlongpress={() => {
-			vibrate(HAPTIC_PATTERNS.medium);
-			onLongPress?.();
+		  vibrate(HAPTIC_PATTERNS.medium);
+		  onLongPress?.();
 		}}
 		class={`library-entry library-entry-list group relative rounded-2xl border-2 bg-theme-surface/30 flex items-center 
     transition-all duration-300 overflow-hidden h-32
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
 			isSelected
-				? 'border-accent/50 ring-1 ring-accent shadow-[0_0_20px_rgba(99,102,241,0.4)] z-30'
-				: 'border-theme-primary/10 hover:border-theme-primary/20 z-10'
+			  ? 'border-accent/50 ring-1 ring-accent shadow-[0_0_20px_rgba(99,102,241,0.4)] z-30'
+			  : 'border-theme-primary/10 hover:border-theme-primary/20 z-10'
 		}
     ${isSelectionMode && !isSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}`}
 	>
 		<a
-			{href}
+			href={resolve(href)}
 			onpointerdown={onSelect}
 			onclick={(e) => {
-				if (isSelectionMode) e.preventDefault();
+			  if (isSelectionMode) e.preventDefault();
 			}}
 			class="absolute inset-0 z-0 block"
 			aria-label={`View ${entry.title || entry.folderName}`}
@@ -242,11 +246,10 @@
 			class="relative h-full aspect-[7/11] bg-theme-main flex-shrink-0 pointer-events-none border-r border-theme-primary/20 overflow-hidden z-10"
 		>
 			{#if entry.coverUrl}
-				<img
+				<AuthenticatedImage
 					src={entry.coverUrl}
 					alt=""
 					loading="lazy"
-					decoding="async"
 					class="h-full w-full object-cover transition-transform duration-700 md:group-hover:scale-110"
 				/>
 			{:else}
@@ -303,8 +306,8 @@
 			<div class="absolute bottom-0 left-[81.5px] right-0 h-1 bg-theme-surface/50 z-20">
 				<div
 					class="neon-glow h-full transition-all duration-700 {progress.isRead
-						? 'bg-status-success text-status-success'
-						: 'bg-accent text-accent'}"
+					  ? 'bg-status-success text-status-success'
+					  : 'bg-accent text-accent'}"
 					style="width: {progress.isRead ? 100 : progress.percent}%"
 				></div>
 			</div>
@@ -331,4 +334,3 @@
 			drop-shadow(0 0 7px currentColor);
 	}
 </style>
-

@@ -41,4 +41,3 @@ export async function prefetchAppData() {
     await Promise.allSettled(prefetches);
   }, 2000);
 }
-

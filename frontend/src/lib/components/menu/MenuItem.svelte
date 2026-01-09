@@ -3,13 +3,13 @@
 	import { contextMenu } from '$lib/stores/contextMenuStore';
 
 	let {
-		label,
-		icon,
-		badge,
-		variant = 'default',
-		onClick,
-		className = '',
-		keepOpen = false
+	  label,
+	  icon,
+	  badge,
+	  variant = 'default',
+	  onClick,
+	  className = '',
+	  keepOpen = false
 	} = $props<{
 		label: string;
 		icon?: Snippet;
@@ -22,29 +22,29 @@
 	}>();
 
 	const colors = {
-		default: 'text-theme-primary hover:bg-theme-surface-hover/70 hover:text-white',
-		primary: 'text-theme-primary hover:bg-theme-surface-hover/70 hover:text-accent',
-		danger: 'text-status-danger hover:bg-status-danger/20',
-		success: 'text-status-success hover:bg-status-success/20',
-		unread: 'text-status-unread hover:bg-status-unread/20'
+	  default: 'text-theme-primary hover:bg-theme-surface-hover/70 hover:text-white',
+	  primary: 'text-theme-primary hover:bg-theme-surface-hover/70 hover:text-accent',
+	  danger: 'text-status-danger hover:bg-status-danger/20',
+	  success: 'text-status-success hover:bg-status-success/20',
+	  unread: 'text-status-unread hover:bg-status-unread/20'
 	};
 	const usedColor = colors[variant as 'default' | 'danger' | 'success' | 'primary' | 'unread'];
 
 	const iconBg = {
-		default:
+	  default:
 			'bg-theme-surface-hover/60 text-theme-primary group-hover:bg-theme-surface-hover group-hover:text-white shadow-md',
-		primary: 'bg-accent/20 text-accent shadow-md shadow-accent/20',
-		danger: 'bg-status-danger/20 text-status-danger shadow-md shadow-status-danger/20',
-		success: 'bg-status-success/20 text-status-success shadow-md shadow-status-success/20',
-		unread: 'bg-status-unread/20 text-status-unread shadow-md shadow-status-unread/20'
+	  primary: 'bg-accent/20 text-accent shadow-md shadow-accent/20',
+	  danger: 'bg-status-danger/20 text-status-danger shadow-md shadow-status-danger/20',
+	  success: 'bg-status-success/20 text-status-success shadow-md shadow-status-success/20',
+	  unread: 'bg-status-unread/20 text-status-unread shadow-md shadow-status-unread/20'
 	};
 	const usedIconBg = iconBg[variant as 'default' | 'danger' | 'success' | 'primary' | 'unread'];
 
 	const handleClick = () => {
-		onClick();
-		if (!keepOpen) {
-			contextMenu.close();
-		}
+	  onClick();
+	  if (!keepOpen) {
+	    contextMenu.close();
+	  }
 	};
 </script>
 
@@ -53,7 +53,7 @@
 	class={`group w-full flex items-center justify-between px-2 py-2 rounded-xl text-sm font-bold mx-auto my-1 text-left text-sm gap-3 transition-colors rounded-xl ${usedColor} ${className}`}
 >
 	{#if icon}
-		<div class={`p-1.5 rounded-lg transition-colors flex-shrink-0`}>
+		<div class={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${usedIconBg}`}>
 			{@render icon()}
 		</div>
 	{/if}

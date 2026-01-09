@@ -7,7 +7,7 @@ import jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']); // Used for CSRF check only
 
 // Define the core authentication logic
 const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -46,17 +46,23 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
       });
     }
 
-    // Verify device fingerprint if present in token
-    // For GET requests, fingerprint is optional since browser image/file requests can't send custom headers
-    // For state-changing requests (POST/PUT/DELETE), fingerprint is required
-    if (decoded.deviceHash && !SAFE_METHODS.has(request.method)) {
+    // Verify device fingerprint - REQUIRED for ALL authenticated requests
+    // This ensures that even GET requests (images, files, data) are validated
+    // to prevent stolen session cookies from being used on different devices
+    if (decoded.deviceHash) {
       const deviceFingerprint = request.headers['x-device-fingerprint'] as string;
 
       if (!deviceFingerprint) {
+        request.log.debug({
+          userId: decoded.userId,
+          method: request.method,
+          url: request.url,
+        }, 'Device fingerprint missing in authenticated request');
+
         return reply.status(401).send({
           statusCode: 401,
           error: 'Unauthorized',
-          message: 'Device fingerprint required',
+          message: 'Device fingerprint required for all authenticated requests',
         });
       }
 
@@ -69,14 +75,26 @@ const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
           userId: decoded.userId,
           expectedDevice: decoded.deviceHash,
           actualDevice: deviceHash,
-        }, 'Device fingerprint mismatch in auth');
+          method: request.method,
+          url: request.url,
+          ip: request.ip,
+          userAgent: request.headers['user-agent'],
+        }, 'Device fingerprint mismatch - possible session theft detected');
 
         return reply.status(403).send({
           statusCode: 403,
           error: 'Forbidden',
-          message: 'Device verification failed',
+          message: 'Device verification failed - session may have been compromised',
         });
       }
+    } else {
+      // No device hash in token - this should not happen with properly issued tokens
+      // Log warning but allow for backward compatibility with old tokens
+      request.log.warn({
+        userId: decoded.userId,
+        method: request.method,
+        url: request.url,
+      }, 'JWT token missing deviceHash - legacy token detected');
     }
 
 

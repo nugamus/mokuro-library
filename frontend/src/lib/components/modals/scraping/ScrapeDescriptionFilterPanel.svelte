@@ -6,15 +6,15 @@
 	let showManager = $state(false);
 
 	function addCustomFilter() {
-		if (!newFilterText.trim()) return;
-		scrapingState.addFilter(newFilterText, newFilterIsRegex);
-		newFilterText = '';
+	  if (!newFilterText.trim()) return;
+	  scrapingState.addFilter(newFilterText, newFilterIsRegex);
+	  newFilterText = '';
 	}
 
 	function confirmClear() {
-		if (confirm('Clear all filters?')) {
-			scrapingState.clearAllFilters();
-		}
+	  if (confirm('Clear all filters?')) {
+	    scrapingState.clearAllFilters();
+	  }
 	}
 </script>
 
@@ -49,7 +49,7 @@
 				class="px-3 py-1 w-20 rounded-lg bg-accent/20 text-accent hover:bg-accent/30 transition-colors text-xs font-semibold"
 			>
 				{showManager ? 'Close' : 'Manage'} ({scrapingState.descriptionFilters.filter(
-					(f) => f.enabled
+				  (f) => f.enabled
 				).length})
 			</button>
 		</div>

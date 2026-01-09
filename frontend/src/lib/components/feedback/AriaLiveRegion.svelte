@@ -1,7 +1,7 @@
 <script lang="ts">
 	let {
-		message = $bindable(''),
-		politeness = 'polite'
+	  message = $bindable(''),
+	  politeness = 'polite'
 	}: {
 		message?: string;
 		politeness?: 'polite' | 'assertive';
@@ -9,12 +9,7 @@
 </script>
 
 <!-- Screen reader only announcement region -->
-<div
-	class="sr-only"
-	role="status"
-	aria-live={politeness}
-	aria-atomic="true"
->
+<div class="sr-only" role="status" aria-live={politeness} aria-atomic="true">
 	{message}
 </div>
 

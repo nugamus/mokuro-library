@@ -13,11 +13,11 @@
 
 	// --- Props ---
 	let {
-		pageIndex,
-		blockIndex,
-		block,
-		ocrState,
-		onDelete
+	  pageIndex,
+	  blockIndex,
+	  block,
+	  ocrState,
+	  onDelete
 	}: {
 		pageIndex: number;
 		blockIndex: number;
@@ -32,7 +32,7 @@
 
 	// Registry of child line components for focus management
 	// We use a Map or Array to store bound references
-	let lineComponents: Record<number, any> = $state({});
+	let lineComponents: Record<number, unknown> = $state({});
 
 	// handle drag or double click
 	// on the block level, this helps reject trivial edits
@@ -48,464 +48,464 @@
 	let visualFontSize = $derived(block.font_size);
 	let visualDelta: Rect = $state([0, 0, 0, 0]);
 	let visualBox: Rect = $derived([
-		block.box[0] + visualDelta[0],
-		block.box[1] + visualDelta[1],
-		block.box[2] + visualDelta[2],
-		block.box[3] + visualDelta[3]
+	  block.box[0] + visualDelta[0],
+	  block.box[1] + visualDelta[1],
+	  block.box[2] + visualDelta[2],
+	  block.box[3] + visualDelta[3]
 	]);
 	let geometry = $derived.by(() => {
-		// Safety check
-		if (ocrState.imgWidth === 0 || ocrState.imgHeight === 0) {
-			return { left: 0, top: 0, width: 0, height: 0 };
-		}
+	  // Safety check
+	  if (ocrState.imgWidth === 0 || ocrState.imgHeight === 0) {
+	    return { left: 0, top: 0, width: 0, height: 0 };
+	  }
 
-		const x_min = (visualBox[0] / ocrState.imgWidth) * 100;
-		const y_min = (visualBox[1] / ocrState.imgHeight) * 100;
-		const width = ((visualBox[2] - visualBox[0]) / ocrState.imgWidth) * 100;
-		const height = ((visualBox[3] - visualBox[1]) / ocrState.imgHeight) * 100;
+	  const x_min = (visualBox[0] / ocrState.imgWidth) * 100;
+	  const y_min = (visualBox[1] / ocrState.imgHeight) * 100;
+	  const width = ((visualBox[2] - visualBox[0]) / ocrState.imgWidth) * 100;
+	  const height = ((visualBox[3] - visualBox[1]) / ocrState.imgHeight) * 100;
 
-		return { x_min, y_min, width, height };
+	  return { x_min, y_min, width, height };
 	});
 
 	// --- Interactions ---
 
 	// 1. Block Drag
 	const handleBlockDragStart = (startEvent: PointerEvent) => {
-		// Double click hybrid handling
+	  // Double click hybrid handling
 
-		// If we are in the middle of a potential double-click,
-		// we stop the drag sequence immediately.
-		if (isPendingDoubleClick) {
-			// put what ever future handle double click here
-			startEvent.stopPropagation();
-			return;
-		}
+	  // If we are in the middle of a potential double-click,
+	  // we stop the drag sequence immediately.
+	  if (isPendingDoubleClick) {
+	    // put what ever future handle double click here
+	    startEvent.stopPropagation();
+	    return;
+	  }
 
-		// If this is the start of a new interaction,
-		// set the double-click timer.
-		isPendingDoubleClick = true;
-		if (doubleClickTimer) {
-			clearTimeout(doubleClickTimer); // Clear any old timer just in case
-		}
+	  // If this is the start of a new interaction,
+	  // set the double-click timer.
+	  isPendingDoubleClick = true;
+	  if (doubleClickTimer) {
+	    clearTimeout(doubleClickTimer); // Clear any old timer just in case
+	  }
 
-		doubleClickTimer = setTimeout(() => {
-			// If the timer expires before a second click, it was a single click/drag
-			isPendingDoubleClick = false;
-			doubleClickTimer = null;
-		}, 300); // Standard double-click interval (e.g., 300ms)
+	  doubleClickTimer = setTimeout(() => {
+	    // If the timer expires before a second click, it was a single click/drag
+	    isPendingDoubleClick = false;
+	    doubleClickTimer = null;
+	  }, 300); // Standard double-click interval (e.g., 300ms)
 
-		// Make handle visible on touch devices
-		if (startEvent.pointerType !== 'mouse') {
-			resizeHandleIsVisible = true;
-			if (resizeHandleTimer) {
-				clearTimeout(resizeHandleTimer); // Clear any old timer just in case
-			}
-			resizeHandleTimer = setTimeout(() => {
-				resizeHandleIsVisible = false;
-				resizeHandleTimer = null;
-			}, 1000);
-		}
-		if (readerState.ocrMode === 'READ') return;
-		if (readerState.ocrMode === 'TEXT') readerState.setOcrMode('BOX');
-		if (!ocrState.overlayElement || !blockElement) return;
-		startEvent.preventDefault();
-		startEvent.stopPropagation();
+	  // Make handle visible on touch devices
+	  if (startEvent.pointerType !== 'mouse') {
+	    resizeHandleIsVisible = true;
+	    if (resizeHandleTimer) {
+	      clearTimeout(resizeHandleTimer); // Clear any old timer just in case
+	    }
+	    resizeHandleTimer = setTimeout(() => {
+	      resizeHandleIsVisible = false;
+	      resizeHandleTimer = null;
+	    }, 1000);
+	  }
+	  if (readerState.ocrMode === 'READ') return;
+	  if (readerState.ocrMode === 'TEXT') readerState.setOcrMode('BOX');
+	  if (!ocrState.overlayElement || !blockElement) return;
+	  startEvent.preventDefault();
+	  startEvent.stopPropagation();
 
-		let totalScreenDeltaX = 0;
-		let totalScreenDeltaY = 0;
-		let totalImageDeltaX = 0;
-		let totalImageDeltaY = 0;
+	  let totalScreenDeltaX = 0;
+	  let totalScreenDeltaY = 0;
+	  let totalImageDeltaX = 0;
+	  let totalImageDeltaY = 0;
 
-		let lastX = startEvent.clientX;
-		let lastY = startEvent.clientY;
+	  let lastX = startEvent.clientX;
+	  let lastY = startEvent.clientY;
 
-		const handleDragMove = (moveEvent: PointerEvent) => {
-			// 0. Compute delta
-			// We do this manually because movementX and movementY is inconsistent
-			const deltaX = moveEvent.clientX - lastX;
-			const deltaY = moveEvent.clientY - lastY;
-			lastX = moveEvent.clientX;
-			lastY = moveEvent.clientY;
+	  const handleDragMove = (moveEvent: PointerEvent) => {
+	    // 0. Compute delta
+	    // We do this manually because movementX and movementY is inconsistent
+	    const deltaX = moveEvent.clientX - lastX;
+	    const deltaY = moveEvent.clientY - lastY;
+	    lastX = moveEvent.clientX;
+	    lastY = moveEvent.clientY;
 
-			// 1. Visual Update (Screen Space)
-			const currentZoom = ocrState.panzoomInstance?.getScale() ?? 1.0;
-			totalScreenDeltaX += deltaX / currentZoom;
-			totalScreenDeltaY += deltaY / currentZoom;
+	    // 1. Visual Update (Screen Space)
+	    const currentZoom = ocrState.panzoomInstance?.getScale() ?? 1.0;
+	    totalScreenDeltaX += deltaX / currentZoom;
+	    totalScreenDeltaY += deltaY / currentZoom;
 
-			if (blockElement) {
-				blockElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
-			}
+	    if (blockElement) {
+	      blockElement.style.transform = `translate(${totalScreenDeltaX}px, ${totalScreenDeltaY}px)`;
+	    }
 
-			// 2. Data Calculation (Image Space)
-			const { imageDeltaX, imageDeltaY } = getImageDeltas(
-				{ movementX: deltaX, movementY: deltaY },
+	    // 2. Data Calculation (Image Space)
+	    const { imageDeltaX, imageDeltaY } = getImageDeltas(
+	      { movementX: deltaX, movementY: deltaY },
 				ocrState.overlayElement!,
 				ocrState.imgWidth,
 				ocrState.imgHeight
-			);
-			totalImageDeltaX += imageDeltaX;
-			totalImageDeltaY += imageDeltaY;
-		};
+	    );
+	    totalImageDeltaX += imageDeltaX;
+	    totalImageDeltaY += imageDeltaY;
+	  };
 
-		const handleDragEnd = () => {
-			window.removeEventListener('pointermove', handleDragMove);
-			window.removeEventListener('pointerup', handleDragEnd);
+	  const handleDragEnd = () => {
+	    window.removeEventListener('pointermove', handleDragMove);
+	    window.removeEventListener('pointerup', handleDragEnd);
 
-			// Reset Transform
-			if (blockElement) {
-				blockElement.style.transform = '';
-			}
+	    // Reset Transform
+	    if (blockElement) {
+	      blockElement.style.transform = '';
+	    }
 
-			// If drag time is too short, it's probably a double click.
-			// Do not commit, do not mark dirty
-			if (isPendingDoubleClick) return;
+	    // If drag time is too short, it's probably a double click.
+	    // Do not commit, do not mark dirty
+	    if (isPendingDoubleClick) return;
 
-			// --- REFACTOR: Dispatch Batch Ops ---
-			const pIdx = pageIndex;
-			const bIdx = blockIndex;
-			const ops: PatchOperation[] = [];
+	    // --- REFACTOR: Dispatch Batch Ops ---
+	    const pIdx = pageIndex;
+	    const bIdx = blockIndex;
+	    const ops: PatchOperation[] = [];
 
-			// 1. Update Block Box
-			const newBox = [
-				block.box[0] + totalImageDeltaX,
-				block.box[1] + totalImageDeltaY,
-				block.box[2] + totalImageDeltaX,
-				block.box[3] + totalImageDeltaY
-			] as Rect;
-			ops.push({
-				op: 'replace',
-				path: `/pages/${pIdx}/blocks/${bIdx}/box`,
-				value: newBox,
-				old_value: block.box
-			});
+	    // 1. Update Block Box
+	    const newBox = [
+	      block.box[0] + totalImageDeltaX,
+	      block.box[1] + totalImageDeltaY,
+	      block.box[2] + totalImageDeltaX,
+	      block.box[3] + totalImageDeltaY
+	    ] as Rect;
+	    ops.push({
+	      op: 'replace',
+	      path: `/pages/${pIdx}/blocks/${bIdx}/box`,
+	      value: newBox,
+	      old_value: block.box
+	    });
 
-			// 2. Update All Lines Coords (Independent Coordinates)
-			block.lines_coords.forEach((coords, lIdx) => {
-				const newCoords = coords.map((pt) => [
-					pt[0] + totalImageDeltaX,
-					pt[1] + totalImageDeltaY
-				]) as Quad;
-				ops.push({
-					op: 'replace',
-					path: `/pages/${pIdx}/blocks/${bIdx}/lines/${lIdx}/coords`,
-					value: newCoords,
-					old_value: coords
-				});
-			});
+	    // 2. Update All Lines Coords (Independent Coordinates)
+	    block.lines_coords.forEach((coords, lIdx) => {
+	      const newCoords = coords.map((pt) => [
+	        pt[0] + totalImageDeltaX,
+	        pt[1] + totalImageDeltaY
+	      ]) as Quad;
+	      ops.push({
+	        op: 'replace',
+	        path: `/pages/${pIdx}/blocks/${bIdx}/lines/${lIdx}/coords`,
+	        value: newCoords,
+	        old_value: coords
+	      });
+	    });
 
-			readerState.dispatch(ops);
-		};
+	    readerState.dispatch(ops);
+	  };
 
-		window.addEventListener('pointermove', handleDragMove);
-		window.addEventListener('pointerup', handleDragEnd);
+	  window.addEventListener('pointermove', handleDragMove);
+	  window.addEventListener('pointerup', handleDragEnd);
 	};
 
 	// 2. Block Resize
 	const handleResizeStart = (startEvent: PointerEvent, handleType: string) => {
-		if (readerState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
-		startEvent.preventDefault();
-		startEvent.stopPropagation();
+	  if (readerState.ocrMode !== 'BOX' || !ocrState.overlayElement) return;
+	  startEvent.preventDefault();
+	  startEvent.stopPropagation();
 
-		let lastX = startEvent.clientX;
-		let lastY = startEvent.clientY;
+	  let lastX = startEvent.clientX;
+	  let lastY = startEvent.clientY;
 
-		const handleDragMove = (moveEvent: PointerEvent) => {
-			const deltaX = moveEvent.clientX - lastX;
-			const deltaY = moveEvent.clientY - lastY;
-			lastX = moveEvent.clientX;
-			lastY = moveEvent.clientY;
+	  const handleDragMove = (moveEvent: PointerEvent) => {
+	    const deltaX = moveEvent.clientX - lastX;
+	    const deltaY = moveEvent.clientY - lastY;
+	    lastX = moveEvent.clientX;
+	    lastY = moveEvent.clientY;
 
-			const { imageDeltaX, imageDeltaY } = getImageDeltas(
-				{ movementX: deltaX, movementY: deltaY },
+	    const { imageDeltaX, imageDeltaY } = getImageDeltas(
+	      { movementX: deltaX, movementY: deltaY },
 				ocrState.overlayElement!,
 				ocrState.imgWidth,
 				ocrState.imgHeight
-			);
+	    );
 
-			switch (handleType) {
-				case 'top-left':
-					visualDelta[0] += imageDeltaX;
-					visualDelta[1] += imageDeltaY;
-					break;
-				case 'top-center':
-					visualDelta[1] += imageDeltaY;
-					break;
-				case 'top-right':
-					visualDelta[2] += imageDeltaX;
-					visualDelta[1] += imageDeltaY;
-					break;
-				case 'middle-left':
-					visualDelta[0] += imageDeltaX;
-					break;
-				case 'middle-right':
-					visualDelta[2] += imageDeltaX;
-					break;
-				case 'bottom-left':
-					visualDelta[0] += imageDeltaX;
-					visualDelta[3] += imageDeltaY;
-					break;
-				case 'bottom-center':
-					visualDelta[3] += imageDeltaY;
-					break;
-				case 'bottom-right':
-					visualDelta[2] += imageDeltaX;
-					visualDelta[3] += imageDeltaY;
-					break;
-			}
-		};
+	    switch (handleType) {
+	    case 'top-left':
+	      visualDelta[0] += imageDeltaX;
+	      visualDelta[1] += imageDeltaY;
+	      break;
+	    case 'top-center':
+	      visualDelta[1] += imageDeltaY;
+	      break;
+	    case 'top-right':
+	      visualDelta[2] += imageDeltaX;
+	      visualDelta[1] += imageDeltaY;
+	      break;
+	    case 'middle-left':
+	      visualDelta[0] += imageDeltaX;
+	      break;
+	    case 'middle-right':
+	      visualDelta[2] += imageDeltaX;
+	      break;
+	    case 'bottom-left':
+	      visualDelta[0] += imageDeltaX;
+	      visualDelta[3] += imageDeltaY;
+	      break;
+	    case 'bottom-center':
+	      visualDelta[3] += imageDeltaY;
+	      break;
+	    case 'bottom-right':
+	      visualDelta[2] += imageDeltaX;
+	      visualDelta[3] += imageDeltaY;
+	      break;
+	    }
+	  };
 
-		const handleDragEnd = () => {
-			window.removeEventListener('pointermove', handleDragMove);
-			window.removeEventListener('pointerup', handleDragEnd);
-			const pIdx = pageIndex;
-			const bIdx = blockIndex;
+	  const handleDragEnd = () => {
+	    window.removeEventListener('pointermove', handleDragMove);
+	    window.removeEventListener('pointerup', handleDragEnd);
+	    const pIdx = pageIndex;
+	    const bIdx = blockIndex;
 
-			// Calculate Final Box
-			const newBox: Rect = [
-				block.box[0] + visualDelta[0],
-				block.box[1] + visualDelta[1],
-				block.box[2] + visualDelta[2],
-				block.box[3] + visualDelta[3]
-			];
+	    // Calculate Final Box
+	    const newBox: Rect = [
+	      block.box[0] + visualDelta[0],
+	      block.box[1] + visualDelta[1],
+	      block.box[2] + visualDelta[2],
+	      block.box[3] + visualDelta[3]
+	    ];
 
-			// Dispatch
-			readerState.dispatch([
-				{
-					op: 'replace',
-					path: `/pages/${pIdx}/blocks/${bIdx}/box`,
-					value: newBox,
-					old_value: block.box
-				}
-			]);
+	    // Dispatch
+	    readerState.dispatch([
+	      {
+	        op: 'replace',
+	        path: `/pages/${pIdx}/blocks/${bIdx}/box`,
+	        value: newBox,
+	        old_value: block.box
+	      }
+	    ]);
 
-			// Reset local visual state immediately
-			// (Staging updates synchronously via dispatch, so no jump occurs)
-			visualDelta = [0, 0, 0, 0];
-		};
+	    // Reset local visual state immediately
+	    // (Staging updates synchronously via dispatch, so no jump occurs)
+	    visualDelta = [0, 0, 0, 0];
+	  };
 
-		window.addEventListener('pointermove', handleDragMove);
-		window.addEventListener('pointerup', handleDragEnd);
+	  window.addEventListener('pointermove', handleDragMove);
+	  window.addEventListener('pointerup', handleDragEnd);
 	};
 
 	// 3. Child Line Actions (Bubbled Up)
 
 	const handleSplit = async (index: number, textBefore: string, textAfter: string) => {
-		const pIdx = pageIndex;
-		const bIdx = blockIndex;
+	  const pIdx = pageIndex;
+	  const bIdx = blockIndex;
 
-		// Calculate New Geometry
-		const GAP = 2;
-		const oldCoords = block.lines_coords[index];
-		const width = oldCoords[1][0] - oldCoords[0][0];
-		const height = oldCoords[3][1] - oldCoords[0][1];
+	  // Calculate New Geometry
+	  const GAP = 2;
+	  const oldCoords = block.lines_coords[index];
+	  const width = oldCoords[1][0] - oldCoords[0][0];
+	  const height = oldCoords[3][1] - oldCoords[0][1];
 
-		let newX = oldCoords[0][0];
-		let newY = oldCoords[0][1];
+	  let newX = oldCoords[0][0];
+	  let newY = oldCoords[0][1];
 
-		if (block.vertical) {
-			newX = oldCoords[0][0] - width - GAP;
-		} else {
-			newY = oldCoords[0][1] + height + GAP;
-		}
+	  if (block.vertical) {
+	    newX = oldCoords[0][0] - width - GAP;
+	  } else {
+	    newY = oldCoords[0][1] + height + GAP;
+	  }
 
-		const newCoords: Quad = [
-			[newX, newY],
-			[newX + width, newY],
-			[newX + width, newY + height],
-			[newX, newY + height]
-		];
+	  const newCoords: Quad = [
+	    [newX, newY],
+	    [newX + width, newY],
+	    [newX + width, newY + height],
+	    [newX, newY + height]
+	  ];
 
-		// Dispatch Batch
-		// 1. Update old line text
-		// 2. Add new line (Text + Coords)
-		await readerState.dispatch([
-			{
-				op: 'replace',
-				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index}/text`,
-				value: textBefore,
-				old_value: block.lines[index]
-			},
-			{
-				op: 'add',
-				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index + 1}`,
-				value: { text: textAfter, coords: newCoords }
-			}
-		]);
+	  // Dispatch Batch
+	  // 1. Update old line text
+	  // 2. Add new line (Text + Coords)
+	  await readerState.dispatch([
+	    {
+	      op: 'replace',
+	      path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index}/text`,
+	      value: textBefore,
+	      old_value: block.lines[index]
+	    },
+	    {
+	      op: 'add',
+	      path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index + 1}`,
+	      value: { text: textAfter, coords: newCoords }
+	    }
+	  ]);
 
-		await tick();
-		lineComponents[index + 1]?.focus();
+	  await tick();
+	  lineComponents[index + 1]?.focus();
 	};
 
 	const handleMerge = async (index: number, text: string) => {
-		if (index === 0) return;
-		const pIdx = pageIndex;
-		const bIdx = blockIndex;
-		const prevLength = block.lines[index - 1].length;
-		const combinedText = block.lines[index - 1] + text;
+	  if (index === 0) return;
+	  const pIdx = pageIndex;
+	  const bIdx = blockIndex;
+	  const prevLength = block.lines[index - 1].length;
+	  const combinedText = block.lines[index - 1] + text;
 
-		await readerState.dispatch([
-			{
-				op: 'replace',
-				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index - 1}/text`,
-				value: combinedText,
-				old_value: block.lines[index - 1]
-			},
-			{
-				op: 'remove',
-				path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index}`,
-				old_value: block.lines[index]
-			}
-		]);
+	  await readerState.dispatch([
+	    {
+	      op: 'replace',
+	      path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index - 1}/text`,
+	      value: combinedText,
+	      old_value: block.lines[index - 1]
+	    },
+	    {
+	      op: 'remove',
+	      path: `/pages/${pIdx}/blocks/${bIdx}/lines/${index}`,
+	      old_value: block.lines[index]
+	    }
+	  ]);
 
-		await tick();
-		const prevComponent = lineComponents[index - 1];
-		if (prevComponent) {
-			prevComponent.focus();
-			prevComponent.setCaret(prevLength);
-		}
+	  await tick();
+	  const prevComponent = lineComponents[index - 1];
+	  if (prevComponent) {
+	    prevComponent.focus();
+	    prevComponent.setCaret(prevLength);
+	  }
 	};
 
 	const handleNavigate = (
-		e: KeyboardEvent,
-		index: number,
-		dir: 'up' | 'down' | 'left' | 'right',
-		offset: number
+	  e: KeyboardEvent,
+	  index: number,
+	  dir: 'up' | 'down' | 'left' | 'right',
+	  offset: number
 	) => {
-		let targetIndex = -1;
+	  let targetIndex = -1;
 
-		// Map visual direction to logical index based on writing mode
-		if (!block.vertical) {
-			if (dir === 'up') targetIndex = index - 1;
-			if (dir === 'down') targetIndex = index + 1;
-		} else {
-			// Vertical Text (RTL flow is standard for manga)
-			// Right Arrow -> Previous Line (Index - 1)
-			// Left Arrow -> Next Line (Index + 1)
-			if (dir === 'left') targetIndex = index + 1;
-			if (dir === 'right') targetIndex = index - 1;
-			// We ignore Up/Down for line switching in vertical mode (it moves cursor within line)
-		}
+	  // Map visual direction to logical index based on writing mode
+	  if (!block.vertical) {
+	    if (dir === 'up') targetIndex = index - 1;
+	    if (dir === 'down') targetIndex = index + 1;
+	  } else {
+	    // Vertical Text (RTL flow is standard for manga)
+	    // Right Arrow -> Previous Line (Index - 1)
+	    // Left Arrow -> Next Line (Index + 1)
+	    if (dir === 'left') targetIndex = index + 1;
+	    if (dir === 'right') targetIndex = index - 1;
+	    // We ignore Up/Down for line switching in vertical mode (it moves cursor within line)
+	  }
 
-		if (targetIndex < 0 || targetIndex >= block.lines.length) return;
-		e.preventDefault();
-		const targetComponent = lineComponents[targetIndex];
-		const targetLineLength = block.lines[targetIndex].length;
-		const clampedOffset = Math.min(offset, targetLineLength);
-		// Set the caret position within the element, this also focuses the element
-		targetComponent?.setCaret(clampedOffset);
+	  if (targetIndex < 0 || targetIndex >= block.lines.length) return;
+	  e.preventDefault();
+	  const targetComponent = lineComponents[targetIndex];
+	  const targetLineLength = block.lines[targetIndex].length;
+	  const clampedOffset = Math.min(offset, targetLineLength);
+	  // Set the caret position within the element, this also focuses the element
+	  targetComponent?.setCaret(clampedOffset);
 	};
 
 	const handleSmartFontRequest = (targetElement: HTMLElement, dry?: boolean) => {
-		const smartFont = computeSmartFont(
-			[pageIndex, blockIndex],
-			targetElement,
-			ocrState.imgWidth,
-			ocrState.fontScale
-		);
+	  const smartFont = computeSmartFont(
+	    [pageIndex, blockIndex],
+	    targetElement,
+	    ocrState.imgWidth,
+	    ocrState.fontScale
+	  );
 
-		if (!dry) visualFontSize = smartFont ?? block.font_size;
-		return smartFont;
+	  if (!dry) visualFontSize = smartFont ?? block.font_size;
+	  return smartFont;
 	};
 
 	// 4. Block-Level Mutations
 	const toggleVertical = () => {
-		const pIdx = pageIndex;
-		readerState.dispatch([
-			{
-				op: 'replace',
-				path: `/pages/${pIdx}/blocks/${blockIndex}/vertical`,
-				value: !block.vertical!,
-				old_value: block.vertical!
-			}
-		]);
+	  const pIdx = pageIndex;
+	  readerState.dispatch([
+	    {
+	      op: 'replace',
+	      path: `/pages/${pIdx}/blocks/${blockIndex}/vertical`,
+	      value: !block.vertical!,
+	      old_value: block.vertical!
+	    }
+	  ]);
 	};
 
 	const deleteLine = (index: number) => {
-		if (block.lines.length <= 1) {
-			onDelete(); // Block deletion is handled by parent (OcrOverlay)
-		} else {
-			const pIdx = pageIndex;
-			readerState.dispatch([
-				{
-					op: 'remove',
-					path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${index}`,
-					old_value: { text: block.lines[index], coords: block.lines_coords[index] }
-				}
-			]);
-		}
+	  if (block.lines.length <= 1) {
+	    onDelete(); // Block deletion is handled by parent (OcrOverlay)
+	  } else {
+	    const pIdx = pageIndex;
+	    readerState.dispatch([
+	      {
+	        op: 'remove',
+	        path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${index}`,
+	        old_value: { text: block.lines[index], coords: block.lines_coords[index] }
+	      }
+	    ]);
+	  }
 	};
 
 	const handleAddLine = (e: MouseEvent) => {
-		if (!ocrState.overlayElement) return;
-		const { imgX, imgY } = getRelativeCoords(
-			e,
-			ocrState.overlayElement,
-			ocrState.imgWidth,
-			ocrState.imgHeight
-		);
-		const DEFAULT_S = 100;
-		const newBox: Quad = [
-			[imgX, imgY],
-			[imgX + DEFAULT_S, imgY],
-			[imgX + DEFAULT_S, imgY + DEFAULT_S],
-			[imgX, imgY + DEFAULT_S]
-		];
+	  if (!ocrState.overlayElement) return;
+	  const { imgX, imgY } = getRelativeCoords(
+	    e,
+	    ocrState.overlayElement,
+	    ocrState.imgWidth,
+	    ocrState.imgHeight
+	  );
+	  const DEFAULT_S = 100;
+	  const newBox: Quad = [
+	    [imgX, imgY],
+	    [imgX + DEFAULT_S, imgY],
+	    [imgX + DEFAULT_S, imgY + DEFAULT_S],
+	    [imgX, imgY + DEFAULT_S]
+	  ];
 
-		const pIdx = pageIndex;
-		// Dispatch Add to end of list ('-')
-		readerState.dispatch([
-			{
-				op: 'add',
-				path: `/pages/${pIdx}/blocks/${blockIndex}/lines/-`,
-				value: { text: 'New Text', coords: newBox }
-			}
-		]);
+	  const pIdx = pageIndex;
+	  // Dispatch Add to end of list ('-')
+	  readerState.dispatch([
+	    {
+	      op: 'add',
+	      path: `/pages/${pIdx}/blocks/${blockIndex}/lines/-`,
+	      value: { text: 'New Text', coords: newBox }
+	    }
+	  ]);
 	};
 
 	// --- Keyboard Shortcuts (Ctrl+A) ---
 	const handleWindowKeydown = (e: KeyboardEvent) => {
-		if (!isHovered) return;
-		if (readerState.ocrMode !== 'READ') return; // Only in Reader/Neutral mode
+	  if (!isHovered) return;
+	  if (readerState.ocrMode !== 'READ') return; // Only in Reader/Neutral mode
 
-		if (e.ctrlKey && e.key === 'a') {
-			e.preventDefault();
-			// Select all text in this block
-			const selection = window.getSelection();
-			if (selection && blockElement) {
-				selection.removeAllRanges();
-				const range = document.createRange();
-				range.selectNodeContents(blockElement);
-				selection.addRange(range);
-			}
-		}
+	  if (e.ctrlKey && e.key === 'a') {
+	    e.preventDefault();
+	    // Select all text in this block
+	    const selection = window.getSelection();
+	    if (selection && blockElement) {
+	      selection.removeAllRanges();
+	      const range = document.createRange();
+	      range.selectNodeContents(blockElement);
+	      selection.addRange(range);
+	    }
+	  }
 	};
 
 	// --- Context Menu ---
 	const handleContextMenu = (e: MouseEvent) => {
-		e.preventDefault();
-		e.stopPropagation();
-		const options = [] as MenuOption[];
+	  e.preventDefault();
+	  e.stopPropagation();
+	  const options = [] as MenuOption[];
 
-		if (readerState.ocrMode !== 'READ') {
-			options.push({ label: 'Add Line', action: () => handleAddLine(e) });
-			options.push({ separator: true });
-			options.push({
-				label: 'Re-order Lines...',
-				action: handleOpenReorder
-			});
-			options.push({ label: 'Delete Block', action: onDelete });
-		}
+	  if (readerState.ocrMode !== 'READ') {
+	    options.push({ label: 'Add Line', action: () => handleAddLine(e) });
+	    options.push({ separator: true });
+	    options.push({
+	      label: 'Re-order Lines...',
+	      action: handleOpenReorder
+	    });
+	    options.push({ label: 'Delete Block', action: onDelete });
+	  }
 
-		if (options.length > 0) contextMenu.open(e.clientX, e.clientY, options);
+	  if (options.length > 0) contextMenu.open(e.clientX, e.clientY, options);
 	};
 
 	const handleOpenReorder = () => {
-		lineOrderStore.open(block, (newOrder) => {
-			// Dispatch the reorder op
-			// Path: /pages/{p}/blocks/{b}/lines (property is implicitly handled by backend for lines)
+	  lineOrderStore.open(block, (newOrder) => {
+	    // Dispatch the reorder op
+	    // Path: /pages/{p}/blocks/{b}/lines (property is implicitly handled by backend for lines)
 
-			ocrState.dispatch(`blocks/${blockIndex}/lines`, 'reorder', null, null, newOrder);
-		});
+	    ocrState.dispatch(`blocks/${blockIndex}/lines`, 'reorder', null, null, newOrder);
+	  });
 	};
 </script>
 
@@ -563,10 +563,10 @@
 			class:bg-white={readerState.ocrMode !== 'BOX' && readerState.ocrMode !== 'TEXT'}
 			class:text-black={readerState.ocrMode !== 'BOX' && readerState.ocrMode !== 'TEXT'}
 		>
-			{#each block.lines as line, i}
+			{#each block.lines as line, i (i)}
 				<OcrLine
 					bind:this={lineComponents[i]}
-					line={block.lines[i]}
+					line={line}
 					coords={block.lines_coords[i]}
 					lineIndex={i}
 					{pageIndex}
@@ -580,57 +580,57 @@
 					onNavigate={handleNavigate}
 					onSmartFontRequest={handleSmartFontRequest}
 					onFocusRequest={() => {
-						readerState.setFocusedLine(pageIndex, blockIndex, i);
-						// Optional: update global active element tracking if needed
+					  readerState.setFocusedLine(pageIndex, blockIndex, i);
+					  // Optional: update global active element tracking if needed
 					}}
 					onLineChange={(newText) => {
-						const pIdx = pageIndex;
-						if (newText === block.lines[i]) return;
-						readerState.dispatch([
-							{
-								op: 'replace',
-								path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${i}/text`,
-								value: newText,
-								old_value: block.lines[i]
-							}
-						]);
+					  const pIdx = pageIndex;
+					  if (newText === block.lines[i]) return;
+					  readerState.dispatch([
+					    {
+					      op: 'replace',
+					      path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${i}/text`,
+					      value: newText,
+					      old_value: block.lines[i]
+					    }
+					  ]);
 
-						// If font_size changed, dispatch
-						if (visualFontSize && visualFontSize !== block.font_size) {
-							const pIdx = pageIndex;
-							readerState.dispatch([
-								{
-									op: 'replace',
-									path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
-									value: visualFontSize,
-									old_value: block.font_size!
-								}
-							]);
-						}
+					  // If font_size changed, dispatch
+					  if (visualFontSize && visualFontSize !== block.font_size) {
+					    const pIdx = pageIndex;
+					    readerState.dispatch([
+					      {
+					        op: 'replace',
+					        path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
+					        value: visualFontSize,
+					        old_value: block.font_size!
+					      }
+					    ]);
+					  }
 					}}
 					onCoordChange={(newCoords) => {
-						const pIdx = pageIndex;
-						readerState.dispatch([
-							{
-								op: 'replace',
-								path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${i}/coords`,
-								value: newCoords,
-								old_value: block.lines_coords[i]
-							}
-						]);
+					  const pIdx = pageIndex;
+					  readerState.dispatch([
+					    {
+					      op: 'replace',
+					      path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${i}/coords`,
+					      value: newCoords,
+					      old_value: block.lines_coords[i]
+					    }
+					  ]);
 
-						// If font_size changed, dispatch
-						if (visualFontSize && visualFontSize !== block.font_size) {
-							const pIdx = pageIndex;
-							readerState.dispatch([
-								{
-									op: 'replace',
-									path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
-									value: visualFontSize,
-									old_value: block.font_size!
-								}
-							]);
-						}
+					  // If font_size changed, dispatch
+					  if (visualFontSize && visualFontSize !== block.font_size) {
+					    const pIdx = pageIndex;
+					    readerState.dispatch([
+					      {
+					        op: 'replace',
+					        path: `/pages/${pIdx}/blocks/${blockIndex}/font_size`,
+					        value: visualFontSize,
+					        old_value: block.font_size!
+					      }
+					    ]);
+					  }
 					}}
 					onDeleteRequest={() => deleteLine(i)}
 					onToggleVerticalRequest={toggleVertical}

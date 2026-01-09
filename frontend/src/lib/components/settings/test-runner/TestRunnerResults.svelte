@@ -3,14 +3,14 @@
 	import TestRunnerResultCard from './TestRunnerResultCard.svelte';
 
 	let {
-		results,
-		expandedResults,
-		expandedSuites,
-		showRawOutput,
-		onToggleExpanded,
-		onToggleSuite,
-		onToggleRawOutput,
-		onCopyOutput
+	  results,
+	  expandedResults,
+	  expandedSuites,
+	  showRawOutput,
+	  onToggleExpanded,
+	  onToggleSuite,
+	  onToggleRawOutput,
+	  onCopyOutput
 	} = $props<{
 		results: TestResult[];
 		expandedResults: Set<string>;
@@ -25,7 +25,7 @@
 
 {#if results.length > 0}
 	<div class="space-y-4">
-		{#each results as result, index}
+		{#each results as result, index (result.target)}
 			<TestRunnerResultCard
 				{result}
 				{index}

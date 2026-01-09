@@ -1,4 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
+import { LibraryQuery } from '../types/library';
+import { queryLibrary } from '../utils/library/query';
 
 const statsRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
@@ -68,8 +70,43 @@ const statsRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
     return { history };
   });
 
+  // GET /api/stats/series
+  // TODO: Optimize by caching stats using extensions
+  fastify.get<{ Querystring: LibraryQuery }>('/series', async (request, reply) => {
+    const userId = request.user!.id;
+
+    const response = await queryLibrary(fastify, request.user.id, request.query, {
+      include: {
+        volumes: {
+          include: { progress: { where: { userId } } }
+        }
+      },
+      transform: (series) => {
+        let totalChars = 0;
+        let totalTime = 0;
+
+        for (const volume of series.volumes!) {
+          for (const prog of volume.progress) {
+            totalChars += prog.charsRead || 0;
+            totalTime += prog.timeRead || 0;
+          }
+        }
+
+        const avgSpeed = totalTime > 0 ? Math.round(totalChars / totalTime) : 0;
+
+        return {
+          seriesName: series.sortTitle,
+          volumes: series.totalVolumeCount,
+          avgSpeed,
+        };
+      }
+    });
+
+    return reply.send(response);
+  });
+
   // GET /api/stats/series/:seriesId
-  // Refactored to fetch stats for a specific series by ID
+  // fetch stats for a specific series by ID
   fastify.get<{ Params: { id: string } }>('/series/:id', async (request, reply) => {
     const userId = request.user!.id;
     const { id } = request.params;

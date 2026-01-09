@@ -1,17 +1,20 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
+
 	let { isRegisterMode, registerToggleHref, onToggleMode } = $props<{
 		isRegisterMode: boolean;
 		registerToggleHref?: string;
 		onToggleMode: () => void;
 	}>();
+
 </script>
 
 <div class="px-8 pb-8 pt-6 text-center border-t-2 border-theme-border-light/20">
 	<p class="text-base text-theme-secondary">
 		{isRegisterMode ? 'Already have an account?' : 'New to Mokuro Library?'}
-		{#if isRegisterMode && registerToggleHref}
+			{#if isRegisterMode && registerToggleHref}
 			<a
-				href={registerToggleHref}
+				href={resolve(registerToggleHref ?? '/login')}
 				data-sveltekit-preload-data="tap"
 				class="font-bold text-accent hover:text-accent-hover transition-all ml-2 inline-flex items-center gap-1 hover:gap-2 group"
 			>

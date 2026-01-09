@@ -1,27 +1,16 @@
-import { Prisma, UserSeriesSettings } from '../../generated/prisma/client';
+import { LibraryEntry, SeriesWithOptionalSettings } from '../../types/library';
 
-type SeriesBase = Prisma.SeriesGetPayload<null>;
-
-export type SeriesWithOptionalSettings = SeriesBase & {
-  userSettings?: UserSeriesSettings[];
-
-  // We might still have volumes if this is used by getSeries (single view),
-  // so we allow it but don't require it for the transform.
-  volumes?: any[];
-};
-
-export function transformSeries(
+export function transformSeriesForLibraryQuery(
   series: SeriesWithOptionalSettings,
   userId: string,
-  settings?: UserSeriesSettings
-) {
+): LibraryEntry {
   // If we came from the 'recent' sort, settings are passed directly.
   // If we came from standard sort, settings are in series.userSettings[0].
-  const userStats = settings || series.userSettings?.[0];
+  const userStats = series.userSettings?.[0];
 
   // Remove internal relations we don't want to send raw
   // (We use destructuring to separate relations from scalar fields)
-  const { userSettings, volumes, ...cleanSeries } = series;
+  const { userSettings, ...cleanSeries } = series;
 
   return {
     ...cleanSeries,
@@ -41,6 +30,6 @@ export function transformSeries(
     isOfficial: series.ownerId === 'admin',
 
     // 4. Permissions Flag
-    canEdit: series.ownerId === userId
+    canEdit: series.ownerId === userId,
   };
 }

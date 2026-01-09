@@ -28,11 +28,11 @@
 		<h3 class="text-xl font-bold theme-primary">Achievements</h3>
 	</div>
 	<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-		{#each achievements as achievement}
+		{#each achievements as achievement, i (achievement.id ?? i)}
 			<div
 				class="rounded-2xl bg-theme-main p-4 border border-theme-border-light flex items-center gap-4 {achievement.unlocked
-					? ''
-					: 'opacity-50'}"
+				  ? ''
+				  : 'opacity-50'}"
 			>
 				<div class="flex-shrink-0">
 					{#if achievement.icon === 'trophy'}

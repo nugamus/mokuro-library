@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { runWithConcurrency } from '../routes/export';
-import { buildComicInfoXml, normalizeMetadataFormat } from '../services/export/metadata';
+import { buildComicInfoXml, normalizeMetadataFormat } from '../utils/export/metadata';
 import type { Series, Volume } from '../generated/prisma/client';
 
 const buildSeries = (): Series =>

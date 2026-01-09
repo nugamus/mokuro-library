@@ -1,20 +1,28 @@
-import type { PatchOperation, MokuroData, MokuroBlock, UnifiedBlock, UnifiedLine, Quad, Rect } from "$lib/types";
+import type {
+  PatchOperation,
+  MokuroData,
+  MokuroBlock,
+  UnifiedBlock,
+  UnifiedLine,
+  Quad,
+  Rect
+} from '$lib/types';
 
 export class PatchApplicator {
   /**
-   * Applies a patch operation to the MokuroData object (mutates in place).
-   * Validates indices before applying.
-   *
-   * @param data - The MokuroData object to modify
-   * @param patch - The patch operation to apply
-   * @throws Error if path/op is unsupported or indices are invalid
-   */
+	 * Applies a patch operation to the MokuroData object (mutates in place).
+	 * Validates indices before applying.
+	 *
+	 * @param data - The MokuroData object to modify
+	 * @param patch - The patch operation to apply
+	 * @throws Error if path/op is unsupported or indices are invalid
+	 */
   static apply(data: MokuroData, patch: PatchOperation): void {
     if (patch.op === 'genesis') {
       return;
     }
 
-    const parts = patch.path.split("/").filter(x => x);
+    const parts = patch.path.split('/').filter((x) => x);
     const op = patch.op;
 
     // Block Operations (/pages/p/blocks/...)
@@ -31,7 +39,9 @@ export class PatchApplicator {
           throw new Error(`Reorder operation missing new_order`);
         }
         if (patch.new_order.length !== page.blocks.length) {
-          throw new Error(`Reorder length mismatch: new_order has ${patch.new_order.length} elements, but page has ${page.blocks.length} blocks`);
+          throw new Error(
+            `Reorder length mismatch: new_order has ${patch.new_order.length} elements, but page has ${page.blocks.length} blocks`
+          );
         }
         this.reorderArray(page.blocks, patch.new_order);
         return;
@@ -51,7 +61,9 @@ export class PatchApplicator {
           } else {
             const blockIndex = parseInt(blockIndexRaw);
             if (blockIndex < 0 || blockIndex > page.blocks.length) {
-              throw new Error(`Invalid block insert index ${blockIndex}: page has ${page.blocks.length} blocks`);
+              throw new Error(
+                `Invalid block insert index ${blockIndex}: page has ${page.blocks.length} blocks`
+              );
             }
             page.blocks.splice(blockIndex, 0, nativeBlock);
           }
@@ -61,7 +73,9 @@ export class PatchApplicator {
         if (op === 'remove') {
           const blockIndex = parseInt(blockIndexRaw);
           if (blockIndex < 0 || blockIndex >= page.blocks.length) {
-            throw new Error(`Invalid block index ${blockIndex}: page has ${page.blocks.length} blocks`);
+            throw new Error(
+              `Invalid block index ${blockIndex}: page has ${page.blocks.length} blocks`
+            );
           }
           page.blocks.splice(blockIndex, 1);
           return;
@@ -85,7 +99,9 @@ export class PatchApplicator {
             throw new Error(`Reorder operation missing new_order`);
           }
           if (patch.new_order.length !== block.lines.length) {
-            throw new Error(`Reorder length mismatch: new_order has ${patch.new_order.length} elements, but block has ${block.lines.length} lines`);
+            throw new Error(
+              `Reorder length mismatch: new_order has ${patch.new_order.length} elements, but block has ${block.lines.length} lines`
+            );
           }
           this.reorderParallel(block.lines, block.lines_coords, patch.new_order);
           return;
@@ -104,7 +120,9 @@ export class PatchApplicator {
             } else {
               const lineIndex = parseInt(lineIndexRaw);
               if (lineIndex < 0 || lineIndex > block.lines.length) {
-                throw new Error(`Invalid line insert index ${lineIndex}: block has ${block.lines.length} lines`);
+                throw new Error(
+                  `Invalid line insert index ${lineIndex}: block has ${block.lines.length} lines`
+                );
               }
               block.lines.splice(lineIndex, 0, val.text);
               block.lines_coords.splice(lineIndex, 0, val.coords);
@@ -116,7 +134,9 @@ export class PatchApplicator {
           if (op === 'remove') {
             const lineIndex = parseInt(lineIndexRaw);
             if (lineIndex < 0 || lineIndex >= block.lines.length) {
-              throw new Error(`Invalid line index ${lineIndex}: block has ${block.lines.length} lines`);
+              throw new Error(
+                `Invalid line index ${lineIndex}: block has ${block.lines.length} lines`
+              );
             }
             block.lines.splice(lineIndex, 1);
             block.lines_coords.splice(lineIndex, 1);
@@ -128,7 +148,9 @@ export class PatchApplicator {
           if (op === 'replace') {
             const lineIndex = parseInt(lineIndexRaw);
             if (lineIndex < 0 || lineIndex >= block.lines.length) {
-              throw new Error(`Invalid line index ${lineIndex}: block has ${block.lines.length} lines`);
+              throw new Error(
+                `Invalid line index ${lineIndex}: block has ${block.lines.length} lines`
+              );
             }
             if (patch.value === undefined) {
               throw new Error(`Replace operation missing value`);
@@ -169,8 +191,8 @@ export class PatchApplicator {
   }
 
   /**
-   * Applies multiple patches in sequence.
-   */
+	 * Applies multiple patches in sequence.
+	 */
   static applyAll(data: MokuroData, patches: PatchOperation[]): void {
     for (const patch of patches) {
       this.apply(data, patch);
@@ -185,8 +207,8 @@ export class PatchApplicator {
       box: u.box,
       vertical: u.vertical,
       font_size: u.font_size,
-      lines: u.lines.map(l => l.text),
-      lines_coords: u.lines.map(l => l.coords)
+      lines: u.lines.map((l) => l.text),
+      lines_coords: u.lines.map((l) => l.coords)
     };
   }
 

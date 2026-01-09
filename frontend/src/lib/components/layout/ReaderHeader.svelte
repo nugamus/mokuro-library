@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import FontSizeSlider from '$lib/components/controls/FontSizeSlider.svelte';
@@ -20,26 +21,26 @@
 	let fontSizePos = $state({ x: 0, y: 0 });
 
 	let headerIsVisible = $derived(
-		!readerState.hideHUD || headerForceVisible || isFontSizeOpen || readerState.isSaving
+	  !readerState.hideHUD || headerForceVisible || isFontSizeOpen || readerState.isSaving
 	);
 
 	const saveShortcut = $derived.by(() => ($keybindStore.saveOcr || []).join(' / '));
 	const smartResizeShortcut = $derived.by(() =>
-		($keybindStore.toggleSmartResize || []).join(' / ')
+	  ($keybindStore.toggleSmartResize || []).join(' / ')
 	);
 	const editModeShortcut = $derived.by(() => ($keybindStore.toggleOcrMode || []).join(' / '));
 
 	// --- Handlers ---
 	const toggleFontSlider = (e: MouseEvent) => {
-		e.stopPropagation();
-		const target = e.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
+	  e.stopPropagation();
+	  const target = e.currentTarget as HTMLElement;
+	  const rect = target.getBoundingClientRect();
 
-		fontSizePos = {
-			x: rect.left - 80,
-			y: rect.bottom + 10
-		};
-		isFontSizeOpen = !isFontSizeOpen;
+	  fontSizePos = {
+	    x: rect.left - 80,
+	    y: rect.bottom + 10
+	  };
+	  isFontSizeOpen = !isFontSizeOpen;
 	};
 </script>
 
@@ -48,34 +49,34 @@
   text-white touch-none transition-opacity duration-300 bg-gradient-to-b from-black/80 via-black/40 to-transparent"
 	class:opacity-0={!headerIsVisible}
 	onpointerenter={(e) => {
-		if (e.pointerType === 'mouse') headerForceVisible = true;
+	  if (e.pointerType === 'mouse') headerForceVisible = true;
 	}}
 	onpointerleave={(e) => {
-		if (e.pointerType === 'mouse') headerForceVisible = false;
+	  if (e.pointerType === 'mouse') headerForceVisible = false;
 	}}
 	onpointerup={(e: PointerEvent) => {
-		// Make header visible on touch devices
-		if (e.pointerType !== 'mouse') {
-			setTimeout(() => {
-				headerForceVisible = true;
-			}, 100);
-			if (headerTimer) clearTimeout(headerTimer); // Clear any old timer just in case
+	  // Make header visible on touch devices
+	  if (e.pointerType !== 'mouse') {
+	    setTimeout(() => {
+	      headerForceVisible = true;
+	    }, 100);
+	    if (headerTimer) clearTimeout(headerTimer); // Clear any old timer just in case
 
-			headerTimer = setTimeout(() => {
-				headerForceVisible = false;
-				headerTimer = null;
-			}, 4000);
-		}
+	    headerTimer = setTimeout(() => {
+	      headerForceVisible = false;
+	      headerTimer = null;
+	    }, 4000);
+	  }
 	}}
 >
 	<div class="flex-1 justify-start overflow-hidden">
 		<button
 			disabled={!headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				const destination = uiState.returnPath || `/series/${readerState.seriesId}`;
-				goto(destination);
-				uiState.clearReturnPath();
+			  e.stopPropagation();
+			  const destination = uiState.returnPath || `/series/${readerState.seriesId}`;
+			  goto(resolve(String(destination), {}));
+			  uiState.clearReturnPath();
 			}}
 			class="group flex items-center gap-2 pr-4 text-theme-secondary hover:text-theme-primary transition-colors"
 		>
@@ -178,8 +179,8 @@
 		>
 			<span class="mr-1">
 				{readerState.currentPageIndex + 1}{readerState.visiblePages.length === 2
-					? `-${readerState.currentPageIndex + 2}`
-					: ''}
+				  ? `-${readerState.currentPageIndex + 2}`
+				  : ''}
 			</span>
 			<span>/ {readerState.totalPages}</span>
 		</span>
@@ -187,8 +188,8 @@
 		{#if readerState.hasUnsavedChanges}
 			<button
 				onclick={(e) => {
-					e.stopPropagation();
-					readerState.saveOcr();
+				  e.stopPropagation();
+				  readerState.saveOcr();
 				}}
 				disabled={readerState.isSaving || !headerIsVisible}
 				class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 disabled:opacity-50 transition-colors relative group"
@@ -217,11 +218,11 @@
 		<button
 			disabled={!readerState.hasUndo || !headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				readerState.undo();
+			  e.stopPropagation();
+			  readerState.undo();
 			}}
 			class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-			title={`Undo`}
+			title="Undo"
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -242,11 +243,11 @@
 		<button
 			disabled={!readerState.hasRedo || !headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				readerState.redo();
+			  e.stopPropagation();
+			  readerState.redo();
 			}}
 			class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
-			title={`Redo`}
+			title="Redo"
 		>
 			<svg
 				xmlns="http://www.w3.org/2000/svg"
@@ -267,13 +268,13 @@
 		<button
 			disabled={!headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				readerState.toggleSmartResizeMode();
+			  e.stopPropagation();
+			  readerState.toggleSmartResizeMode();
 			}}
 			class={`p-2 rounded-xl transition-all duration-200 ${
-				readerState.isSmartResizeMode
-					? 'bg-amber-500 text-black shadow-lg shadow-amber-500/25'
-					: 'text-theme-secondary hover:text-white hover:bg-white/10'
+			  readerState.isSmartResizeMode
+			    ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/25'
+			    : 'text-theme-secondary hover:text-white hover:bg-white/10'
 			}`}
 			title={`Smart Resize Mode${smartResizeShortcut ? ` (${smartResizeShortcut})` : ''}`}
 		>
@@ -292,13 +293,13 @@
 		<button
 			disabled={!headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				readerState.setOcrMode(readerState.ocrMode === 'BOX' ? 'READ' : 'BOX');
+			  e.stopPropagation();
+			  readerState.setOcrMode(readerState.ocrMode === 'BOX' ? 'READ' : 'BOX');
 			}}
 			class={`p-2 rounded-xl transition-all duration-200 ${
-				readerState.ocrMode !== 'READ'
-					? 'bg-accent text-white shadow-lg shadow-accent/25'
-					: 'text-theme-secondary hover:text-white hover:bg-white/10'
+			  readerState.ocrMode !== 'READ'
+			    ? 'bg-accent text-white shadow-lg shadow-accent/25'
+			    : 'text-theme-secondary hover:text-white hover:bg-white/10'
 			}`}
 			title={`${readerState.ocrMode === 'READ' ? 'Enter Edit Mode' : 'Exit Edit Mode'}${editModeShortcut ? ` (${editModeShortcut})` : ''}`}
 		>
@@ -338,8 +339,8 @@
 		<button
 			disabled={!headerIsVisible}
 			onclick={(e) => {
-				e.stopPropagation();
-				settingsOpen = true;
+			  e.stopPropagation();
+			  settingsOpen = true;
 			}}
 			class="p-2 rounded-xl text-theme-secondary hover:text-white hover:bg-white/10 transition-colors"
 			title="Settings"

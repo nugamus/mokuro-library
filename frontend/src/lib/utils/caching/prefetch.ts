@@ -19,8 +19,8 @@ export function onLinkHover(href: string) {
 
   prefetchTimer = setTimeout(() => {
     // Prefetch SvelteKit route data and code
-    preloadData(href).catch(() => { });
-    preloadCode(href).catch(() => { });
+    preloadData(href).catch(() => {});
+    preloadCode(href).catch(() => {});
 
     // Prefetch likely API calls based on route
     prefetchRouteData(href);
@@ -82,7 +82,7 @@ export async function prefetchCommonRoutes() {
   await runWhenIdle(async () => {
     const routes = ['/settings', '/contributions'];
     routes.forEach((route) => {
-      preloadCode(route).catch(() => { });
+      preloadCode(route).catch(() => {});
     });
 
     // Eagerly load reader components (they're needed for any volume view)

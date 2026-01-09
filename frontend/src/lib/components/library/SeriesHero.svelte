@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { createId } from '@paralleldrive/cuid2';
+	import { fetchAuthenticatedImage, revokeImageUrl } from '$lib/services/api';
+	import { onDestroy } from 'svelte';
 
 	// Global State & Components
 	import { contextMenu } from '$lib/stores/contextMenuStore';
@@ -30,13 +32,13 @@
 	}
 
 	let {
-		series,
-		stats,
-		coverRefreshTrigger = 0,
-		isBookmarked = false,
-		onCoverUpload,
-		onBookmarkToggle,
-		onRefresh
+	  series,
+	  stats,
+	  coverRefreshTrigger = 0,
+	  isBookmarked = false,
+	  onCoverUpload,
+	  onBookmarkToggle,
+	  onRefresh
 	} = $props<{
 		series: Series;
 		stats: SeriesStats;
@@ -58,80 +60,106 @@
 	let isScrapeLoading = $state(false);
 	let scrapePreview = $state<ScrapedPreview | null>(null);
 
+	// Cover image blob URL
+	let coverBlobUrl = $state('');
+
 	// --- Computed ---
 	let displayTitle = $derived(series.title ?? series.folderName);
 	let displayJapaneseTitle = $derived(
-		series.japaneseTitle && series.romajiTitle
-			? `${series.japaneseTitle} / ${series.romajiTitle}`
-			: series.japaneseTitle || series.romajiTitle || null
+	  series.japaneseTitle && series.romajiTitle
+	    ? `${series.japaneseTitle} / ${series.romajiTitle}`
+	    : series.japaneseTitle || series.romajiTitle || null
 	);
+
+	// Load cover image
+	$effect(() => {
+	  const coverPath = series.coverPath;
+	  const trigger = coverRefreshTrigger;
+
+	  if (coverPath) {
+	    const imagePath = `/api/files/series/${series.id}/cover?t=${trigger}`;
+	    fetchAuthenticatedImage(imagePath, true)
+	      .then((url) => {
+	        coverBlobUrl = url;
+	      })
+	      .catch((err) => {
+	        console.error('Failed to load cover:', err);
+	      });
+	  }
+	});
+
+	onDestroy(() => {
+	  if (coverBlobUrl) {
+	    revokeImageUrl(coverBlobUrl, `/api/files/series/${series.id}/cover?t=${coverRefreshTrigger}`);
+	  }
+	});
 
 	// --- Actions ---
 
 	const formatTime = (seconds: number) => {
-		const h = Math.floor(seconds / 3600);
-		const m = Math.floor((seconds % 3600) / 60);
-		return h > 0 ? `${h}h ${m}m` : `${m}m`;
+	  const h = Math.floor(seconds / 3600);
+	  const m = Math.floor((seconds % 3600) / 60);
+	  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 	};
 
 	async function handleQuickScrape() {
-		// 1. Open Modal Immediately
-		isScrapeModalOpen = true;
-		isScrapeLoading = true;
-		scrapePreview = null;
+	  // 1. Open Modal Immediately
+	  isScrapeModalOpen = true;
+	  isScrapeLoading = true;
+	  scrapePreview = null;
 
-		try {
-			const { scraped, current } = await scrapingState.scrapeWithFallback(
-				series.id,
-				series.title || series.folderName,
-				'anilist'
-			);
+	  try {
+	    const { scraped, current } = await scrapingState.scrapeWithFallback(
+	      series.id,
+	      series.title || series.folderName,
+	      'anilist'
+	    );
 
-			scrapePreview = {
-				id: createId(),
-				seriesId: series.id,
-				seriesTitle: series.title || series.folderName,
-				searchQuery: series.title || series.folderName,
-				current,
-				scraped,
-				status: 'pending'
-			};
-		} catch (e) {
-			console.error('Scrape failed:', e);
-			scrapePreview = null;
-		} finally {
-			isScrapeLoading = false;
-		}
+	    scrapePreview = {
+	      id: createId(),
+	      seriesId: series.id,
+	      seriesTitle: series.title || series.folderName,
+	      searchQuery: series.title || series.folderName,
+	      current,
+	      scraped,
+	      status: 'pending'
+	    };
+	  } catch (e) {
+	    console.error('Scrape failed:', e);
+	    scrapePreview = null;
+	  } finally {
+	    isScrapeLoading = false;
+	  }
 	}
 
 	function handleEditClick() {
-		isEditOpen = true;
+	  isEditOpen = true;
 	}
 
 	function handleMenuOpen(e: MouseEvent) {
-		e.preventDefault();
-		e.stopPropagation();
-		if ($contextMenu.component === SeriesActionsMenu) {
-			contextMenu.close();
-			return;
-		}
+	  e.preventDefault();
+	  e.stopPropagation();
+	  if ($contextMenu.component === SeriesActionsMenu) {
+	    contextMenu.close();
+	    return;
+	  }
 
-		const target = e.currentTarget as HTMLElement;
-		const rect = target.getBoundingClientRect();
+	  const target = e.currentTarget as HTMLElement;
+	  const rect = target.getBoundingClientRect();
 
-		// Align to the bottom-right of the button
-		// The ContextMenu component handles screen boundary collision automatically
-		contextMenu.open(
-			rect.right,
-			rect.bottom,
-			SeriesActionsMenu,
-			{
-				xEdgeAlign: 'right',
-				onEdit: handleEditClick,
-				onScrape: handleQuickScrape
-			},
-			target
-		);
+	  // Align to the bottom-right of the button
+	  // The ContextMenu component handles screen boundary collision automatically
+	  contextMenu.open(
+	    rect.right,
+	    rect.bottom,
+	    SeriesActionsMenu,
+	    {
+	      xEdgeAlign: 'right',
+	      onEdit: handleEditClick,
+	      onScrape: handleQuickScrape
+	    },
+	    target
+	  );
 	}
 </script>
 
@@ -139,9 +167,9 @@
 	class="series-hero relative w-full bg-theme-surface/40 backdrop-blur-3xl rounded-3xl overflow-hidden border border-white/10 shadow-2xl group mb-10"
 >
 	<div class="absolute inset-0 z-0 opacity-40 pointer-events-none select-none overflow-hidden">
-		{#if series.coverPath}
+		{#if coverBlobUrl}
 			<img
-				src={`/api/files/series/${series.id}/cover?t=${coverRefreshTrigger}`}
+				src={coverBlobUrl}
 				alt=""
 				class="w-full h-full object-cover blur-[100px] scale-150 opacity-60"
 			/>
@@ -158,9 +186,9 @@
 			<div
 				class="aspect-[2/3] rounded-xl overflow-hidden shadow-2xl shadow-black/50 border border-accent/40 relative group/cover ring-1 ring-accent/20 bg-theme-main"
 			>
-				{#if series.coverPath}
+				{#if coverBlobUrl}
 					<img
-						src={`/api/files/series/${series.id}/cover?t=${coverRefreshTrigger}`}
+						src={coverBlobUrl}
 						alt={series.folderName}
 						class="w-full h-full object-cover transition-transform duration-500 group-hover/cover:scale-105"
 					/>
@@ -349,10 +377,10 @@
 	isLoading={isScrapeLoading}
 	bind:preview={scrapePreview}
 	onClose={() => {
-		isScrapeModalOpen = false;
-		if (scrapePreview?.status === 'applied') {
-			onRefresh();
-		}
+	  isScrapeModalOpen = false;
+	  if (scrapePreview?.status === 'applied') {
+	    onRefresh();
+	  }
 	}}
 />
 
@@ -360,8 +388,8 @@
 	<button
 		onclick={onBookmarkToggle}
 		class="p-2 rounded-lg transition-colors hover:bg-theme-surface-hover/50 {isBookmarked
-			? 'text-status-warning'
-			: 'text-theme-secondary hover:text-theme-primary'}"
+		  ? 'text-status-warning'
+		  : 'text-theme-secondary hover:text-theme-primary'}"
 		title={isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'}
 	>
 		<svg

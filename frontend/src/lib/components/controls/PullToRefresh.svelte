@@ -1,14 +1,14 @@
 <script lang="ts">
-	import { browser } from '$app/environment';
+	// browser not required here
 
 	let {
-		onRefresh,
-		threshold = 80,
-		children
+	  onRefresh,
+	  threshold = 80,
+	  children
 	}: {
 		onRefresh: () => void | Promise<void>;
 		threshold?: number;
-		children?: any;
+		children?: (() => unknown) | undefined;
 	} = $props();
 
 	let pullDistance = $state(0);
@@ -17,42 +17,42 @@
 	let canPull = $state(false);
 
 	function handleTouchStart(e: TouchEvent) {
-		const scrollTop = window.scrollY || document.documentElement.scrollTop;
-		if (scrollTop === 0) {
-			touchStartY = e.touches[0].clientY;
-			canPull = true;
-		}
+	  const scrollTop = window.scrollY || document.documentElement.scrollTop;
+	  if (scrollTop === 0) {
+	    touchStartY = e.touches[0].clientY;
+	    canPull = true;
+	  }
 	}
 
 	function handleTouchMove(e: TouchEvent) {
-		if (!canPull || isRefreshing) return;
+	  if (!canPull || isRefreshing) return;
 
-		const currentY = e.touches[0].clientY;
-		const diff = currentY - touchStartY;
+	  const currentY = e.touches[0].clientY;
+	  const diff = currentY - touchStartY;
 
-		if (diff > 0) {
-			pullDistance = Math.min(diff * 0.5, threshold + 20); // Damping effect
-			if (pullDistance > 10) {
-				e.preventDefault(); // Prevent scroll when pulling
-			}
-		}
+	  if (diff > 0) {
+	    pullDistance = Math.min(diff * 0.5, threshold + 20); // Damping effect
+	    if (pullDistance > 10) {
+	      e.preventDefault(); // Prevent scroll when pulling
+	    }
+	  }
 	}
 
 	async function handleTouchEnd() {
-		if (!canPull) return;
+	  if (!canPull) return;
 
-		if (pullDistance >= threshold) {
-			isRefreshing = true;
-			try {
-				await onRefresh();
-			} finally {
-				isRefreshing = false;
-			}
-		}
+	  if (pullDistance >= threshold) {
+	    isRefreshing = true;
+	    try {
+	      await onRefresh();
+	    } finally {
+	      isRefreshing = false;
+	    }
+	  }
 
-		pullDistance = 0;
-		touchStartY = 0;
-		canPull = false;
+	  pullDistance = 0;
+	  touchStartY = 0;
+	  canPull = false;
 	}
 
 	const pullPercentage = $derived(Math.min((pullDistance / threshold) * 100, 100));
@@ -72,7 +72,9 @@
 		>
 			<div class="flex flex-col items-center gap-2">
 				{#if isRefreshing}
-					<div class="animate-spin rounded-full h-6 w-6 border-2 border-accent border-t-transparent"></div>
+					<div
+						class="animate-spin rounded-full h-6 w-6 border-2 border-accent border-t-transparent"
+					></div>
 					<span class="text-sm text-theme-secondary">Refreshing...</span>
 				{:else}
 					<svg

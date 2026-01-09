@@ -47,7 +47,7 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
   if (!data.patch_id) throw Error(`Patch data has no associated patchId.`);
   if (data.patch_id !== dataPatchId) throw Error(`PatchId mismatch. Make sure you have the correct version and set data.patch_id.`);
 
-  let updatedBranch = await fastify.prisma.ocrBranch.update({
+  const updatedBranch = await fastify.prisma.ocrBranch.update({
     where: { id: branchId },
     data: { snapshotPatchId: dataPatchId },
     include: {

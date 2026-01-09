@@ -4,50 +4,49 @@
 	import MenuGroup from '$lib/components/menu/MenuGroup.svelte';
 	import MenuGrid from '$lib/components/menu/MenuGrid.svelte';
 	import MenuSeparator from './MenuSeparator.svelte';
-	import MenuToggle from './MenuToggle.svelte';
 
 	// Configuration for filter button styles
 	const filterConfig = {
-		unread: {
-			activeColor: 'text-status-unread',
-			activeBorder: 'border-status-unread/70',
-			activeBg: 'bg-status-unread/30',
-			shadow: 'shadow-status-unread/30'
-		},
-		reading: {
-			activeColor: 'text-accent',
-			activeBorder: 'border-accent/70',
-			activeBg: 'bg-accent/25',
-			shadow: 'shadow-accent/40'
-		},
-		read: {
-			activeColor: 'text-status-success',
-			activeBorder: 'border-status-success/70',
-			activeBg: 'bg-status-success/30',
-			shadow: 'shadow-status-success/30'
-		},
-		bookmarked: {
-			activeColor: 'text-status-warning',
-			activeBorder: 'border-status-warning/70',
-			activeBg: 'bg-status-warning/20',
-			shadow: 'shadow-status-warning/30'
-		}
+	  unread: {
+	    activeColor: 'text-status-unread',
+	    activeBorder: 'border-status-unread/70',
+	    activeBg: 'bg-status-unread/30',
+	    shadow: 'shadow-status-unread/30'
+	  },
+	  reading: {
+	    activeColor: 'text-accent',
+	    activeBorder: 'border-accent/70',
+	    activeBg: 'bg-accent/25',
+	    shadow: 'shadow-accent/40'
+	  },
+	  read: {
+	    activeColor: 'text-status-success',
+	    activeBorder: 'border-status-success/70',
+	    activeBg: 'bg-status-success/30',
+	    shadow: 'shadow-status-success/30'
+	  },
+	  bookmarked: {
+	    activeColor: 'text-status-warning',
+	    activeBorder: 'border-status-warning/70',
+	    activeBg: 'bg-status-warning/20',
+	    shadow: 'shadow-status-warning/30'
+	  }
 	} as const;
 
 	function toggleOrganization(target: 'organized' | 'unorganized') {
-		if (uiState.filterOrganization === target) {
-			uiState.filterOrganization = 'all'; // Toggle off
-		} else {
-			uiState.filterOrganization = target; // Mutually exclusive switch
-		}
+	  if (uiState.filterOrganization === target) {
+	    uiState.filterOrganization = 'all'; // Toggle off
+	  } else {
+	    uiState.filterOrganization = target; // Mutually exclusive switch
+	  }
 	}
 
 	function toggleMissing(target: Exclude<FilterMissing, 'none'>) {
-		if (uiState.filterMissing === target) {
-			uiState.filterMissing = 'none'; // Toggle off (Default)
-		} else {
-			uiState.filterMissing = target;
-		}
+	  if (uiState.filterMissing === target) {
+	    uiState.filterMissing = 'none'; // Toggle off (Default)
+	  } else {
+	    uiState.filterMissing = target;
+	  }
 	}
 </script>
 
@@ -135,19 +134,19 @@
 
 	<MenuGroup title="Ordering">
 		<div class="space-y-2">
-			{#each uiState.availableSorts as sort}
+			{#each uiState.availableSorts as sort (sort.key)}
 				{@const isActive = uiState.sortKey === sort.key}
 				<button
 					onclick={() => {
-						if (isActive) uiState.toggleSortOrder();
-						else uiState.sortKey = sort.key;
+					  if (isActive) uiState.toggleSortOrder();
+					  else uiState.sortKey = sort.key;
 					}}
 					class={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl text-sm font-bold transition-all duration-200
                     ${
-												isActive
-													? 'bg-accent-surface text-accent border-2 border-accent/70 shadow-lg shadow-accent/40'
-													: 'bg-theme-main/70 text-theme-primary hover:bg-theme-surface-hover/70 hover:text-white border-2 border-theme-border-light hover:border-theme-border'
-											}`}
+											isActive
+											  ? 'bg-accent-surface text-accent border-2 border-accent/70 shadow-lg shadow-accent/40'
+											  : 'bg-theme-main/70 text-theme-primary hover:bg-theme-surface-hover/70 hover:text-white border-2 border-theme-border-light hover:border-theme-border'
+										}`}
 				>
 					<span class="capitalize">{sort.label}</span>
 
@@ -185,12 +184,12 @@
 					{@const styles = filterConfig[filter as keyof typeof filterConfig]}
 
 					{@const activeClass = isActive
-						? `${styles.activeBg} ${styles.activeColor} ${styles.activeBorder} shadow-lg ${styles.shadow}`
-						: 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}
+					  ? `${styles.activeBg} ${styles.activeColor} ${styles.activeBorder} shadow-lg ${styles.shadow}`
+					  : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}
 
 					<button
 						onclick={() =>
-							(uiState.filterStatus = isActive ? 'all' : (filter as 'unread' | 'reading' | 'read'))}
+						  (uiState.filterStatus = isActive ? 'all' : (filter as 'unread' | 'reading' | 'read'))}
 						class={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all duration-200 ${activeClass}`}
 					>
 						{#if filter === 'unread'}
@@ -250,8 +249,8 @@
 			{@const bmStyles = filterConfig.bookmarked}
 
 			{@const bmActiveClass = isBookmarked
-				? `${bmStyles.activeBg} ${bmStyles.activeColor} ${bmStyles.activeBorder} shadow-lg ${bmStyles.shadow}`
-				: 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}
+			  ? `${bmStyles.activeBg} ${bmStyles.activeColor} ${bmStyles.activeBorder} shadow-lg ${bmStyles.shadow}`
+			  : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}
 
 			<button
 				onclick={() => (uiState.filterBookmarked = !uiState.filterBookmarked)}
@@ -295,8 +294,8 @@
 					onclick={() => toggleOrganization('unorganized')}
 					class="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
 					{uiState.filterOrganization === 'unorganized'
-						? 'border-blue-500/70 bg-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/30'
-						: 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
+					  ? 'border-blue-500/70 bg-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/30'
+					  : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
 				>
 					Unorganized
 				</button>
@@ -305,8 +304,8 @@
 					onclick={() => toggleOrganization('organized')}
 					class="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
 					{uiState.filterOrganization === 'organized'
-						? 'border-purple-500/70 bg-purple-500/20 text-purple-400 shadow-lg shadow-purple-500/30'
-						: 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
+					  ? 'border-purple-500/70 bg-purple-500/20 text-purple-400 shadow-lg shadow-purple-500/30'
+					  : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
 				>
 					Organized
 				</button>
@@ -315,14 +314,14 @@
 
 		<MenuGroup title="Maintenance">
 			<div class="grid grid-cols-2 gap-2">
-				{#each [{ key: 'any', label: 'Any Missing' }, { key: 'cover', label: 'No Cover' }, { key: 'description', label: 'No Desc' }, { key: 'title', label: 'No Title' }] as item}
+				{#each [{ key: 'any', label: 'Any Missing' }, { key: 'cover', label: 'No Cover' }, { key: 'description', label: 'No Desc' }, { key: 'title', label: 'No Title' }] as item (item.key)}
 					{@const k = item.key as Exclude<FilterMissing, 'none'>}
 					<button
 						onclick={() => toggleMissing(k)}
 						class="px-3 py-2.5 rounded-xl text-xs font-bold border-2 uppercase transition-all duration-200
 						{uiState.filterMissing === k
-							? 'border-status-danger/70 bg-status-danger/20 text-status-danger shadow-lg shadow-status-danger/30'
-							: 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
+						  ? 'border-status-danger/70 bg-status-danger/20 text-status-danger shadow-lg shadow-status-danger/30'
+						  : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
 					>
 						{item.label}
 					</button>
@@ -331,7 +330,3 @@
 		</MenuGroup>
 	{/if}
 </MenuWrapper>
-
-
-
-

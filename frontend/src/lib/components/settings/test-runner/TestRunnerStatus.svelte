@@ -37,8 +37,8 @@
 {#if lastSuccess !== null}
 	<div
 		class="rounded-xl border-2 px-5 py-3 text-sm font-semibold flex items-center gap-3 {lastSuccess
-			? 'border-status-success/40 bg-status-success/10 text-status-success'
-			: 'border-status-danger/40 bg-status-danger/10 text-status-danger'}"
+		  ? 'border-status-success/40 bg-status-success/10 text-status-success'
+		  : 'border-status-danger/40 bg-status-danger/10 text-status-danger'}"
 		in:scale={{ start: 0.95, duration: 400, easing: quintOut }}
 		out:fade={{ duration: 200 }}
 	>

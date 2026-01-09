@@ -14,8 +14,8 @@ export type MenuOption = MenuAction | MenuSeparator;
 type MenuState = {
   isOpen: boolean;
   position: { x: number; y: number };
-  component: Component<any> | null;
-  props: Record<string, any>;
+  component: Component<unknown> | null;
+  props: Record<string, unknown>;
   anchorElement: HTMLElement | null;
 };
 
@@ -41,8 +41,8 @@ function createContextMenu() {
     open: (
       x: number,
       y: number,
-      componentOrOptions: Component<any> | MenuOption[],
-      props: Record<string, any> = {},
+      componentOrOptions: Component<unknown> | MenuOption[],
+      props: Record<string, unknown> = {},
       anchorElement: HTMLElement | null = null
     ) => {
       if (Array.isArray(componentOrOptions)) {
@@ -68,7 +68,7 @@ function createContextMenu() {
     },
 
     updatePosition: (x: number, y: number) => {
-      update(state => ({
+      update((state) => ({
         ...state,
         position: { x, y }
       }));

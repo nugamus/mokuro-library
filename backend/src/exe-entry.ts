@@ -30,6 +30,7 @@ function runMigrations() {
     fs.mkdirSync(dataDir, { recursive: true });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const Database = require('better-sqlite3');
   const db = new Database(dbPath);
 
@@ -98,6 +99,7 @@ console.log('🚀 Starting Server...');
 console.log('-------------------------------------------');
 
 // 4. Start the Server
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 require('./server');
 
 // 5. Launch Browser (Windows specific)

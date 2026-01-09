@@ -89,7 +89,7 @@ export class PatchTransformer {
       affectedPath = effect.path;
     }
 
-    let userPath = userOp.op === 'reorder' ? `${userOp.path}/-1` : userOp.path;
+    const userPath = userOp.op === 'reorder' ? `${userOp.path}/-1` : userOp.path;
 
     // shift_up can only hit gaps (i.e. sibling_hit or descendant_hit)
     if (effect.type !== 'shift_up') {
@@ -296,7 +296,7 @@ export class PatchTransformer {
     // Normal path transform for shift/permute effects
     if (PathUtils.isDescendant(userOp.path, effect.path)) {
       const segments = PathUtils.getRelativeSegments(userOp.path, effect.path);
-      let index = parseInt(segments[0], 10);
+      const index = parseInt(segments[0], 10);
       if (isNaN(index)) {
         throw new Error(`Unexpected non-numeric path segment in ${userOp.path}`);
       }

@@ -2,15 +2,15 @@
 	import SettingTooltip from './SettingTooltip.svelte';
 
 	let {
-		label,
-		tooltip,
-		value = $bindable(),
-		min = 0,
-		max = 1,
-		step = 0.1,
-		displayValue = '',
-		onInput,
-		onChange
+	  label,
+	  tooltip,
+	  value = $bindable(),
+	  min = 0,
+	  max = 1,
+	  step = 0.1,
+	  displayValue = '',
+	  onInput,
+	  onChange
 	} = $props<{
 		label: string;
 		tooltip?: string;

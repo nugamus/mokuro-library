@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { apiFetch } from '$lib/services/api';
 	import { user, type AuthUser } from '$lib/stores/authStore';
 	import { apiCache } from '$lib/utils/caching/apiCache';
@@ -13,13 +14,13 @@
 	type RegisterMode = 'auto-login' | 'show-success';
 
 	let {
-		backgroundImage,
-		initialMode = 'login',
-		registerMode = 'auto-login',
-		redirectOnAuth = false,
-		registerRedirectTo,
-		registerSuccessMessage,
-		registerToggleHref
+	  backgroundImage,
+	  initialMode = 'login',
+	  registerMode = 'auto-login',
+	  redirectOnAuth = false,
+	  registerRedirectTo,
+	  registerSuccessMessage,
+	  registerToggleHref
 	} = $props<{
 		backgroundImage: string;
 		initialMode?: 'login' | 'register';
@@ -44,119 +45,120 @@
 	>([]);
 
 	const buildFloatingElements = (count = 8) =>
-		Array.from({ length: count }, (_, i) => ({
-			id: i,
-			delay: Math.random() * 2,
-			duration: 15 + Math.random() * 10,
-			x: Math.random() * 100,
-			y: Math.random() * 100
-		}));
+	  Array.from({ length: count }, (_, i) => ({
+	    id: i,
+	    delay: Math.random() * 2,
+	    duration: 15 + Math.random() * 10,
+	    x: Math.random() * 100,
+	    y: Math.random() * 100
+	  }));
 
 	function toggleMode() {
-		isRegisterMode = !isRegisterMode;
-		username = '';
-		password = '';
-		confirmPassword = '';
-		error = null;
-		successMessage = null;
+	  isRegisterMode = !isRegisterMode;
+	  username = '';
+	  password = '';
+	  confirmPassword = '';
+	  error = null;
+	  successMessage = null;
 	}
 
 	async function handleLogin() {
-		isLoading = true;
-		error = null;
+	  isLoading = true;
+	  error = null;
 
-		try {
-			const deviceFingerprint = await getStoredFingerprint();
+	  try {
+	    const deviceFingerprint = await getStoredFingerprint();
 
-			const userData = await apiFetch('/api/auth/login', {
-				method: 'POST',
-				body: { username, password, rememberMe, deviceFingerprint }
-			});
+	    const userData = await apiFetch('/api/auth/login', {
+	      method: 'POST',
+	      body: { username, password, rememberMe, deviceFingerprint }
+	    });
 
-			const authUser = userData as AuthUser;
-			user.set(authUser);
+	    const authUser = userData as AuthUser;
+	    user.set(authUser);
 
-			// Clear cache if user changed
-			apiCache.setUserId(authUser.id);
+	    // Clear cache if user changed
+	    apiCache.setUserId(authUser.id);
 
-			if (redirectOnAuth) {
-				await goto('/');
-			}
-		} catch (e) {
-			error = (e as Error).message;
-		} finally {
-			isLoading = false;
-		}
+	    if (redirectOnAuth) {
+	      await goto(resolve('/'));
+	    }
+	  } catch (e) {
+	    error = (e as Error).message;
+	  } finally {
+	    isLoading = false;
+	  }
 	}
 
 	async function handleRegister() {
-		isLoading = true;
-		error = null;
-		successMessage = null;
+	  isLoading = true;
+	  error = null;
+	  successMessage = null;
 
-		if (password.length < 6) {
-			error = 'Password must be at least 6 characters long.';
-			isLoading = false;
-			return;
-		}
+	  if (password.length < 6) {
+	    error = 'Password must be at least 6 characters long.';
+	    isLoading = false;
+	    return;
+	  }
 
-		if (password !== confirmPassword) {
-			error = 'Passwords do not match.';
-			isLoading = false;
-			return;
-		}
+	  if (password !== confirmPassword) {
+	    error = 'Passwords do not match.';
+	    isLoading = false;
+	    return;
+	  }
 
-		try {
-			await apiFetch('/api/auth/register', {
-				method: 'POST',
-				body: { username, password }
-			});
-			if (registerMode === 'auto-login') {
-				const deviceFingerprint = await getStoredFingerprint();
-				const userData = await apiFetch('/api/auth/login', {
-					method: 'POST',
-					body: { username, password, rememberMe, deviceFingerprint }
-				});
+	  try {
+	    await apiFetch('/api/auth/register', {
+	      method: 'POST',
+	      body: { username, password }
+	    });
+	    if (registerMode === 'auto-login') {
+	      const deviceFingerprint = await getStoredFingerprint();
 
-				const authUser = userData as AuthUser;
-				user.set(authUser);
+	      const userData = await apiFetch('/api/auth/login', {
+	        method: 'POST',
+	        body: { username, password, rememberMe, deviceFingerprint }
+	      });
 
-				// Clear cache if user changed
-				apiCache.setUserId(authUser.id);
+	      const authUser = userData as AuthUser;
+	      user.set(authUser);
 
-				if (redirectOnAuth) {
-					await goto('/');
-				}
-			} else {
-				successMessage = registerSuccessMessage ?? 'Account created! Please sign in.';
-				setTimeout(() => {
-					isRegisterMode = false;
-					password = '';
-					confirmPassword = '';
-					successMessage = null;
-					if (registerRedirectTo) {
-						goto(registerRedirectTo);
-					}
-				}, 2000);
-			}
-		} catch (e) {
-			error = (e as Error).message;
-		} finally {
-			isLoading = false;
-		}
+	      // Clear cache if user changed
+	      apiCache.setUserId(authUser.id);
+
+	      if (redirectOnAuth) {
+	        await goto(resolve('/'));
+	      }
+	    } else {
+	      successMessage = registerSuccessMessage ?? 'Account created! Please sign in.';
+	      setTimeout(() => {
+	        isRegisterMode = false;
+	        password = '';
+	        confirmPassword = '';
+	        successMessage = null;
+	        if (registerRedirectTo) {
+	          goto(resolve(String(registerRedirectTo)));
+	        }
+	      }, 2000);
+	    }
+	  } catch (e) {
+	    error = (e as Error).message;
+	  } finally {
+	    isLoading = false;
+	  }
 	}
 
 	function handleSubmit() {
-		if (isRegisterMode) {
-			handleRegister();
-		} else {
-			handleLogin();
-		}
+	  if (isRegisterMode) {
+	    handleRegister();
+	  } else {
+	    handleLogin();
+	  }
 	}
 
 	onMount(() => {
-		showCard = true;
-		floatingElements = buildFloatingElements();
+	  showCard = true;
+	  floatingElements = buildFloatingElements();
 	});
 </script>
 
@@ -169,8 +171,8 @@
 		<div
 			class="w-full max-w-md transform transition-all duration-700 ease-out"
 			style="opacity: {showCard ? 1 : 0}; transform: translateY({showCard
-				? 0
-				: 20}px) scale({showCard ? 1 : 0.95});"
+			  ? 0
+			  : 20}px) scale({showCard ? 1 : 0.95});"
 		>
 			<!-- Decorative glow effect -->
 			<div
@@ -200,11 +202,7 @@
 					onSubmit={handleSubmit}
 				/>
 
-				<AuthFooter
-					{isRegisterMode}
-					{registerToggleHref}
-					onToggleMode={toggleMode}
-				/>
+				<AuthFooter {isRegisterMode} {registerToggleHref} onToggleMode={toggleMode} />
 			</div>
 		</div>
 	</div>

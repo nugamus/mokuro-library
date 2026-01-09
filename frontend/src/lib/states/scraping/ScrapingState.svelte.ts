@@ -2,18 +2,19 @@ import { browser } from '$app/environment';
 import { apiFetch } from '$lib/services/api';
 import { createId } from '@paralleldrive/cuid2';
 import { ReviewSession, type ScrapedPreview } from './ReviewSession.svelte.ts';
+import { SvelteSet } from 'svelte/reactivity';
 import type { Series } from '$lib/types';
 
 export interface DescriptionFilter {
-  id: string;
-  pattern: string;
-  enabled: boolean;
-  isRegex: boolean;
+	id: string;
+	pattern: string;
+	enabled: boolean;
+	isRegex: boolean;
 }
 
 export interface ScrapeResult {
-  scraped: any;
-  current: any;
+	scraped: unknown;
+	current: unknown;
 }
 
 class ScrapingState {
@@ -24,8 +25,8 @@ class ScrapingState {
 
   // --- Global Lists ---
   descriptionFilters = $state<DescriptionFilter[]>([]);
-  excludedSeriesIds = $state<Set<string>>(new Set());
-  scrapedSeriesIds = $state<Set<string>>(new Set());
+  excludedSeriesIds = $state<Set<string>>(new SvelteSet());
+  scrapedSeriesIds = $state<Set<string>>(new SvelteSet());
 
   // --- Constants ---
   readonly defaultFilters: Omit<DescriptionFilter, 'id' | 'enabled'>[] = [
@@ -61,8 +62,6 @@ class ScrapingState {
 
   preferredProvider = $state<'anilist' | 'mal' | 'kitsu'>('anilist');
 
-
-
   constructor() {
     // Initialize Session with a callback to update our local list
     this.session = new ReviewSession((id) => this.markAsScraped(id));
@@ -80,13 +79,12 @@ class ScrapingState {
         });
       });
     }
-
   }
 
   /**
-   * Initializes the review session with the selected series.
-   * Creates "scraping" preview items instantly using the known current metadata.
-   */
+	 * Initializes the review session with the selected series.
+	 * Creates "scraping" preview items instantly using the known current metadata.
+	 */
   initSession(seriesList: Series[]) {
     this.session.reset(seriesList.length);
 
@@ -114,9 +112,9 @@ class ScrapingState {
   }
 
   /**
-   * The Main Loop: Processes the 'upcoming' queue.
-   * Fetches metadata for scraping items one by one.
-   */
+	 * The Main Loop: Processes the 'upcoming' queue.
+	 * Fetches metadata for scraping items one by one.
+	 */
   async startScrapingQueue(provider: 'anilist' | 'mal' | 'kitsu') {
     if (this.isScraping) return;
     this.isScraping = true;
@@ -125,7 +123,7 @@ class ScrapingState {
     this.abortController = new AbortController();
 
     // Wait for next tick to ensure Svelte's reactive updates have completed
-    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     // Access the raw array from the Deque to iterate
     const queue = this.session.upcoming.items;
@@ -146,23 +144,22 @@ class ScrapingState {
           this.abortController.signal
         );
 
-
         // 2. Update the item in-place (Reactivity updates the UI)
         item.scraped = scraped;
-        item.status = 'pending'
+        item.status = 'pending';
 
         // Update 'current' if the backend returns fresher data than our initial selection
         if (current) {
           item.current = { ...item.current, ...current };
         }
-
-      } catch (e: any) {
+      } catch (e) {
+        const err = e as unknown;
         // Don't log errors for aborted requests
-        if (e.name === 'AbortError') {
+        if ((err as { name?: string })?.name === 'AbortError') {
           console.log(`Scraping aborted for ${item.seriesTitle}`);
           break;
         }
-        console.error(`Failed to scrape ${item.seriesTitle}`, e);
+        console.error(`Failed to scrape ${item.seriesTitle}`, err);
         item.status = 'error'; // Mark as error if scraping failed
       }
 
@@ -199,7 +196,7 @@ class ScrapingState {
           result = result.split(filter.pattern).join(' ');
         }
       } catch (e) {
-        console.warn(`Invalid filter: ${filter.pattern}`);
+        console.warn(`Invalid filter: ${filter.pattern}`, e);
       }
     }
     return result.replace(/\s+/g, ' ').trim();
@@ -244,19 +241,19 @@ class ScrapingState {
   // --- List Management ---
 
   excludeSeries(id: string) {
-    this.excludedSeriesIds = new Set([...this.excludedSeriesIds, id]);
+    this.excludedSeriesIds = new SvelteSet([...this.excludedSeriesIds, id]);
     this.saveExcludedSeries();
   }
 
   restoreSeries(id: string) {
-    const s = new Set(this.excludedSeriesIds);
+    const s = new SvelteSet(this.excludedSeriesIds);
     s.delete(id);
     this.excludedSeriesIds = s;
     this.saveExcludedSeries();
   }
 
   markAsScraped(id: string) {
-    this.scrapedSeriesIds = new Set([...this.scrapedSeriesIds, id]);
+    this.scrapedSeriesIds = new SvelteSet([...this.scrapedSeriesIds, id]);
     this.saveScrapedSeries();
   }
 
@@ -276,7 +273,7 @@ class ScrapingState {
       });
 
       if (response.error || !response.scraped) {
-        throw new Error(`Failed to scrape: ${response.error}`)
+        throw new Error(`Failed to scrape: ${response.error}`);
       }
 
       // Clean description using current filters
@@ -289,12 +286,13 @@ class ScrapingState {
         scraped: cleanedScraped,
         current: response.current
       };
-    } catch (error: any) {
+    } catch (error) {
+      const err = error as unknown;
       // Re-throw AbortError as-is so we can detect it in the caller
-      if (error.name === 'AbortError') {
+      if ((err as { name?: string })?.name === 'AbortError') {
         throw error;
       }
-      throw new Error(`Failed to scrape: ${error}`)
+      throw new Error(`Failed to scrape: ${String(err)}`);
     }
   }
 
@@ -328,7 +326,7 @@ class ScrapingState {
   private loadExcludedSeries() {
     try {
       const s = localStorage.getItem('mokuro_excluded_series');
-      if (s) this.excludedSeriesIds = new Set(JSON.parse(s));
+      if (s) this.excludedSeriesIds = new SvelteSet(JSON.parse(s));
     } catch (e) {
       console.error(e);
     }
@@ -342,7 +340,7 @@ class ScrapingState {
   private loadScrapedSeries() {
     try {
       const s = localStorage.getItem('mokuro_scraped_series');
-      if (s) this.scrapedSeriesIds = new Set(JSON.parse(s));
+      if (s) this.scrapedSeriesIds = new SvelteSet(JSON.parse(s));
     } catch (e) {
       console.error(e);
     }
@@ -356,10 +354,6 @@ class ScrapingState {
       }
     }
   }
-
 }
 
 export const scrapingState = new ScrapingState();
-
-
-

@@ -1,12 +1,11 @@
 import { FastifyPluginAsync } from 'fastify';
-import { libraryCache } from '../lib/caches/libraryCache';
 import { getUploadJob } from '../lib/uploadQueue';
-import { deleteSeriesById, deleteVolumeById } from '../services/library/delete';
-import { getLibraryList } from '../services/library/list';
-import type { LibraryQuery } from '../types/library';
-import { transformSeries } from '../services/library/seriesTransform';
-import { handleLibraryUpload, UploadQuery } from '../services/library/upload';
-import { handleSeriesCoverUpload } from '../services/library/seriesCover';
+import { deleteSeriesById, deleteVolumeById } from '../utils/library/delete';
+import { queryLibrary } from '../utils/library/query';
+import type { LibraryQuery, LibraryResponse } from '../types/library';
+import { transformSeriesForLibraryQuery } from '../utils/library/seriesTransform';
+import { handleLibraryUpload, UploadQuery } from '../utils/library/upload';
+import { handleSeriesCoverUpload } from '../utils/library/seriesCover';
 
 // an interface for the route parameters
 interface VolumeParams {
@@ -36,7 +35,7 @@ const libraryRoutes: FastifyPluginAsync = async (
    */
   fastify.get<{ Querystring: LibraryQuery }>('/', async (request, reply) => {
     try {
-      const response = await getLibraryList(fastify, request.user.id, request.query);
+      const response: LibraryResponse = await queryLibrary(fastify, request.user.id, request.query);
       return reply.send(response);
     } catch (error) {
       fastify.log.error(error);
@@ -154,7 +153,7 @@ const libraryRoutes: FastifyPluginAsync = async (
 
             if (!series) return null;
 
-            return transformSeries(series, userId);
+            return transformSeriesForLibraryQuery(series, userId);
           }
         );
 

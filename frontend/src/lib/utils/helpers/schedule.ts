@@ -20,12 +20,14 @@
  * const isActive = isScheduleActive(true, true, 22, 6, new Date().getHours());
  * ```
  */
+import { SvelteDate } from 'svelte/reactivity';
+
 export function isScheduleActive(
   enabled: boolean,
   scheduleEnabled: boolean,
   startHour: number,
   endHour: number,
-  currentHour = new Date().getHours()
+  currentHour = new SvelteDate().getHours()
 ): boolean {
   // If feature is disabled, always return false
   if (!enabled) return false;
@@ -76,7 +78,7 @@ export function getScheduleDuration(startHour: number, endHour: number): number 
   if (startHour <= endHour) {
     return endHour - startHour;
   } else {
-    return (24 - startHour) + endHour;
+    return 24 - startHour + endHour;
   }
 }
 
@@ -90,10 +92,10 @@ export function getScheduleDuration(startHour: number, endHour: number): number 
 export function isValidSchedule(startHour: number, endHour: number): boolean {
   return (
     Number.isInteger(startHour) &&
-    Number.isInteger(endHour) &&
-    startHour >= 0 &&
-    startHour <= 23 &&
-    endHour >= 0 &&
-    endHour <= 23
+		Number.isInteger(endHour) &&
+		startHour >= 0 &&
+		startHour <= 23 &&
+		endHour >= 0 &&
+		endHour <= 23
   );
 }

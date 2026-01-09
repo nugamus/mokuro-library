@@ -81,9 +81,9 @@
 			bind:value={triggerMethod}
 			layout={[3]}
 			options={[
-				{ value: 'both', label: 'Both' },
-				{ value: 'double-click', label: 'Double Click' },
-				{ value: 'right-click', label: 'Right Click' }
+			  { value: 'both', label: 'Both' },
+			  { value: 'double-click', label: 'Double Click' },
+			  { value: 'right-click', label: 'Right Click' }
 			]}
 		/>
 

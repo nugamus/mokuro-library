@@ -1,5 +1,6 @@
 import { MokuroData } from './mokuro';
 import { UserProgress } from '../generated/prisma/client';
+import { Prisma, UserSeriesSettings } from '../generated/prisma/client';
 
 export interface LibraryQuery {
   page?: number;
@@ -12,6 +13,21 @@ export interface LibraryQuery {
   filter_missing?: 'cover' | 'description' | 'title' | 'any' | 'none';
   is_organized?: 'true' | 'false';
   owner?: 'admin' | 'user' | 'all';
+}
+
+export type SeriesWithOptionalSettings = Prisma.SeriesGetPayload<null> & {
+  userSettings?: UserSeriesSettings[];
+
+  // We might still have volumes if this is used by getSeries (single view),
+  // so we allow it but don't require it for the transform.
+  volumes?: any[];
+};
+
+export type PaginationData = {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
 
 export interface LibraryEntry {

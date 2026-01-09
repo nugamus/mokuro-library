@@ -11,7 +11,11 @@ const getVersion = () => {
   }
   // 2. If not, try to get it from local git (for local dev)
   try {
-    return execSync('git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD').toString().trim();
+    return execSync(
+      'git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD'
+    )
+      .toString()
+      .trim();
   } catch {
     return 'unknown';
   }
@@ -23,25 +27,21 @@ const commitHash = getVersion();
 //    If it's not set, default to 'http://localhost:3001' for local dev
 const proxyTarget = process.env.VITE_PROXY_TARGET || 'http://localhost:3001';
 export default defineConfig({
-  plugins: [
-    tailwindcss(),
-    sveltekit(),
-  ],
+  plugins: [tailwindcss(), sveltekit()],
 
   define: {
     __COMMIT_HASH__: JSON.stringify(commitHash)
   },
   server: {
-    allowedHosts: ["homemachine"],
+    allowedHosts: ['homemachine'],
     proxy: {
       // 2. Proxy all requests starting with /api
       '/api': {
         // 3. Target backend server
         target: proxyTarget,
         // 4. Change origin to match target (for cookie/CORS)
-        changeOrigin: true,
-      },
-    },
-  },
+        changeOrigin: true
+      }
+    }
+  }
 });
-

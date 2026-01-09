@@ -2,26 +2,25 @@
 	import { user } from '$lib/stores/authStore';
 	import { goto } from '$app/navigation';
 	import { browser } from '$app/environment';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
+	import { SvelteURLSearchParams } from 'svelte/reactivity';
 	import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 	import { onMount } from 'svelte';
-	import type { ComponentType } from 'svelte';
 
 	// Lazy load setting panels - only load when needed
 	const loadReaderSettings = () => import('$lib/components/settings/ReaderSettings.svelte');
-	const loadAnkiSettings = () => import('$lib/components/settings/AnkiSettings.svelte');
-	const loadLibraryOverview = () => import('$lib/components/settings/LibraryOverview.svelte');
+	// (Anki & Library overview loaders removed for now)
 	const loadScrapeSettings = () => import('$lib/components/settings/ScrapeSettings.svelte');
 	const loadKeybindSettings = () => import('$lib/components/settings/KeybindSettings.svelte');
-	const loadTestRunnerSettings = () =>
-		import('$lib/components/settings/TestRunnerSettings.svelte');
+	const loadTestRunnerSettings = () => import('$lib/components/settings/TestRunnerSettings.svelte');
 
 	// Define available categories with lazy loaders
 	type Category = {
 		id: string;
 		label: string;
 		icon: string;
-		loader: () => Promise<{ default: ComponentType }>;
+		loader: () => Promise<{ default: unknown }>;
 	};
 
 	const categories: Category[] = [
@@ -39,7 +38,7 @@
 
 	// State
 	let activeCategory = $state('reader');
-	let LoadedComponent = $state<ComponentType | null>(null);
+	let LoadedComponent = $state<unknown | null>(null);
 	let isLoadingComponent = $state(false);
 
 	// Load component when category changes
@@ -75,18 +74,22 @@
 
 	// Auth check
 	$effect(() => {
-		if (browser && $user === null) goto('/login');
+		if (browser && $user === null) goto(resolve('/login', {}));
 	});
 
 	// Sync category with URL
 	$effect(() => {
 		if (browser) {
-			const newParams = new URLSearchParams(page.url.searchParams);
+			const newParams = new SvelteURLSearchParams(page.url.searchParams);
 			newParams.set('category', activeCategory);
 			const queryString = newParams.toString();
 			const currentQuery = page.url.searchParams.toString();
 			if (queryString !== currentQuery) {
-				goto(`/settings?${queryString}`, { replaceState: true, keepFocus: true, noScroll: true });
+				goto(resolve(`/settings?${queryString}`, {}), {
+					replaceState: true,
+					keepFocus: true,
+					noScroll: true
+				});
 			}
 		}
 	});
@@ -132,7 +135,7 @@
 		</div>
 
 		<nav class="space-y-2">
-			{#each categories as category}
+			{#each categories as category (category.id)}
 				{@const isActive = activeCategory === category.id}
 				<button
 					onclick={() => (activeCategory = category.id)}
@@ -224,7 +227,3 @@
 		{/if}
 	</main>
 </div>
-
-
-
-

@@ -1,47 +1,60 @@
 import { writable } from 'svelte/store';
 import { apiFetch, apiFetchWithRefresh } from '$lib/services/api';
 import { apiCache } from '$lib/utils/caching/apiCache';
+import { startTokenRefresh, stopTokenRefresh } from '$lib/services/tokenRefresh';
 import type { KeybindsConfig } from '$lib/keybinds';
 
 // Define the shape of user settings
 export interface ReaderSettingsData {
-  layoutMode?: 'single' | 'double' | 'vertical';
-  readingDirection?: 'ltr' | 'rtl';
-  firstPageIsCover?: boolean;
-  retainZoom?: boolean;
-  navZoneWidth?: number;
-  showTriggerOutline?: boolean;
-  autoFullscreen?: boolean;
-  hideHUD?: boolean;
-  autoCompleteVolume?: boolean;
-  nightMode?: {
-    enabled: boolean;
-    scheduleEnabled: boolean;
-    intensity: number;
-    redShift: number;
-    startHour: number;
-    endHour: number;
-  };
-  invertColor?: {
-    enabled: boolean;
-    scheduleEnabled: boolean;
-    intensity: number;
-    startHour: number;
-    endHour: number;
-  };
-  keybinds?: KeybindsConfig;
+	layoutMode?: 'single' | 'double' | 'vertical';
+	readingDirection?: 'ltr' | 'rtl';
+	firstPageIsCover?: boolean;
+	retainZoom?: boolean;
+	navZoneWidth?: number;
+	showTriggerOutline?: boolean;
+	autoFullscreen?: boolean;
+	hideHUD?: boolean;
+	autoCompleteVolume?: boolean;
+	nightMode?: {
+		enabled: boolean;
+		scheduleEnabled: boolean;
+		intensity: number;
+		redShift: number;
+		startHour: number;
+		endHour: number;
+	};
+	invertColor?: {
+		enabled: boolean;
+		scheduleEnabled: boolean;
+		intensity: number;
+		startHour: number;
+		endHour: number;
+	};
+	keybinds?: KeybindsConfig;
 }
 
 // Define the type for our user object
 // This matches what the backend sends
 export interface AuthUser {
-  id: string;
-  username: string;
-  settings: ReaderSettingsData; // We'll use 'any' for the JSON blob
+	id: string;
+	username: string;
+	settings: ReaderSettingsData;
+	role?: 'admin' | 'user'; // Optional role property (derived from id === 'admin')
 }
 
 // Create a writable store that holds an AuthUser or null
 export const user = writable<AuthUser | null | undefined>();
+
+// Subscribe to user changes to manage token refresh
+user.subscribe((currentUser) => {
+  if (currentUser) {
+    // User logged in - start proactive token refresh
+    startTokenRefresh();
+  } else {
+    // User logged out - stop token refresh
+    stopTokenRefresh();
+  }
+});
 
 // Track if user was previously authenticated to detect session expiration
 let wasAuthenticated = false;
@@ -100,9 +113,12 @@ export async function checkAuth() {
  */
 export function startAuthMonitoring() {
   // Check auth every 5 minutes
-  const interval = setInterval(async () => {
-    await checkAuth();
-  }, 5 * 60 * 1000);
+  const interval = setInterval(
+    async () => {
+      await checkAuth();
+    },
+    5 * 60 * 1000
+  );
 
   // Cleanup function
   return () => clearInterval(interval);
@@ -129,7 +145,7 @@ export async function updateSettings(settingsPatch: ReaderSettingsData) {
   try {
     await apiFetch('/api/settings', {
       method: 'PUT',
-      body: settingsPatch, // Send only the changes
+      body: settingsPatch // Send only the changes
     });
   } catch (error) {
     console.error('Failed to save settings, reverting:', error);

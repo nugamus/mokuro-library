@@ -1,9 +1,9 @@
 <script lang="ts">
 	let {
-		label,
-		value = $bindable(),
-		min = 0,
-		step = 1
+	  label,
+	  value = $bindable(),
+	  min = 0,
+	  step = 1
 	} = $props<{
 		label: string;
 		value: number;

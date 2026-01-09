@@ -2,7 +2,9 @@
  * Date utility functions for the application
  */
 
-const EPOCH_2000 = new Date('2000-01-01T00:00:00.000Z');
+import { SvelteDate } from 'svelte/reactivity';
+
+const EPOCH_2000 = new SvelteDate('2000-01-01T00:00:00.000Z');
 
 /**
  * Formats a last read date, returning "Never" for dates before 2000-01-01
@@ -12,7 +14,7 @@ const EPOCH_2000 = new Date('2000-01-01T00:00:00.000Z');
 export function formatLastReadDate(dateString: string | Date | null | undefined): string {
   if (!dateString) return 'Never';
 
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+  const date = typeof dateString === 'string' ? new SvelteDate(dateString) : dateString;
 
   // Check if date is invalid
   if (isNaN(date.getTime())) {
@@ -33,7 +35,7 @@ export function formatLastReadDate(dateString: string | Date | null | undefined)
  * Falls back to absolute date for older dates
  */
 export function formatRelativeDate(date: Date): string {
-  const now = new Date();
+  const now = new SvelteDate();
   const diffMs = now.getTime() - date.getTime();
   const diffMins = Math.floor(diffMs / (1000 * 60));
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
@@ -69,7 +71,7 @@ export function formatRelativeDate(date: Date): string {
 export function isNeverRead(dateString: string | Date | null | undefined): boolean {
   if (!dateString) return true;
 
-  const date = typeof dateString === 'string' ? new Date(dateString) : dateString;
+  const date = typeof dateString === 'string' ? new SvelteDate(dateString) : dateString;
 
   if (isNaN(date.getTime())) {
     return true;

@@ -6,11 +6,11 @@
 	import { lockScroll } from '$lib/actions/lockScroll';
 
 	let {
-		isOpen,
-		isLoading = false,
-		preview = $bindable(),
-		provider = 'anilist',
-		onClose
+	  isOpen,
+	  isLoading = false,
+	  preview = $bindable(),
+	  provider = 'anilist',
+	  onClose
 	}: {
 		isOpen: boolean;
 		isLoading?: boolean;
@@ -20,26 +20,26 @@
 	} = $props();
 
 	async function handleConfirm() {
-		if (!preview) return;
-		await scrapingState.session.commitChange(preview);
-		if (preview.status === 'applied') {
-			onClose();
-		}
+	  if (!preview) return;
+	  await scrapingState.session.commitChange(preview);
+	  if (preview.status === 'applied') {
+	    onClose();
+	  }
 	}
 
 	function handleKeydown(e: KeyboardEvent) {
-		if (!isOpen) return;
-		if (e.key === 'Escape') {
-			e.preventDefault();
-			onClose();
-		}
-		// Only trigger confirm if we actually have a preview
-		if (preview && e.key === 'Enter' && !e.shiftKey) {
-			if (document.activeElement?.tagName !== 'INPUT') {
-				e.preventDefault();
-				handleConfirm();
-			}
-		}
+	  if (!isOpen) return;
+	  if (e.key === 'Escape') {
+	    e.preventDefault();
+	    onClose();
+	  }
+	  // Only trigger confirm if we actually have a preview
+	  if (preview && e.key === 'Enter' && !e.shiftKey) {
+	    if (document.activeElement?.tagName !== 'INPUT') {
+	      e.preventDefault();
+	      handleConfirm();
+	    }
+	  }
 	}
 </script>
 

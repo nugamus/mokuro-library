@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
 	import type { ScrapedPreview } from '$lib/states/scraping/ReviewSession.svelte.ts';
+	import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
 
 	let {
-		preview = $bindable(),
-		isBulk = false,
-		provider = 'anilist',
-		onConfirm,
-		onCancel
+	  preview = $bindable(),
+	  isBulk = false,
+	  provider = 'anilist',
+	  onConfirm,
+	  onCancel
 	}: {
 		preview: ScrapedPreview;
 		isBulk?: boolean;
@@ -19,30 +20,30 @@
 	// --- Actions ---
 
 	async function rescrapeWithQuery() {
-		if (!preview) return;
+	  if (!preview) return;
 
-		preview.status = 'scraping';
-		try {
-			const { scraped, current } = await scrapingState.scrapeWithFallback(
-				preview.seriesId,
-				preview.searchQuery,
-				provider
-			);
+	  preview.status = 'scraping';
+	  try {
+	    const { scraped, current } = await scrapingState.scrapeWithFallback(
+	      preview.seriesId,
+	      preview.searchQuery,
+	      provider
+	    );
 
-			// Update the preview with new scraped data (preserving the ID to avoid UI jumps if keyed)
-			// We generate a new ID if we want to force re-render, but usually mutating state is fine in Svelte 5.
-			preview.current = current;
-			preview.scraped = {
-				...scraped,
-				// The scrapingState.scrapeWithFallback already filters the description,
-				// but we ensure consistency here.
-				description: scrapingState.filterDescription(scraped.description)
-			};
-			preview.status = 'pending';
-		} catch (error) {
-			console.error(`Failed to re-scrape metadata:`, error);
-			preview.status = 'error';
-		}
+	    // Update the preview with new scraped data (preserving the ID to avoid UI jumps if keyed)
+	    // We generate a new ID if we want to force re-render, but usually mutating state is fine in Svelte 5.
+	    preview.current = current;
+	    preview.scraped = {
+	      ...scraped,
+	      // The scrapingState.scrapeWithFallback already filters the description,
+	      // but we ensure consistency here.
+	      description: scrapingState.filterDescription(scraped.description)
+	    };
+	    preview.status = 'pending';
+	  } catch (error) {
+	    console.error(`Failed to re-scrape metadata:`, error);
+	    preview.status = 'error';
+	  }
 	}
 </script>
 
@@ -115,7 +116,7 @@
 			<div>
 				{#if preview.scraped.tempCoverPath}
 					<div class="relative max-w-[120px]">
-						<img
+						<AuthenticatedImage
 							src="/api/files/preview?path={encodeURIComponent(preview.scraped.tempCoverPath)}"
 							alt="New"
 							class="w-full aspect-[7/11] rounded-lg border-2 border-dashed border-theme-border flex items-center justify-center object-cover"
@@ -136,7 +137,7 @@
 			</div>
 		</div>
 
-		{#each [{ label: 'Title', cur: preview.current.title, new: preview.scraped.title }, { label: 'Japanese', cur: preview.current.japaneseTitle, new: preview.scraped.japaneseTitle }, { label: 'Romaji', cur: preview.current.romajiTitle, new: preview.scraped.romajiTitle }] as field}
+		{#each [{ label: 'Title', cur: preview.current.title, new: preview.scraped.title }, { label: 'Japanese', cur: preview.current.japaneseTitle, new: preview.scraped.japaneseTitle }, { label: 'Romaji', cur: preview.current.romajiTitle, new: preview.scraped.romajiTitle }] as field (field.label)}
 			<div class="grid grid-cols-2 gap-4 mb-4 border-b border-theme-border/50 pb-2">
 				<div>
 					<div class="text-[10px] text-theme-secondary mb-1">{field.label}</div>
@@ -146,8 +147,8 @@
 					<div class="text-[10px] text-accent/70 mb-1">{field.label}</div>
 					<div
 						class="text-sm break-words {field.new
-							? 'text-theme-primary'
-							: 'text-theme-secondary italic'}"
+						  ? 'text-theme-primary'
+						  : 'text-theme-secondary italic'}"
 					>
 						{field.new || 'No change'}
 					</div>
@@ -166,7 +167,7 @@
 				<div class="text-[10px] text-accent/70 mb-1">Description</div>
 				{#if preview.scraped.description}
 					<div class="text-xs text-theme-primary whitespace-pre-wrap">
-						{@html preview.scraped.description}
+						{preview.scraped.description}
 					</div>
 				{:else}
 					<div class="text-xs text-theme-secondary italic">No change</div>

@@ -1,14 +1,14 @@
 <script lang="ts">
 	let {
-		username = $bindable(),
-		password = $bindable(),
-		confirmPassword = $bindable(),
-		rememberMe = $bindable(),
-		isRegisterMode,
-		isLoading,
-		error,
-		successMessage,
-		onSubmit
+	  username = $bindable(),
+	  password = $bindable(),
+	  confirmPassword = $bindable(),
+	  rememberMe = $bindable(),
+	  isRegisterMode,
+	  isLoading,
+	  error,
+	  successMessage,
+	  onSubmit
 	} = $props<{
 		username: string;
 		password: string;
@@ -24,8 +24,8 @@
 
 <form
 	onsubmit={(e) => {
-		e.preventDefault();
-		onSubmit();
+	  e.preventDefault();
+	  onSubmit();
 	}}
 	class="px-8 py-6 space-y-5"
 >
@@ -240,13 +240,7 @@
 					fill="none"
 					viewBox="0 0 24 24"
 				>
-					<circle
-						class="opacity-25"
-						cx="12"
-						cy="12"
-						r="10"
-						stroke="currentColor"
-						stroke-width="4"
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
 					></circle>
 					<path
 						class="opacity-75"

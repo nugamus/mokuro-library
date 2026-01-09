@@ -13,7 +13,7 @@ class LibraryCache {
       max: 1000,
       ttl: 1000 * 60 * 5, // 5 minutes
       // CRITICAL: This fires whenever a key is deleted OR expires
-      dispose: (value, key, reason) => {
+      dispose: (_value, key, _reason) => {
         this.cleanupTagsForKey(key);
       },
     });

@@ -1,14 +1,13 @@
 import { FastifyPluginAsync } from 'fastify';
 import { Prisma } from '../generated/prisma/client'; // Import Prisma for types
-import { libraryCache } from '../lib/caches/libraryCache';
-import { scrapeFromProvider } from '../services/metadata/scrape';
+import { scrapeFromProvider } from '../utils/metadata/scrape';
 import {
   getVolumeProgress,
   progressBodySchema,
   resetVolumeProgress,
   updateVolumeProgress,
   type ProgressBody
-} from '../services/metadata/progress';
+} from '../utils/metadata/progress';
 import * as path from 'path';
 import * as fs from 'fs';
 
@@ -345,7 +344,7 @@ const metadataRoutes: FastifyPluginAsync = async (
         }
 
         // 2. Scrape metadata from primary provider
-        let scrapedData = await scrapeFromProvider(fastify, provider, seriesName);
+        const scrapedData = await scrapeFromProvider(fastify, provider, seriesName);
 
         // 3. Multi-provider fallback: silently fill missing fields from other providers
         const needsFallback = !scrapedData.japaneseName || !scrapedData.romajiName || !scrapedData.description;

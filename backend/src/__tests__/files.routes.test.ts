@@ -66,7 +66,7 @@ describe('files routes', () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it('serves images without device fingerprint (for browser img tags)', async () => {
+  it('rejects images without device fingerprint', async () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: `/api/files/series/${seriesId}/cover`,
@@ -76,7 +76,6 @@ describe('files routes', () => {
       },
     });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.headers['content-type']).toContain('image/');
+    expect(response.statusCode).toBe(401);
   });
 });

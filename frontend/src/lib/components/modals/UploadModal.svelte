@@ -21,181 +21,182 @@
 	let completedJobs = $derived(jobs.filter((j) => j.status === 'done').length);
 	let hasJobs = $derived(jobs.length > 0);
 	let allJobsComplete = $derived(
-		jobs.length > 0 && jobs.every((j) => j.status === 'done' || j.status === 'error')
+	  jobs.length > 0 && jobs.every((j) => j.status === 'done' || j.status === 'error')
 	);
 	let hasActiveUploads = $derived(
-		isProcessingQueue || jobs.some((j) => j.status === 'uploading' || j.status === 'processing')
+	  isProcessingQueue || jobs.some((j) => j.status === 'uploading' || j.status === 'processing')
 	);
 	let uploadAnnouncement = $derived.by(() => {
-		const activeJob = jobs.find((job) => job.status === 'uploading' || job.status === 'processing');
-		if (!activeJob) return '';
-		if (activeJob.status === 'uploading') {
-			return `Uploading ${activeJob.name}: ${Math.round(activeJob.progress)}%`;
-		}
-		return `Processing ${activeJob.name}`;
+	  const activeJob = jobs.find((job) => job.status === 'uploading' || job.status === 'processing');
+	  if (!activeJob) return '';
+	  if (activeJob.status === 'uploading') {
+	    return `Uploading ${activeJob.name}: ${Math.round(activeJob.progress)}%`;
+	  }
+	  return `Processing ${activeJob.name}`;
 	});
 
 	const pollUploadStatus = async (job: UploadJob, jobId: string, onSuccess: () => void) => {
-		const start = Date.now();
-		const maxWaitMs = 10 * 60 * 1000;
-		let errorCount = 0;
+	  const start = Date.now();
+	  const maxWaitMs = 10 * 60 * 1000;
+	  let errorCount = 0;
 
-		while (Date.now() - start < maxWaitMs) {
-			try {
-				const status = await apiFetch(`/api/library/upload/status/${jobId}`, {
-					method: 'GET',
-					showErrorToast: false
-				});
-				errorCount = 0; // Reset count on successful poll
+	  while (Date.now() - start < maxWaitMs) {
+	    try {
+	      const status = await apiFetch(`/api/library/upload/status/${jobId}`, {
+	        method: 'GET',
+	        showErrorToast: false
+	      });
+	      errorCount = 0; // Reset count on successful poll
 
-				if (status.status === 'completed') {
-					job.status = 'done';
-					job.resultMsg = status.message || 'OK';
-					onSuccess();
-					return;
-				}
+	      if (status.status === 'completed') {
+	        job.status = 'done';
+	        job.resultMsg = status.message || 'OK';
+	        onSuccess();
+	        return;
+	      }
 
-				if (status.status === 'failed') {
-					job.status = 'error';
-					job.resultMsg = status.message || 'Upload failed';
-					return;
-				}
-			} catch (e) {
-				errorCount++;
-				// Only show error status in UI if it fails 3 times in a row
-				if (errorCount >= 3) {
-					job.status = 'error';
-					job.resultMsg = `Connection lost. Retrying...`;
-				}
-				// If it fails 10 times, give up
-				if (errorCount > 10) {
-					job.status = 'error';
-					job.resultMsg = `Polling failed: Network error.`;
-					return;
-				}
-			}
+	      if (status.status === 'failed') {
+	        job.status = 'error';
+	        job.resultMsg = status.message || 'Upload failed';
+	        return;
+	      }
+	    } catch (err) {
+	      void err;
+	      errorCount++;
+	      // Only show error status in UI if it fails 3 times in a row
+	      if (errorCount >= 3) {
+	        job.status = 'error';
+	        job.resultMsg = `Connection lost. Retrying...`;
+	      }
+	      // If it fails 10 times, give up
+	      if (errorCount > 10) {
+	        job.status = 'error';
+	        job.resultMsg = `Polling failed: Network error.`;
+	        return;
+	      }
+	    }
 
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-		}
+	    await new Promise((resolve) => setTimeout(resolve, 1000));
+	  }
 
-		job.status = 'error';
-		job.resultMsg = 'Upload timed out';
+	  job.status = 'error';
+	  job.resultMsg = 'Upload timed out';
 	};
 
 	// --- Actions ---
 	const resetState = () => {
-		files = null;
-		jobs = [];
-		isProcessingQueue = false;
-		activeTab = 'upload';
+	  files = null;
+	  jobs = [];
+	  isProcessingQueue = false;
+	  activeTab = 'upload';
 	};
 
 	const handleClose = () => {
-		// Prevent closing if uploads are still in progress
-		if (hasActiveUploads) {
-			return;
-		}
+	  // Prevent closing if uploads are still in progress
+	  if (hasActiveUploads) {
+	    return;
+	  }
 
-		onClose();
+	  onClose();
 
-		// Only reset state after all jobs are complete
-		if (allJobsComplete) {
-			setTimeout(resetState, 200);
-		}
+	  // Only reset state after all jobs are complete
+	  if (allJobsComplete) {
+	    setTimeout(resetState, 200);
+	  }
 	};
 
 	$effect(() => {
-		if (files) {
-			createJobsFromFiles(files).then((newJobs) => {
-				jobs = newJobs;
-				processQueue();
-			});
-		}
+	  if (files) {
+	    createJobsFromFiles(files).then((newJobs) => {
+	      jobs = newJobs;
+	      processQueue();
+	    });
+	  }
 	});
 
 	// --- Pipeline Runner ---
 	const processQueue = async () => {
-		if (isProcessingQueue) return;
-		isProcessingQueue = true;
-		let hasUpdates = false;
-		let jobPromises = [];
+	  if (isProcessingQueue) return;
+	  isProcessingQueue = true;
+	  let hasUpdates = false;
+	  let jobPromises = [];
 
-		for (const job of jobs) {
-			if (job.status === 'done') continue;
-			try {
-				const check = await apiFetch('/api/library/check', {
-					method: 'POST',
-					body: {
-						series_folder_name: job.seriesFolderName,
-						volume_folder_name: job.volumeFolderName
-					}
-				});
+	  for (const job of jobs) {
+	    if (job.status === 'done') continue;
+	    try {
+	      const check = await apiFetch('/api/library/check', {
+	        method: 'POST',
+	        body: {
+	          series_folder_name: job.seriesFolderName,
+	          volume_folder_name: job.volumeFolderName
+	        }
+	      });
 
-				if (check.exists) {
-					job.status = 'done';
-					job.progress = 100;
-					job.resultMsg = 'Skipped (Duplicate)';
-					continue;
-				}
+	      if (check.exists) {
+	        job.status = 'done';
+	        job.progress = 100;
+	        job.resultMsg = 'Skipped (Duplicate)';
+	        continue;
+	      }
 
-				job.status = 'uploading';
-				const formData = new FormData();
-				formData.append('series_folder_name', job.seriesFolderName);
-				formData.append('volume_folder_name', job.volumeFolderName);
+	      job.status = 'uploading';
+	      const formData = new FormData();
+	      formData.append('series_folder_name', job.seriesFolderName);
+	      formData.append('volume_folder_name', job.volumeFolderName);
 
-				if (
-					job.metadata.seriesTitle ||
+	      if (
+	        job.metadata.seriesTitle ||
 					job.metadata.volumeTitle ||
 					job.metadata.volumeProgress ||
 					job.metadata.seriesBookmarked
-				) {
-					formData.append(
-						'metadata',
-						JSON.stringify({
-							series_title: job.metadata.seriesTitle,
-							series_description: job.metadata.seriesDescription,
-							series_bookmarked: job.metadata.seriesBookmarked,
-							volume_title: job.metadata.volumeTitle,
-							volume_progress: job.metadata.volumeProgress
-						})
-					);
-				}
+	      ) {
+	        formData.append(
+	          'metadata',
+	          JSON.stringify({
+	            series_title: job.metadata.seriesTitle,
+	            series_description: job.metadata.seriesDescription,
+	            series_bookmarked: job.metadata.seriesBookmarked,
+	            volume_title: job.metadata.volumeTitle,
+	            volume_progress: job.metadata.volumeProgress
+	          })
+	        );
+	      }
 
-				for (const file of job.files) {
-					formData.append('files', file, file.webkitRelativePath);
-				}
+	      for (const file of job.files) {
+	        formData.append('files', file, file.webkitRelativePath);
+	      }
 
-				const response = await apiUpload('/api/library/upload?async=true', formData, (percent) => {
-					job.progress = percent;
-					if (percent === 100) job.status = 'processing';
-				});
-				if (response?.jobId) {
-					job.status = 'processing';
-					jobPromises.push(
-						pollUploadStatus(job, response.jobId, () => {
-							hasUpdates = true;
-						})
-					);
-				} else {
-					job.status = 'done';
-					job.resultMsg = `OK`;
-					hasUpdates = true;
-				}
-			} catch (e) {
-				console.error(`Failed to upload ${job.name}`, e);
-				job.status = 'error';
-				job.resultMsg = (e as Error).message;
-			}
-		}
+	      const response = await apiUpload('/api/library/upload?async=true', formData, (percent) => {
+	        job.progress = percent;
+	        if (percent === 100) job.status = 'processing';
+	      });
+	      if (response?.jobId) {
+	        job.status = 'processing';
+	        jobPromises.push(
+	          pollUploadStatus(job, response.jobId, () => {
+	            hasUpdates = true;
+	          })
+	        );
+	      } else {
+	        job.status = 'done';
+	        job.resultMsg = `OK`;
+	        hasUpdates = true;
+	      }
+	    } catch (err) {
+	      console.error(`Failed to upload ${job.name}`, err);
+	      job.status = 'error';
+	      job.resultMsg = (e as Error).message;
+	    }
+	  }
 
-		await Promise.allSettled(jobPromises);
+	  await Promise.allSettled(jobPromises);
 
-		isProcessingQueue = false;
-		files = null;
+	  isProcessingQueue = false;
+	  files = null;
 
-		if (hasUpdates) {
-			onUploadSuccess();
-		}
+	  if (hasUpdates) {
+	    onUploadSuccess();
+	  }
 	};
 </script>
 
@@ -203,13 +204,13 @@
 	<div class="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-0">
 		<div
 			class="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity {hasActiveUploads
-				? 'cursor-not-allowed'
-				: 'cursor-pointer'}"
+			  ? 'cursor-not-allowed'
+			  : 'cursor-pointer'}"
 			transition:fade={{ duration: 150 }}
-			onclick={handleClose}
+			onclick={onClose}
 			role="button"
 			tabindex="0"
-			onkeydown={(e) => e.key === 'Escape' && handleClose()}
+			onkeydown={(event) => event.key === 'Escape' && handleClose()}
 			aria-label={hasActiveUploads ? 'Cannot close - uploads in progress' : 'Close modal'}
 			title={hasActiveUploads ? 'Please wait for uploads to complete' : ''}
 		></div>
@@ -245,8 +246,8 @@
 					onclick={handleClose}
 					disabled={hasActiveUploads}
 					class="p-2 rounded-lg text-theme-secondary transition-colors {hasActiveUploads
-						? 'opacity-50 cursor-not-allowed'
-						: 'hover:text-theme-primary hover:bg-theme-surface-hover'}"
+					  ? 'opacity-50 cursor-not-allowed'
+					  : 'hover:text-theme-primary hover:bg-theme-surface-hover'}"
 					aria-label={hasActiveUploads ? 'Cannot close - uploads in progress' : 'Close'}
 					title={hasActiveUploads ? 'Please wait for uploads to complete' : 'Close'}
 				>
@@ -271,8 +272,8 @@
 				<MenuGridRadio
 					bind:value={activeTab}
 					options={[
-						{ value: 'upload', label: 'Upload Files' },
-						{ value: 'guide', label: 'Guide & Help' }
+					  { value: 'upload', label: 'Upload Files' },
+					  { value: 'guide', label: 'Guide & Help' }
 					]}
 					layout={[2]}
 					itemClass="flex items-center justify-center py-2"
@@ -280,8 +281,8 @@
 					{#snippet children(option, isSelected)}
 						<span
 							class="text-sm font-bold uppercase tracking-wider {isSelected
-								? 'text-accent'
-								: 'text-theme-secondary'}"
+							  ? 'text-accent'
+							  : 'text-theme-secondary'}"
 						>
 							{option.label}
 						</span>
@@ -387,10 +388,10 @@
 														class="text-xs font-bold text-theme-secondary uppercase whitespace-nowrap flex-shrink-0"
 													>
 														{job.status === 'done'
-															? job.resultMsg === 'OK'
-																? 'Done'
-																: job.resultMsg
-															: job.status}
+														  ? job.resultMsg === 'OK'
+														    ? 'Done'
+														    : job.resultMsg
+														  : job.status}
 													</span>
 												</div>
 												{#if job.status === 'uploading'}
@@ -438,11 +439,11 @@
 												onclick={handleClose}
 												disabled={hasActiveUploads}
 												class="px-6 py-2.5 rounded-xl font-semibold transition-colors border {hasActiveUploads
-													? 'opacity-50 cursor-not-allowed bg-theme-main text-theme-secondary border-theme-border-light'
-													: 'bg-theme-main hover:bg-theme-surface-hover text-theme-primary border-theme-border-light'}"
+												  ? 'opacity-50 cursor-not-allowed bg-theme-main text-theme-secondary border-theme-border-light'
+												  : 'bg-theme-main hover:bg-theme-surface-hover text-theme-primary border-theme-border-light'}"
 												title={hasActiveUploads
-													? 'Please wait for uploads to complete'
-													: 'Close upload modal'}
+												  ? 'Please wait for uploads to complete'
+												  : 'Close upload modal'}
 											>
 												Done
 											</button>
@@ -543,8 +544,8 @@
 									To enable OCR features, you need to generate <code
 										class="px-1.5 py-0.5 rounded bg-theme-main border border-theme-border-light text-accent font-mono text-xs"
 										>.mokuro</code
-									> files using the Mokuro tool. Place these files alongside your image folders (not
-									inside them).
+									> files using the Mokuro tool. Place these files alongside your image folders (not inside
+									them).
 								</p>
 								<a
 									href="https://github.com/kha-white/mokuro"
