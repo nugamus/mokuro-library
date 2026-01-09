@@ -1,8 +1,8 @@
 import type { SeriesContribution } from './types';
 
 export type SelectionUpdate = {
-	selection: Set<string>;
-	isSelectionMode: boolean;
+  selection: Set<string>;
+  isSelectionMode: boolean;
 };
 
 function getSeriesVolumeIds(seriesList: SeriesContribution[], seriesId: string) {

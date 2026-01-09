@@ -19,7 +19,7 @@ globalThis.__SVELTEKIT_PATHS_RELATIVE__ = false;
 if (!globalThis.crypto) {
   globalThis.crypto = {
     randomUUID: () =>
-			'test-uuid-test-uuid-test-uuid-test' as `${string}-${string}-${string}-${string}-${string}`,
+      'test-uuid-test-uuid-test-uuid-test' as `${string}-${string}-${string}-${string}-${string}`,
     subtle: {} as SubtleCrypto,
     getRandomValues: <T extends ArrayBufferView | null>(array: T): T => array as T
   } as Crypto;
@@ -27,10 +27,10 @@ if (!globalThis.crypto) {
 
 if (!Element.prototype.animate) {
   Element.prototype.animate = () =>
-		({
-		  cancel: () => {},
-		  finished: Promise.resolve()
-		}) as unknown as Animation;
+    ({
+      cancel: () => {},
+      finished: Promise.resolve()
+    }) as unknown as Animation;
 }
 
 if (!globalThis.localStorage || typeof globalThis.localStorage.getItem !== 'function') {
@@ -109,14 +109,14 @@ if (typeof globalThis.BroadcastChannel === 'undefined') {
 
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
-		({
-		  matches: false,
-		  media: query,
-		  onchange: null,
-		  addEventListener: () => {},
-		  removeEventListener: () => {},
-		  addListener: () => {},
-		  removeListener: () => {},
-		  dispatchEvent: () => false
-		}) as MediaQueryList;
+    ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false
+    }) as MediaQueryList;
 }

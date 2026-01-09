@@ -13,14 +13,14 @@ export default defineConfig(({ mode }) => {
   });
   const pluginList = Array.isArray(sveltePlugins) ? sveltePlugins : [sveltePlugins];
   const plugins =
-		mode === 'test'
-		  ? pluginList.filter(
-		    (plugin) =>
-		      plugin.name !== 'vite-plugin-svelte:hot-update' &&
-						plugin.name !== 'vite-plugin-svelte:load-custom' &&
-						plugin.name !== 'vite-plugin-svelte:load-compiled-css'
-		  )
-		  : pluginList;
+    mode === 'test'
+      ? pluginList.filter(
+          (plugin) =>
+            plugin.name !== 'vite-plugin-svelte:hot-update' &&
+            plugin.name !== 'vite-plugin-svelte:load-custom' &&
+            plugin.name !== 'vite-plugin-svelte:load-compiled-css'
+        )
+      : pluginList;
 
   return {
     plugins,

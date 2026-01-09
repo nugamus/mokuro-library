@@ -6,40 +6,40 @@ import type { KeybindsConfig } from '$lib/keybinds';
 
 // Define the shape of user settings
 export interface ReaderSettingsData {
-	layoutMode?: 'single' | 'double' | 'vertical';
-	readingDirection?: 'ltr' | 'rtl';
-	firstPageIsCover?: boolean;
-	retainZoom?: boolean;
-	navZoneWidth?: number;
-	showTriggerOutline?: boolean;
-	autoFullscreen?: boolean;
-	hideHUD?: boolean;
-	autoCompleteVolume?: boolean;
-	nightMode?: {
-		enabled: boolean;
-		scheduleEnabled: boolean;
-		intensity: number;
-		redShift: number;
-		startHour: number;
-		endHour: number;
-	};
-	invertColor?: {
-		enabled: boolean;
-		scheduleEnabled: boolean;
-		intensity: number;
-		startHour: number;
-		endHour: number;
-	};
-	keybinds?: KeybindsConfig;
+  layoutMode?: 'single' | 'double' | 'vertical';
+  readingDirection?: 'ltr' | 'rtl';
+  firstPageIsCover?: boolean;
+  retainZoom?: boolean;
+  navZoneWidth?: number;
+  showTriggerOutline?: boolean;
+  autoFullscreen?: boolean;
+  hideHUD?: boolean;
+  autoCompleteVolume?: boolean;
+  nightMode?: {
+    enabled: boolean;
+    scheduleEnabled: boolean;
+    intensity: number;
+    redShift: number;
+    startHour: number;
+    endHour: number;
+  };
+  invertColor?: {
+    enabled: boolean;
+    scheduleEnabled: boolean;
+    intensity: number;
+    startHour: number;
+    endHour: number;
+  };
+  keybinds?: KeybindsConfig;
 }
 
 // Define the type for our user object
 // This matches what the backend sends
 export interface AuthUser {
-	id: string;
-	username: string;
-	settings: ReaderSettingsData;
-	role?: 'admin' | 'user'; // Optional role property (derived from id === 'admin')
+  id: string;
+  username: string;
+  settings: ReaderSettingsData;
+  role?: 'admin' | 'user'; // Optional role property (derived from id === 'admin')
 }
 
 // Create a writable store that holds an AuthUser or null

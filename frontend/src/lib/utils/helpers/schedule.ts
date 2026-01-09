@@ -92,10 +92,10 @@ export function getScheduleDuration(startHour: number, endHour: number): number 
 export function isValidSchedule(startHour: number, endHour: number): boolean {
   return (
     Number.isInteger(startHour) &&
-		Number.isInteger(endHour) &&
-		startHour >= 0 &&
-		startHour <= 23 &&
-		endHour >= 0 &&
-		endHour <= 23
+    Number.isInteger(endHour) &&
+    startHour >= 0 &&
+    startHour <= 23 &&
+    endHour >= 0 &&
+    endHour <= 23
   );
 }

@@ -138,9 +138,9 @@ export const handleGlobalKeydown = (event: KeyboardEvent) => {
   const isArrowCombo = combo.endsWith('ArrowLeft') || combo.endsWith('ArrowRight');
   if (
     context === 'reader' &&
-		isArrowCombo &&
-		readerState.readingDirection === 'rtl' &&
-		(actionId === 'readerPrevPage' || actionId === 'readerNextPage')
+    isArrowCombo &&
+    readerState.readingDirection === 'rtl' &&
+    (actionId === 'readerPrevPage' || actionId === 'readerNextPage')
   ) {
     actionId = actionId === 'readerPrevPage' ? 'readerNextPage' : 'readerPrevPage';
   }

@@ -6,15 +6,15 @@ import { SvelteSet } from 'svelte/reactivity';
 import type { Series } from '$lib/types';
 
 export interface DescriptionFilter {
-	id: string;
-	pattern: string;
-	enabled: boolean;
-	isRegex: boolean;
+  id: string;
+  pattern: string;
+  enabled: boolean;
+  isRegex: boolean;
 }
 
 export interface ScrapeResult {
-	scraped: unknown;
-	current: unknown;
+  scraped: unknown;
+  current: unknown;
 }
 
 class ScrapingState {
@@ -82,9 +82,9 @@ class ScrapingState {
   }
 
   /**
-	 * Initializes the review session with the selected series.
-	 * Creates "scraping" preview items instantly using the known current metadata.
-	 */
+   * Initializes the review session with the selected series.
+   * Creates "scraping" preview items instantly using the known current metadata.
+   */
   initSession(seriesList: Series[]) {
     this.session.reset(seriesList.length);
 
@@ -112,9 +112,9 @@ class ScrapingState {
   }
 
   /**
-	 * The Main Loop: Processes the 'upcoming' queue.
-	 * Fetches metadata for scraping items one by one.
-	 */
+   * The Main Loop: Processes the 'upcoming' queue.
+   * Fetches metadata for scraping items one by one.
+   */
   async startScrapingQueue(provider: 'anilist' | 'mal' | 'kitsu') {
     if (this.isScraping) return;
     this.isScraping = true;

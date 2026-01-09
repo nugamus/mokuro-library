@@ -82,12 +82,12 @@ export function buildSeriesContributions(library: Series[]) {
 
 export function filterSeriesByStatus(seriesList: SeriesContribution[], activeFilter: FilterType) {
   switch (activeFilter) {
-  case 'behind':
-    return seriesList.filter((series) => series.totalBehind > 0);
-  case 'ahead':
-    return seriesList.filter((series) => series.totalAhead > 0);
-  default:
-    return seriesList;
+    case 'behind':
+      return seriesList.filter((series) => series.totalBehind > 0);
+    case 'ahead':
+      return seriesList.filter((series) => series.totalAhead > 0);
+    default:
+      return seriesList;
   }
 }
 
@@ -184,9 +184,7 @@ export function buildActivityHistory(seriesList: SeriesContribution[]): Activity
             volumeTitle: volume.title || `Volume ${volIdx + 1}`,
             seriesTitle: series.title || 'Unknown Series',
             seriesId: series.id,
-            timestamp: new SvelteDate(
-              now.getTime() - daysAgo * 24 * 60 * 60 * 1000
-            ).toISOString(),
+            timestamp: new SvelteDate(now.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString(),
             patchCount,
             editType: ACTIVITY_EDIT_TYPES[Math.floor(rand() * ACTIVITY_EDIT_TYPES.length)]
           });
@@ -212,14 +210,14 @@ export function getRecentlyEdited(seriesList: SeriesContribution[]): VolumeContr
 
 export function getEditTypeIcon(type: ActivityEntry['editType']) {
   switch (type) {
-  case 'text':
-    return '✏️';
-  case 'box':
-    return '📦';
-  case 'font':
-    return '🔤';
-  case 'structure':
-    return '🏗️';
+    case 'text':
+      return '✏️';
+    case 'box':
+      return '📦';
+    case 'font':
+      return '🔤';
+    case 'structure':
+      return '🏗️';
   }
 }
 
@@ -267,28 +265,28 @@ export function getVolumesNeedingRebase(seriesList: SeriesContribution[]): Volum
 
 export function getConflictTypeLabel(type: ConflictType) {
   switch (type) {
-  case 'content_conflict':
-    return 'Content Conflict';
-  case 'dead_zone':
-    return 'Deleted Block';
-  case 'double_delete':
-    return 'Double Delete';
-  case 'reorder_length_change':
-    return 'Reorder + Length Change';
-  case 'competing_reorder':
-    return 'Competing Reorders';
-  default:
-    return 'Conflict';
+    case 'content_conflict':
+      return 'Content Conflict';
+    case 'dead_zone':
+      return 'Deleted Block';
+    case 'double_delete':
+      return 'Double Delete';
+    case 'reorder_length_change':
+      return 'Reorder + Length Change';
+    case 'competing_reorder':
+      return 'Competing Reorders';
+    default:
+      return 'Conflict';
   }
 }
 
 export function getAvailableResolutions(type: ConflictType): RebaseResolution[] {
   switch (type) {
-  case 'dead_zone':
-    return ['skip', 'resurrect'];
-  case 'double_delete':
-    return ['skip'];
-  default:
-    return ['keep_admin', 'keep_mine'];
+    case 'dead_zone':
+      return ['skip', 'resurrect'];
+    case 'double_delete':
+      return ['skip'];
+    default:
+      return ['keep_admin', 'keep_mine'];
   }
 }

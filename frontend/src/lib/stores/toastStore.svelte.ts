@@ -1,8 +1,8 @@
 type Toast = {
-	id: string;
-	type: 'success' | 'error' | 'warning' | 'info';
-	message: string;
-	duration?: number;
+  id: string;
+  type: 'success' | 'error' | 'warning' | 'info';
+  message: string;
+  duration?: number;
 };
 
 class ToastStore {

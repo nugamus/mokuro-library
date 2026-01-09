@@ -1,9 +1,9 @@
 import type { PanzoomOptions, PanzoomObject } from '@panzoom/panzoom';
 
 export type PanzoomActionParams = {
-	options?: PanzoomOptions;
-	disabled?: boolean;
-	onInit?: (instance: PanzoomObject) => void;
+  options?: PanzoomOptions;
+  disabled?: boolean;
+  onInit?: (instance: PanzoomObject) => void;
 };
 
 export function panzoom(panzoomElement: HTMLElement, params: PanzoomActionParams = {}) {

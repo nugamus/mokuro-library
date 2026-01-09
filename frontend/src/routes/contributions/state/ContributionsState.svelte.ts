@@ -119,34 +119,34 @@ export class ContributionsState {
     if (!this.rebaseModal.isOpen) return;
 
     switch (e.key) {
-    case 'ArrowLeft':
-      e.preventDefault();
-      if (this.rebaseModal.currentConflictIndex > 0) {
-        this.rebaseModal.currentConflictIndex--;
-      }
-      break;
-    case 'ArrowRight':
-      e.preventDefault();
-      if (this.rebaseModal.currentConflictIndex < this.rebaseModal.conflicts.length - 1) {
-        this.rebaseModal.currentConflictIndex++;
-      }
-      break;
-    case '1':
-      e.preventDefault();
-      this.resolveConflict('keep_admin');
-      break;
-    case '2':
-      e.preventDefault();
-      this.resolveConflict('keep_mine');
-      break;
-    case '3':
-      e.preventDefault();
-      this.resolveConflict('skip');
-      break;
-    case '4':
-      e.preventDefault();
-      this.resolveConflict('resurrect');
-      break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (this.rebaseModal.currentConflictIndex > 0) {
+          this.rebaseModal.currentConflictIndex--;
+        }
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (this.rebaseModal.currentConflictIndex < this.rebaseModal.conflicts.length - 1) {
+          this.rebaseModal.currentConflictIndex++;
+        }
+        break;
+      case '1':
+        e.preventDefault();
+        this.resolveConflict('keep_admin');
+        break;
+      case '2':
+        e.preventDefault();
+        this.resolveConflict('keep_mine');
+        break;
+      case '3':
+        e.preventDefault();
+        this.resolveConflict('skip');
+        break;
+      case '4':
+        e.preventDefault();
+        this.resolveConflict('resurrect');
+        break;
     }
   };
 

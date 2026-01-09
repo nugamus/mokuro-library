@@ -20,14 +20,14 @@ export async function createJobsFromFiles(fileList: FileList): Promise<UploadJob
     const isJunk = pathParts.some(
       (part) =>
         part.startsWith('.') ||
-				[
-				  '__MACOSX',
-				  'node_modules',
-				  '$RECYCLE.BIN',
-				  'System Volume Information',
-				  'Thumbs.db',
-				  '_ocr'
-				].includes(part)
+        [
+          '__MACOSX',
+          'node_modules',
+          '$RECYCLE.BIN',
+          'System Volume Information',
+          'Thumbs.db',
+          '_ocr'
+        ].includes(part)
     );
 
     if (isJunk) continue;
@@ -46,13 +46,13 @@ export async function createJobsFromFiles(fileList: FileList): Promise<UploadJob
     for (const part of folderParts) {
       currentPath = currentPath ? `${currentPath}/${part}` : part;
 
-            	if (!currentMap.has(part)) {
-            		currentMap.set(part, {
-            			name: part,
-            			fullPath: currentPath,
-            			files: [],
-            			children: new SvelteMap()
-            		});
+      if (!currentMap.has(part)) {
+        currentMap.set(part, {
+          name: part,
+          fullPath: currentPath,
+          files: [],
+          children: new SvelteMap()
+        });
       }
 
       node = currentMap.get(part)!;
@@ -120,7 +120,7 @@ async function traverse(
         const seriesFolder = parentName ?? node.name;
         const volumeFolder = node.name;
         const displayName =
-					seriesFolder === volumeFolder ? seriesFolder : `${seriesFolder}/${volumeFolder}`;
+          seriesFolder === volumeFolder ? seriesFolder : `${seriesFolder}/${volumeFolder}`;
 
         const seriesTitle = currentMetadata?.series?.title ?? null;
         const seriesDescription = currentMetadata?.series?.description ?? null;

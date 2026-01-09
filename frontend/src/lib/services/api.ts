@@ -8,12 +8,12 @@ import { getStoredFingerprint } from './deviceFingerprint';
  * We will convert 'body' into a valid type inside of apiFetch.
  */
 interface ApiFetchOptions extends Omit<RequestInit, 'body' | 'cache'> {
-	body?: unknown;
-	retry?: boolean;
-	showErrorToast?: boolean;
-	cache?: boolean; // Enable caching for GET requests
-	skipCache?: boolean; // Force fresh fetch
-	onStaleRefetch?: (data: unknown) => void;
+  body?: unknown;
+  retry?: boolean;
+  showErrorToast?: boolean;
+  cache?: boolean; // Enable caching for GET requests
+  skipCache?: boolean; // Force fresh fetch
+  onStaleRefetch?: (data: unknown) => void;
 }
 
 const getCsrfToken = () => {
@@ -32,7 +32,10 @@ const isStateChanging = (method?: string) => {
  * This automatically handles JSON serialization, error handling,
  * and uses relative paths that work with our Vite proxy.
  */
-export async function apiFetch<T = unknown>(path: string, options: ApiFetchOptions = {}): Promise<T> {
+export async function apiFetch<T = unknown>(
+  path: string,
+  options: ApiFetchOptions = {}
+): Promise<T> {
   const {
     retry = false,
     showErrorToast = true,
@@ -56,9 +59,9 @@ export async function apiFetch<T = unknown>(path: string, options: ApiFetchOptio
     let body: BodyInit | null | undefined = fetchOptions.body;
     if (
       fetchOptions.body &&
-			typeof fetchOptions.body === 'object' &&
-			fetchOptions.method !== 'GET' &&
-			!(fetchOptions.body instanceof FormData)
+      typeof fetchOptions.body === 'object' &&
+      fetchOptions.method !== 'GET' &&
+      !(fetchOptions.body instanceof FormData)
     ) {
       body = JSON.stringify(fetchOptions.body);
     }
@@ -190,9 +193,9 @@ export const apiFetchWithRefresh = async <T = unknown>(
     // If 401 and not already a refresh/login request, try to refresh token
     if (
       error instanceof Error &&
-			error.message.includes('401') &&
-			!url.includes('/api/auth/refresh') &&
-			!url.includes('/api/auth/login')
+      error.message.includes('401') &&
+      !url.includes('/api/auth/refresh') &&
+      !url.includes('/api/auth/login')
     ) {
       const refreshed = await refreshAccessToken();
 

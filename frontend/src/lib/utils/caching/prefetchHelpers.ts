@@ -3,9 +3,9 @@ import { browser } from '$app/environment';
 const isSlowConnection = () => {
   if (!browser) return true;
   const connection = (
-		navigator as Navigator & {
-			connection?: { saveData?: boolean; effectiveType?: string };
-		}
+    navigator as Navigator & {
+      connection?: { saveData?: boolean; effectiveType?: string };
+    }
   ).connection;
   if (!connection) return false;
   if (connection.saveData) return true;
@@ -26,9 +26,9 @@ export function runWhenIdle<T>(task: () => Promise<T> | T, timeout = 1500): Prom
     };
 
     const requestIdle = (
-			globalThis as {
-				requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
-			}
+      globalThis as {
+        requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => number;
+      }
     ).requestIdleCallback;
 
     if (requestIdle) {

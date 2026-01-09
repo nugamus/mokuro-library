@@ -62,7 +62,7 @@ class APICache {
 
     // Fresh data - return immediately
     if (age < staleTime && !cached.stale) {
-      console.log("HIT");
+      console.log('HIT');
       return cached.data;
     }
 
@@ -216,7 +216,7 @@ class APICache {
    * Invalidate cache when user makes changes
    */
   invalidateLibraryCache(hard?: boolean): void {
-    console.log("INVALIDATE LIBRARY");
+    console.log('INVALIDATE LIBRARY');
     this.invalidate('GET:/api/library', hard);
   }
 

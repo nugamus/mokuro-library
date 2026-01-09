@@ -10,13 +10,13 @@ import type {
 
 export class PatchApplicator {
   /**
-	 * Applies a patch operation to the MokuroData object (mutates in place).
-	 * Validates indices before applying.
-	 *
-	 * @param data - The MokuroData object to modify
-	 * @param patch - The patch operation to apply
-	 * @throws Error if path/op is unsupported or indices are invalid
-	 */
+   * Applies a patch operation to the MokuroData object (mutates in place).
+   * Validates indices before applying.
+   *
+   * @param data - The MokuroData object to modify
+   * @param patch - The patch operation to apply
+   * @throws Error if path/op is unsupported or indices are invalid
+   */
   static apply(data: MokuroData, patch: PatchOperation): void {
     if (patch.op === 'genesis') {
       return;
@@ -191,8 +191,8 @@ export class PatchApplicator {
   }
 
   /**
-	 * Applies multiple patches in sequence.
-	 */
+   * Applies multiple patches in sequence.
+   */
   static applyAll(data: MokuroData, patches: PatchOperation[]): void {
     for (const patch of patches) {
       this.apply(data, patch);

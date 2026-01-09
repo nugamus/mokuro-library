@@ -1,18 +1,18 @@
 import type { RebaseConflict, VolumeContribution } from './types';
 
 export type RebaseModalState = {
-	isOpen: boolean;
-	volumeId: string | null;
-	volumeTitle: string | null;
-	seriesTitle: string | null;
-	conflicts: RebaseConflict[];
-	currentConflictIndex: number;
+  isOpen: boolean;
+  volumeId: string | null;
+  volumeTitle: string | null;
+  seriesTitle: string | null;
+  conflicts: RebaseConflict[];
+  currentConflictIndex: number;
 };
 
 export type ResetModalState = {
-	isOpen: boolean;
-	volumeId: string | null;
-	volumeTitle: string | null;
+  isOpen: boolean;
+  volumeId: string | null;
+  volumeTitle: string | null;
 };
 
 const sampleConflicts: RebaseConflict[] = [

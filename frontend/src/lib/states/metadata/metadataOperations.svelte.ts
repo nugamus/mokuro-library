@@ -65,12 +65,15 @@ class MetadataOperations {
   syncVolumeCompletion(id: string, isCompleted: boolean, onRevert?: RevertCallback) {
     this.schedule(id, async () => {
       try {
-        const { seriesId } = await apiFetch<{ seriesId: string }>(`/api/metadata/volume/${id}/progress`, {
-          method: 'PATCH',
-          body: {
-            completed: isCompleted
+        const { seriesId } = await apiFetch<{ seriesId: string }>(
+          `/api/metadata/volume/${id}/progress`,
+          {
+            method: 'PATCH',
+            body: {
+              completed: isCompleted
+            }
           }
-        });
+        );
         apiCache.invalidateLibraryCache(true);
         apiCache.invalidateSeriesCache({ seriesId });
         apiCache.invalidateVolumeCache({ volumeId: id });

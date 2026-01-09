@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import Page from '../+page.svelte';
 
 type SimpleStore<T> = {
-	subscribe: (run: (value: T) => void) => () => void;
-	set: (value: T) => void;
-	update: (fn: (value: T) => T) => void;
+  subscribe: (run: (value: T) => void) => () => void;
+  set: (value: T) => void;
+  update: (fn: (value: T) => T) => void;
 };
 
 const { userStore, pageState, components } = vi.hoisted(() => {

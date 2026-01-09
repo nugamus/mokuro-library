@@ -45,8 +45,8 @@ export const optimizeSrc = (src: string, browser: boolean) => {
   try {
     const url = new URL(src, window.location.origin);
     const isOptimizable =
-			url.pathname.startsWith('/api/files/volume/') ||
-			url.pathname.startsWith('/api/files/series/');
+      url.pathname.startsWith('/api/files/volume/') ||
+      url.pathname.startsWith('/api/files/series/');
     if (!isOptimizable) return src;
     if (url.searchParams.has('w') || url.searchParams.has('h') || url.searchParams.has('format'))
       return src;
@@ -66,8 +66,8 @@ export const optimizeSrc = (src: string, browser: boolean) => {
 
 export const imageStore = {
   /**
-	 * Gets an image blob URL from the session cache or network.
-	 */
+   * Gets an image blob URL from the session cache or network.
+   */
   get: (src: string): Promise<string> => {
     // 1. Check if a promise for this src already exists.
     let request = imagePromiseCache.get(src);
@@ -85,9 +85,9 @@ export const imageStore = {
   },
 
   /**
-	 * Clears the session cache and revokes all blob URLs.
-	 * This is called on navigation to prevent memory leaks.
-	 */
+   * Clears the session cache and revokes all blob URLs.
+   * This is called on navigation to prevent memory leaks.
+   */
   clear: () => {
     console.log('Clearing image store, revoking URLs...');
     for (const url of createdBlobUrls) {

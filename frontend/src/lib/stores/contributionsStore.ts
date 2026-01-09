@@ -8,9 +8,9 @@ import type {
 } from '$lib/types';
 
 export interface ContributionCounts {
-	behind: number;
-	ahead: number;
-	pendingSubmissionsCount: number;
+  behind: number;
+  ahead: number;
+  pendingSubmissionsCount: number;
 }
 
 function createContributionsStore() {
@@ -61,8 +61,8 @@ function createContributionsStore() {
     // --- Submission Methods ---
 
     /**
-		 * Submit volumes to the shared library
-		 */
+     * Submit volumes to the shared library
+     */
     submitVolumes: async (volumeIds: string[], targetSeriesId?: string) => {
       const body: SubmitVolumesRequest = { volumeIds, targetSeriesId };
       await apiFetch('/api/contributions/submissions', {
@@ -74,8 +74,8 @@ function createContributionsStore() {
     },
 
     /**
-		 * Cancel a pending submission
-		 */
+     * Cancel a pending submission
+     */
     cancelSubmission: async (submissionId: string) => {
       await apiFetch(`/api/contributions/submissions/${submissionId}`, {
         method: 'DELETE'
@@ -85,8 +85,8 @@ function createContributionsStore() {
     },
 
     /**
-		 * Accept a submission (admin only)
-		 */
+     * Accept a submission (admin only)
+     */
     acceptSubmission: async (submissionId: string) => {
       await apiFetch(`/api/contributions/submissions/${submissionId}/accept`, {
         method: 'POST'
@@ -96,8 +96,8 @@ function createContributionsStore() {
     },
 
     /**
-		 * Reject a submission (admin only)
-		 */
+     * Reject a submission (admin only)
+     */
     rejectSubmission: async (submissionId: string, reason?: string) => {
       await apiFetch(`/api/contributions/submissions/${submissionId}/reject`, {
         method: 'POST',
@@ -108,8 +108,8 @@ function createContributionsStore() {
     },
 
     /**
-		 * Bulk accept multiple submissions (admin only)
-		 */
+     * Bulk accept multiple submissions (admin only)
+     */
     bulkAcceptSubmissions: async (submissionIds: string[]): Promise<BulkOperationResult> => {
       const body: BulkAcceptRequest = { submissionIds };
       const result = await apiFetch<BulkOperationResult>(
@@ -125,8 +125,8 @@ function createContributionsStore() {
     },
 
     /**
-		 * Bulk reject multiple submissions (admin only)
-		 */
+     * Bulk reject multiple submissions (admin only)
+     */
     bulkRejectSubmissions: async (
       submissionIds: string[],
       reason: string

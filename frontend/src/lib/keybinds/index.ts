@@ -1,46 +1,46 @@
 export type KeybindContext =
-	| 'library'
-	| 'series'
-	| 'reader'
-	| 'settings'
-	| 'global'
-	| 'contributions';
+  | 'library'
+  | 'series'
+  | 'reader'
+  | 'settings'
+  | 'global'
+  | 'contributions';
 
 export type KeybindId =
-	| 'showShortcuts'
-	| 'openMenu'
-	| 'openSettings'
-	| 'openContributions'
-	| 'openUpload'
-	| 'toggleStats'
-	| 'toggleAppearance'
-	| 'focusSearch'
-	| 'toggleSelectionMode'
-	| 'readerPrevPage'
-	| 'readerNextPage'
-	| 'readerFirstPage'
-	| 'readerLastPage'
-	| 'toggleFullscreen'
-	| 'toggleNightMode'
-	| 'toggleInvertColors'
-	| 'toggleHud'
-	| 'layoutSingle'
-	| 'layoutDouble'
-	| 'layoutVertical'
-	| 'saveOcr'
-	| 'toggleOcrMode'
-	| 'toggleSmartResize';
+  | 'showShortcuts'
+  | 'openMenu'
+  | 'openSettings'
+  | 'openContributions'
+  | 'openUpload'
+  | 'toggleStats'
+  | 'toggleAppearance'
+  | 'focusSearch'
+  | 'toggleSelectionMode'
+  | 'readerPrevPage'
+  | 'readerNextPage'
+  | 'readerFirstPage'
+  | 'readerLastPage'
+  | 'toggleFullscreen'
+  | 'toggleNightMode'
+  | 'toggleInvertColors'
+  | 'toggleHud'
+  | 'layoutSingle'
+  | 'layoutDouble'
+  | 'layoutVertical'
+  | 'saveOcr'
+  | 'toggleOcrMode'
+  | 'toggleSmartResize';
 
 export type KeybindsConfig = Record<KeybindId, string[]>;
 
 export type KeybindDefinition = {
-	id: KeybindId;
-	label: string;
-	description: string;
-	category: string;
-	defaultKeys: string[];
-	contexts?: KeybindContext[];
-	preventDefault?: boolean;
+  id: KeybindId;
+  label: string;
+  description: string;
+  category: string;
+  defaultKeys: string[];
+  contexts?: KeybindContext[];
+  preventDefault?: boolean;
 };
 
 export const keybindDefinitions: KeybindDefinition[] = [

@@ -1,11 +1,11 @@
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   options: {
-		retries?: number;
-		delay?: number;
-		backoffMultiplier?: number;
-		onRetry?: (error: Error, attempt: number) => void;
-	} = {}
+    retries?: number;
+    delay?: number;
+    backoffMultiplier?: number;
+    onRetry?: (error: Error, attempt: number) => void;
+  } = {}
 ): Promise<T> {
   const { retries = 3, delay = 1000, backoffMultiplier = 2, onRetry } = options;
 

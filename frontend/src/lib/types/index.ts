@@ -98,7 +98,7 @@ export type PaginationData = {
   page: number;
   limit: number;
   totalPages: number;
-}
+};
 
 // Union for Selection State
 export type LibraryItem = Series | Volume;

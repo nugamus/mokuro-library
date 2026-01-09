@@ -19,10 +19,10 @@ import { SvelteMap, SvelteDate } from 'svelte/reactivity';
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
 export type UndoRedoResponse = {
-  success: boolean,
-  newHeadId: string,
-  newVersion: number,
-  patch: PatchOperation
+  success: boolean;
+  newHeadId: string;
+  newVersion: number;
+  patch: PatchOperation;
 };
 
 // How many pages to keep ready in the cache
@@ -211,7 +211,7 @@ class ReaderState {
 
         // Whenever prefetchUrls changes, tell the store to fetch them
         this.prefetchUrls.forEach((url) => {
-          imageStore.get(url).catch(() => { });
+          imageStore.get(url).catch(() => {});
         });
       });
     });
@@ -398,13 +398,16 @@ class ReaderState {
       try {
         // Iterate through the batch and send 1-by-1
         for (const op of task.ops) {
-          const res = await apiFetch<{ patch: PatchOperation, newVersion: number }>(`/api/library/volume/${this.volume!.id}/patch`, {
-            method: 'POST',
-            body: {
-              operation: op,
-              branchVersion: this.branchVersion
+          const res = await apiFetch<{ patch: PatchOperation; newVersion: number }>(
+            `/api/library/volume/${this.volume!.id}/patch`,
+            {
+              method: 'POST',
+              body: {
+                operation: op,
+                branchVersion: this.branchVersion
+              }
             }
-          });
+          );
 
           // Update Authoritative State (Committed) step-by-step
           // This keeps 'committed' strictly in sync with the server's truth
@@ -505,14 +508,17 @@ class ReaderState {
     }
 
     try {
-      const { seriesId } = await apiFetch<{ seriesId: string }>(`/api/metadata/volume/${volumeId}/progress`, {
-        method: 'PATCH',
-        body: {
-          page: this.currentPageIndex + 1,
-          timeRead: timeSpent,
-          charsRead: charsRead
+      const { seriesId } = await apiFetch<{ seriesId: string }>(
+        `/api/metadata/volume/${volumeId}/progress`,
+        {
+          method: 'PATCH',
+          body: {
+            page: this.currentPageIndex + 1,
+            timeRead: timeSpent,
+            charsRead: charsRead
+          }
         }
-      });
+      );
       apiCache.invalidateSeriesCache({ seriesId: seriesId ?? undefined });
       this.initialPageIndex = this.currentPageIndex;
     } catch (e) {

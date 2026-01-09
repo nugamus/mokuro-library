@@ -1,29 +1,29 @@
 import { browser } from '$app/environment';
 
 export interface ThemeColors {
-	'main-background': string;
-	'card-background': string;
-	'card-highlight': string;
-	'border-color': string;
-	'primary-color': string;
-	'primary-surface': string;
-	'primary-hover': string;
-	'main-text': string;
-	'muted-text': string;
-	'reading-color': string;
+  'main-background': string;
+  'card-background': string;
+  'card-highlight': string;
+  'border-color': string;
+  'primary-color': string;
+  'primary-surface': string;
+  'primary-hover': string;
+  'main-text': string;
+  'muted-text': string;
+  'reading-color': string;
 }
 
 export interface Theme {
-	id: string;
-	name: string;
-	colors: {
-		dark: ThemeColors;
-		light: ThemeColors;
-	};
-	previewColors: {
-		dark: [string, string, string, string, string]; // 5 colors: main-bg, card-bg, card-highlight, primary, border
-		light: [string, string, string, string, string];
-	};
+  id: string;
+  name: string;
+  colors: {
+    dark: ThemeColors;
+    light: ThemeColors;
+  };
+  previewColors: {
+    dark: [string, string, string, string, string]; // 5 colors: main-bg, card-bg, card-highlight, primary, border
+    light: [string, string, string, string, string];
+  };
 }
 
 class ThemeStore {
@@ -184,34 +184,34 @@ class ThemeStore {
 
   // Custom theme colors (when custom theme is enabled)
   customColors = $state<{
-		dark: ThemeColors;
-		light: ThemeColors;
-	}>({
-	  dark: {
-	    'main-background': '#0f172a',
-	    'card-background': '#1e293b',
-	    'card-highlight': '#334155',
-	    'border-color': '#334155',
-	    'primary-color': '#6366f1',
-	    'primary-surface': '#202752',
-	    'primary-hover': '#4f46e5',
-	    'main-text': '#f1f5f9',
-	    'muted-text': '#94a3b8',
-	    'reading-color': '#6366f1'
-	  },
-	  light: {
-	    'main-background': '#f8fafc', // slate-50
-	    'card-background': '#ffffff', // white
-	    'card-highlight': '#f1f5f9', // slate-100
-	    'border-color': '#e2e8f0', // slate-200
-	    'primary-color': '#4f46e5', // indigo-600
-	    'primary-hover': '#4338ca', // indigo-700
-	    'primary-surface': '#e0e7ff', // indigo-100 (Fixed from dark color)
-	    'main-text': '#020617', // slate-950 (high contrast)
-	    'muted-text': '#475569', // slate-600 (improved contrast)
-	    'reading-color': '#4f46e5'
-	  }
-	});
+    dark: ThemeColors;
+    light: ThemeColors;
+  }>({
+    dark: {
+      'main-background': '#0f172a',
+      'card-background': '#1e293b',
+      'card-highlight': '#334155',
+      'border-color': '#334155',
+      'primary-color': '#6366f1',
+      'primary-surface': '#202752',
+      'primary-hover': '#4f46e5',
+      'main-text': '#f1f5f9',
+      'muted-text': '#94a3b8',
+      'reading-color': '#6366f1'
+    },
+    light: {
+      'main-background': '#f8fafc', // slate-50
+      'card-background': '#ffffff', // white
+      'card-highlight': '#f1f5f9', // slate-100
+      'border-color': '#e2e8f0', // slate-200
+      'primary-color': '#4f46e5', // indigo-600
+      'primary-hover': '#4338ca', // indigo-700
+      'primary-surface': '#e0e7ff', // indigo-100 (Fixed from dark color)
+      'main-text': '#020617', // slate-950 (high contrast)
+      'muted-text': '#475569', // slate-600 (improved contrast)
+      'reading-color': '#4f46e5'
+    }
+  });
 
   isCustomThemeEnabled = $state(false);
 
@@ -253,8 +253,8 @@ class ThemeStore {
   }
 
   /**
-	 * Apply theme colors based on current color mode
-	 */
+   * Apply theme colors based on current color mode
+   */
   applyThemeColors(colors: ThemeColors) {
     if (!browser) return;
 
@@ -293,17 +293,17 @@ class ThemeStore {
   }
 
   /**
-	 * Apply a theme by setting CSS variables on the document root
-	 * Maps theme colors to CSS variables used throughout the app
-	 */
+   * Apply a theme by setting CSS variables on the document root
+   * Maps theme colors to CSS variables used throughout the app
+   */
   applyTheme(theme: Theme) {
     const mode = this.getResolvedColorMode();
     this.applyThemeColors(theme.colors[mode]);
   }
 
   /**
-	 * Apply current theme (handles custom vs preset)
-	 */
+   * Apply current theme (handles custom vs preset)
+   */
   applyCurrentTheme() {
     if (this.isCustomThemeEnabled) {
       this.applyCustomTheme();
@@ -313,16 +313,16 @@ class ThemeStore {
   }
 
   /**
-	 * Apply custom theme colors
-	 */
+   * Apply custom theme colors
+   */
   applyCustomTheme() {
     const mode = this.getResolvedColorMode();
     this.applyThemeColors(this.customColors[mode]);
   }
 
   /**
-	 * Set color mode (dark, light, or system)
-	 */
+   * Set color mode (dark, light, or system)
+   */
   setColorMode(mode: 'dark' | 'light' | 'system') {
     this.colorMode = mode;
     if (browser) {
@@ -332,9 +332,9 @@ class ThemeStore {
   }
 
   /**
-	 * Initialize reactive theme updates
-	 * This should be called after the store is created to set up reactive updates
-	 */
+   * Initialize reactive theme updates
+   * This should be called after the store is created to set up reactive updates
+   */
   initReactiveUpdates() {
     if (!browser) return;
 
@@ -349,8 +349,8 @@ class ThemeStore {
   }
 
   /**
-	 * Set the active theme
-	 */
+   * Set the active theme
+   */
   setTheme(themeId: string) {
     if (themeId === 'custom') {
       this.isCustomThemeEnabled = true;
@@ -378,8 +378,8 @@ class ThemeStore {
   }
 
   /**
-	 * Update custom theme color
-	 */
+   * Update custom theme color
+   */
   updateCustomColor(mode: 'dark' | 'light', key: keyof ThemeColors, value: string) {
     this.customColors[mode][key] = value;
     if (this.isCustomThemeEnabled) {
@@ -397,8 +397,8 @@ class ThemeStore {
   }
 
   /**
-	 * Reset custom colors to default (Mokuro theme)
-	 */
+   * Reset custom colors to default (Mokuro theme)
+   */
   resetCustomColors() {
     this.customColors = {
       dark: {
