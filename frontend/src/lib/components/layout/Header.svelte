@@ -121,7 +121,13 @@
     const element = e.currentTarget as HTMLElement;
     const rect = element.getBoundingClientRect();
     // Open aligned to the bottom-right of the button
-    contextMenu.open(rect.right, rect.bottom + 10, FilterMenu, { xEdgeAlign: 'right' }, element);
+    contextMenu.open(
+      rect.right,
+      rect.bottom + 10,
+      FilterMenu,
+      {},
+      { anchorElement: element, xAlign: 'right' }
+    );
   };
 
   const toggleAppMenu = (e: MouseEvent) => {
@@ -135,7 +141,13 @@
     const element = e.currentTarget as HTMLElement;
     const rect = element.getBoundingClientRect();
     // Open aligned to the bottom-right of the button
-    contextMenu.open(rect.right, rect.bottom + 10, AppMenu, { xEdgeAlign: 'right' }, element);
+    contextMenu.open(
+      rect.right,
+      rect.bottom + 10,
+      AppMenu,
+      {},
+      { anchorElement: element, xAlign: 'right' }
+    );
   };
 
   // --- Configuration for filter button styles

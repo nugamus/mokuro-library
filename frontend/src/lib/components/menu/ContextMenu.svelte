@@ -14,11 +14,14 @@
   let finalY = $state(0);
 
   const handleResize = () => {
-    if ($contextMenu.isOpen && $contextMenu.anchorElement) {
-      // Recalculate position based on anchor element
-      const rect = $contextMenu.anchorElement.getBoundingClientRect();
-      const finalX = $contextMenu.props.xEdgeAlign === 'right' ? rect.right : rect.left;
-      const finalY = $contextMenu.props.yEdgeAlign === 'top' ? rect.top : rect.bottom;
+    const { isOpen, alignmentOptions } = $contextMenu;
+
+    if (isOpen && alignmentOptions?.anchorElement) {
+      const rect = alignmentOptions.anchorElement.getBoundingClientRect();
+
+      const finalX = alignmentOptions.xAlign === 'right' ? rect.right : rect.left;
+      const finalY = alignmentOptions.yAlign === 'top' ? rect.top : rect.bottom;
+
       contextMenu.updatePosition(finalX, finalY);
     }
   };
@@ -40,12 +43,12 @@
       let nextY = y;
 
       // Horizontal logic: Flip if no space, but don't go off-screen left
-      if (x + menuWidth > viewportWidth || $contextMenu.props.xEdgeAlign === 'right') {
+      if (x + menuWidth > viewportWidth || $contextMenu.alignmentOptions?.xAlign === 'right') {
         nextX = Math.max(0, x - menuWidth);
       }
 
       // Vertical logic: Flip if no space, but don't go off-screen top
-      if (y + menuHeight > viewportHeight || $contextMenu.props.yEdgeAlign === 'top') {
+      if (y + menuHeight > viewportHeight || $contextMenu.alignmentOptions?.yAlign === 'top') {
         nextY = Math.max(0, y - menuHeight);
       }
 

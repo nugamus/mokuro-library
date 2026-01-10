@@ -39,7 +39,7 @@
   onMount(() => contributionsState.mount());
 
   $effect(() => {
-    if (browser && $user === null) goto(resolve('/login'));
+    if (browser && $user === null) goto(resolve('/login', {}));
   });
 
   $effect(() => {

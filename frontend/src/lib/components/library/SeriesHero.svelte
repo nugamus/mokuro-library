@@ -39,7 +39,7 @@
     onCoverUpload,
     onBookmarkToggle,
     onRefresh
-  } = $props<{
+  }: {
     series: Series;
     stats: SeriesStats;
     coverRefreshTrigger?: number;
@@ -47,7 +47,7 @@
     onCoverUpload: (e: Event, fileInput: HTMLInputElement | undefined) => void;
     onBookmarkToggle: () => void;
     onRefresh: () => void;
-  }>();
+  } = $props();
 
   // --- Local State ---
   let fileInput: HTMLInputElement | undefined = $state();
@@ -154,11 +154,13 @@
       rect.bottom,
       SeriesActionsMenu,
       {
-        xEdgeAlign: 'right',
         onEdit: handleEditClick,
         onScrape: handleQuickScrape
       },
-      target
+      {
+        anchorElement: target,
+        xAlign: 'right'
+      }
     );
   }
 </script>

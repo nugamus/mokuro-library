@@ -100,8 +100,8 @@
     <div class="grid grid-cols-2 gap-4 mb-6">
       <div class="relative max-w-[120px]">
         {#if preview.current.coverPath}
-          <img
-            src="/api/files/series/{preview.seriesId}/cover"
+          <AuthenticatedImage
+            src="/api/files/series/{preview.seriesId}/cover?w=300&q=44&format=avif&t={new Date()}"
             alt="Current"
             class="w-full aspect-[7/11] object-cover rounded-lg border border-theme-border"
           />

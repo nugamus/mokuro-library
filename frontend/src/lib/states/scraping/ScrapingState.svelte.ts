@@ -13,10 +13,25 @@ export interface DescriptionFilter {
 }
 
 export interface ScrapeResult {
-  scraped: unknown;
-  current: unknown;
+  current: {
+    title: string | null;
+    japaneseTitle: string | null;
+    romajiTitle: string | null;
+    synonyms: string | null;
+    description: string | null;
+    hasCover: boolean;
+    coverPath: string | null;
+  };
+  scraped: {
+    title?: string;
+    japaneseTitle?: string;
+    romajiTitle?: string;
+    synonyms?: string;
+    description?: string;
+    hasCover?: boolean;
+    tempCoverPath?: string;
+  };
 }
-
 class ScrapingState {
   // --- Sub-States ---
   session: ReviewSession;
@@ -266,15 +281,11 @@ class ScrapingState {
     signal?: AbortSignal
   ): Promise<ScrapeResult> {
     try {
-      const response = await apiFetch('/api/metadata/series/scrape', {
+      const response = await apiFetch<ScrapeResult>('/api/metadata/series/scrape', {
         method: 'POST',
         body: { seriesId, seriesName: seriesTitle, provider },
         signal // Pass abort signal to fetch
       });
-
-      if (response.error || !response.scraped) {
-        throw new Error(`Failed to scrape: ${response.error}`);
-      }
 
       // Clean description using current filters
       const cleanedScraped = {

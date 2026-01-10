@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { writable } from 'svelte/store';
 import type { Component } from 'svelte';
 import SimpleMenu from '$lib/components/menu/SimpleMenu.svelte';
@@ -11,12 +12,18 @@ export type MenuAction = {
 export type MenuSeparator = { separator: true };
 export type MenuOption = MenuAction | MenuSeparator;
 
+export type AlignmentOptions = {
+  anchorElement?: HTMLElement;
+  xAlign?: 'left' | 'right';
+  yAlign?: 'top' | 'bottom';
+};
+
 type MenuState = {
   isOpen: boolean;
   position: { x: number; y: number };
-  component: Component<unknown> | null;
-  props: Record<string, unknown>;
-  anchorElement: HTMLElement | null;
+  component: Component<any> | null;
+  props: Record<string, any>;
+  alignmentOptions?: AlignmentOptions;
 };
 
 function createContextMenu() {
@@ -24,49 +31,62 @@ function createContextMenu() {
     isOpen: false,
     position: { x: 0, y: 0 },
     component: null,
-    props: {},
-    anchorElement: null
+    props: {}
   });
+
+  // --- OVERLOAD DEFINITIONS ---
+  // We define the function separately here so TypeScript can handle the overloads correctly.
+
+  // Overload 1: Simple Mode (Array)
+  function open(
+    x: number,
+    y: number,
+    options: MenuOption[],
+    props?: Record<string, any>,
+    alignmentOptions?: AlignmentOptions
+  ): void;
+
+  // Overload 2: Advanced Mode (Component)
+  function open<T extends Record<string, any>>(
+    x: number,
+    y: number,
+    component: Component<T>,
+    props: T,
+    alignmentOptions?: AlignmentOptions
+  ): void;
+
+  // Implementation
+  function open(
+    x: number,
+    y: number,
+    componentOrOptions: Component<any> | MenuOption[],
+    props: Record<string, any> = {},
+    alignmentOptions?: AlignmentOptions
+  ) {
+    if (Array.isArray(componentOrOptions)) {
+      // SIMPLE MODE
+      set({
+        isOpen: true,
+        position: { x, y },
+        component: SimpleMenu,
+        props: { ...props, options: componentOrOptions },
+        alignmentOptions
+      });
+    } else {
+      // ADVANCED MODE
+      set({
+        isOpen: true,
+        position: { x, y },
+        component: componentOrOptions,
+        props,
+        alignmentOptions
+      });
+    }
+  }
 
   return {
     subscribe,
-
-    /**
-     * Opens the context menu.
-     * * Signature A: open(x, y, Component, props)
-     * -> Renders a custom Svelte component (Advanced Mode)
-     * * Signature B: open(x, y, options[])
-     * -> Renders the built-in SimpleMenu (Simple Mode)
-     */
-    open: (
-      x: number,
-      y: number,
-      componentOrOptions: Component<unknown> | MenuOption[],
-      props: Record<string, unknown> = {},
-      anchorElement: HTMLElement | null = null
-    ) => {
-      if (Array.isArray(componentOrOptions)) {
-        // SIMPLE MODE: User passed an array of options.
-        // We wrap them in the SimpleMenu component automatically.
-        set({
-          isOpen: true,
-          position: { x, y },
-          component: SimpleMenu,
-          props: { ...props, options: componentOrOptions },
-          anchorElement
-        });
-      } else {
-        // ADVANCED MODE: User passed a custom component.
-        set({
-          isOpen: true,
-          position: { x, y },
-          component: componentOrOptions,
-          props,
-          anchorElement
-        });
-      }
-    },
-
+    open,
     updatePosition: (x: number, y: number) => {
       update((state) => ({
         ...state,
@@ -80,7 +100,7 @@ function createContextMenu() {
         position: { x: 0, y: 0 },
         component: null,
         props: {},
-        anchorElement: null
+        alignmentOptions: undefined // Reset alignment options
       })
   };
 }

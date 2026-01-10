@@ -32,7 +32,7 @@
 
   // Registry of child line components for focus management
   // We use a Map or Array to store bound references
-  let lineComponents: Record<number, unknown> = $state({});
+  let lineComponents: Record<number, ReturnType<typeof OcrLine>> = $state({});
 
   // handle drag or double click
   // on the block level, this helps reject trivial edits

@@ -56,7 +56,7 @@
       menuItems.push({ label: 'Scrape metadata', action: () => onScrape() });
     }
 
-    contextMenu.open(rect.left, rect.top, menuItems, { yEdgeAlign: 'top' }, target);
+    contextMenu.open(rect.left, rect.top, menuItems, {}, { anchorElement: target, yAlign: 'top' });
   }
 </script>
 

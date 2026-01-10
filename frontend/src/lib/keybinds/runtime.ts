@@ -39,7 +39,7 @@ const openAppMenu = () => {
   if (!browser) return;
   const x = Math.max(0, window.innerWidth - 16);
   const y = 72;
-  contextMenu.open(x, y, AppMenu, { xEdgeAlign: 'right' }, null);
+  contextMenu.open(x, y, AppMenu, {}, { xAlign: 'right' });
 };
 
 const focusSearch = () => {
@@ -71,8 +71,8 @@ const readerNext = () => {
 const actions: Record<KeybindId, () => void> = {
   showShortcuts: () => shortcutsStore.open(),
   openMenu: () => openAppMenu(),
-  openSettings: () => goto(resolve('/settings')),
-  openContributions: () => goto(resolve('/contributions')),
+  openSettings: () => goto(resolve('/settings', {})),
+  openContributions: () => goto(resolve('/contributions', {})),
   openUpload: () => {
     uiState.isUploadOpen = true;
     contextMenu.close();

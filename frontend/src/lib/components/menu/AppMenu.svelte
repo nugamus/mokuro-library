@@ -26,7 +26,7 @@
     user.set(null);
     apiCache.clearAllCache();
     contextMenu.close();
-    goto(resolve('/login'));
+    goto(resolve('/login', {}));
   };
 
   const handleDownload = (type: 'zip' | 'meta' | 'pdf') => {
@@ -214,7 +214,7 @@
     <MenuItem
       label="Settings"
       onClick={() => {
-        goto(resolve('/settings'));
+        goto(resolve('/settings', {}));
         contextMenu.close();
       }}
       className="rounded-xl"
@@ -240,7 +240,7 @@
     <MenuItem
       label="Contributions"
       onClick={() => {
-        goto(resolve('/contributions'));
+        goto(resolve('/contributions', {}));
         contextMenu.close();
       }}
       className="rounded-xl"

@@ -3,7 +3,7 @@
   import { apiFetch } from '$lib/services/api';
   import { confirmation } from '$lib/stores/confirmationStore';
   import { triggerDownload } from '$lib/services/api';
-  import { contextMenu } from '$lib/stores/contextMenuStore';
+  import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
   import { onMount, onDestroy } from 'svelte';
   import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
   import type { Series } from '$lib/types';
@@ -103,7 +103,7 @@
     const rect = target.getBoundingClientRect();
 
     // Define Menu Options
-    const menuItems: { label?: string; action?: () => void; separator?: boolean }[] = [
+    const menuItems: MenuOption[] = [
       {
         label: `Download ZIP ${selectionCount > 1 ? '(Batch)' : ''}`,
         action: () => executeBatchDownload(true)
@@ -125,7 +125,7 @@
 
     // Open Menu (Use rect.top to open UPWARDS since bar is at bottom)
     // We subtract a small buffer to ensure it doesn't overlap the cursor/button weirdly
-    contextMenu.open(rect.left, rect.top, menuItems, { yEdgeAlign: 'top' }, target);
+    contextMenu.open(rect.left, rect.top, menuItems, {}, { anchorElement: target, yAlign: 'top' });
   };
   const handleDelete = () => {
     const ids = Array.from(uiState.selection.keys());
@@ -342,7 +342,7 @@
         </button>
 
         {#if type === 'series'}
-          <SelectionMoreMenu {selectionCount} onScrape={startScrapeSession} {onRefresh} />
+          <SelectionMoreMenu {selectionCount} onScrape={undefined} {onRefresh} />
         {/if}
       </div>
     {/if}
