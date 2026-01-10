@@ -7,10 +7,11 @@
   let { isOpen, onClose } = $props<{ isOpen: boolean; onClose: () => void }>();
 
   let width = $state(0);
-  let _isXs = $derived(width >= 480);
   let isSm = $derived(width >= 640);
-  let _isMd = $derived(width >= 768);
-  let _isLg = $derived(width >= 1024);
+
+  // let _isXs = $derived(width >= 480);
+  // let _isMd = $derived(width >= 768);
+  // let _isLg = $derived(width >= 1024);
 
   // State for appearance settings
   // Fix: Explicitly type this as keyof ThemeColors to avoid index errors
@@ -135,11 +136,6 @@
       handleThemeSelect(v);
     }
   });
-
-  // Mark intentionally-unused breakpoint flags as used to satisfy linter
-  void _isXs;
-  void _isMd;
-  void _isLg;
 </script>
 
 <svelte:window bind:innerWidth={width} />
@@ -301,7 +297,7 @@
                   : 'text-theme-primary'}">{option.label}</span
               >
               <div class="flex gap-0 sm:gap-1 flex-shrink-0">
-                {#each colors as color (color)}
+                {#each colors as color, i (i)}
                   <div
                     class="w-3 h-4 sm:w-4 sm:rounded sm:border border-theme-border-light"
                     style="background-color: {color};"
