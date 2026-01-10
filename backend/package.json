@@ -4,7 +4,7 @@
   "main": "dist/server.js",
   "bin": "dist/exe-entry.js",
   "scripts": {
-    "dev": "npx prisma migrate deploy && (npx prisma studio --hostname 0.0.0.0 & ts-node-dev --respawn --transpile-only src/server.ts)",
+    "dev": "npx prisma migrate deploy && (npx prisma studio --browser none --port 5555 & ts-node-dev --respawn --transpile-only src/server.ts)",
     "build": "tsc",
     "start": "node dist/server.js",
     "build:exe": "node scripts/build-exe.js",
