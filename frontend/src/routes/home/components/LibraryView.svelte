@@ -14,10 +14,11 @@
   import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
   import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
   import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
-  import SubmitVolumesModal from '../../../routes/contributions/components/modals/SubmitVolumesModal.svelte';
   import type { FilterStatus, FilterMissing } from '$lib/states/ui/uiState.svelte.ts';
   import { formatLastReadDate } from '$lib/utils/helpers/date';
   import { SvelteMap } from 'svelte/reactivity';
+  import SubmitSeriesPanel from '$lib/components/modals/submissions/SubmitSeriesPanel.svelte';
+  import { submissionState } from '$lib/states/submissions/SubmissionState.svelte';
 
   let library = $state<Series[]>([]);
   let meta = $state({ total: 0, page: 1, limit: 24, totalPages: 1 });
@@ -224,10 +225,16 @@
   };
 
   const handleOpenSubmit = () => {
-    // Get all selected series IDs
-    const selectedSeriesIds = Array.from(uiState.selection.keys());
-    preSelectedSeriesIds = selectedSeriesIds;
-    isSubmitModalOpen = true;
+    // 1. Resolve IDs to actual Series objects
+    const selectedSeries = Array.from(uiState.selection.values()) as Series[];
+
+    if (selectedSeries.length === 0) return;
+
+    // 2. Start the session
+    submissionState.startSession(selectedSeries);
+
+    // 3. Clear selection after starting
+    uiState.exitSelectionMode();
   };
 
   const handleCardClick = (e: MouseEvent, series: Series) => {
@@ -375,7 +382,7 @@
                 title: series.title,
                 folderName: series.folderName,
                 coverUrl: series.coverPath
-                  ? `/api/files/series/${series.id}/cover?w=300&q=44&format=avif`
+                  ? `/api/files/series/${series.id}/cover?w=300&q=44&format=avif&t=${series.updatedAt}`
                   : null
               }}
               type="series"
@@ -471,14 +478,9 @@
       onRefresh={handleRefresh}
     />
 
-    <SubmitVolumesModal
-      bind:isOpen={isSubmitModalOpen}
-      {preSelectedSeriesIds}
-      onClose={() => {
-        isSubmitModalOpen = false;
-        uiState.exitSelectionMode();
-      }}
-    />
+    {#if submissionState.session}
+      <SubmitSeriesPanel onClose={() => submissionState.endSession()} />
+    {/if}
   {/if}
 </div>
 
