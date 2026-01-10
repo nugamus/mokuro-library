@@ -43,7 +43,7 @@
     lg: 'px-5 py-2.5 text-base'
   };
 
-  let buttonClasses = $derived(() =>
+  let buttonClasses = $derived(
     `${baseClasses} ${sizeClasses[size as Size] ?? sizeClasses.md} ${
       variantClasses[variant as Variant] ?? variantClasses.primary
     } ${className}`.trim()
