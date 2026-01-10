@@ -114,9 +114,9 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
   });
 
   /**
-     * POST /api/contributions/submissions
-     * Submit volumes to the shared library.
-     */
+   * POST /api/contributions/submissions
+   * Submit volumes to the shared library.
+   */
   fastify.post<{ Body: SubmissionBody }>(
     '/submissions',
     async (request, reply) => {

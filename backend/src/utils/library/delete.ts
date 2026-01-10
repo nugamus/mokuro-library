@@ -72,18 +72,7 @@ export async function deleteVolumeById(
   volumeId: string,
   userId: string
 ) {
-  // 1. Check if this is Official Content (Forbidden)
-  const adminVolume = await fastify.prisma.volume.findFirst({
-    where: { id: volumeId, series: { ownerId: 'admin' } }
-  });
-
-  if (adminVolume) {
-    const err = new Error('Cannot delete official content. Only the admin can delete this volume.');
-    (err as Error & { statusCode?: number }).statusCode = 403;
-    throw err;
-  }
-
-  // 2. Find volume with ownership check (via Series)
+  // 1. Check if owned series exists
   const volume = await fastify.prisma.volume.findFirst({
     where: { id: volumeId, series: { ownerId: userId } },
     include: {
@@ -101,6 +90,16 @@ export async function deleteVolumeById(
   });
 
   if (!volume) {
+    // 2. Check if trying to delete admin series
+    const adminVolume = await fastify.prisma.volume.findFirst({
+      where: { id: volumeId, series: { ownerId: 'admin' } }
+    });
+
+    if (adminVolume) {
+      const err = new Error('Cannot delete official content. Only the admin can delete this volume.');
+      (err as Error & { statusCode?: number }).statusCode = 403;
+      throw err;
+    }
     const err = new Error('Volume not found or access denied');
     (err as Error & { statusCode?: number }).statusCode = 404;
     throw err;
