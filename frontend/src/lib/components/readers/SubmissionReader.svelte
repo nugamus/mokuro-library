@@ -3,7 +3,7 @@
   import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
 
   // Components
-  import SubmissionReaderHeader from './SubmissionReaderHeader.svelte';
+  import SubmissionReaderHeader from '../layout/SubmissionReaderHeader.svelte';
   import ReaderSettings from '$lib/components/settings/ReaderSettings.svelte';
   import SinglePageReader from '$lib/components/readers/SinglePageReader.svelte';
   import DoublePageReader from '$lib/components/readers/DoublePageReader.svelte';

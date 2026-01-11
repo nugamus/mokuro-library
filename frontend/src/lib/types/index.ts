@@ -243,10 +243,9 @@ export interface Submission {
     sortTitle: string;
   };
 
-  // Nullable because targetSeriesId is String?
   targetSeries: {
     id: string;
-    sortTitle: string | null;
+    sortTitle: string;
   } | null;
 
   volumes: SubmissionVolumeDetail[];

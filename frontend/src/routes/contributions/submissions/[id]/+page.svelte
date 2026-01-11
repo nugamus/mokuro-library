@@ -14,7 +14,7 @@
   import CommentThread from '../../components/CommentThread.svelte';
   import AcceptSubmissionModal from '../../components/modals/AcceptSubmissionModal.svelte';
   import RejectSubmissionModal from '../../components/modals/RejectSubmissionModal.svelte';
-  import SubmissionReader from '../../components/SubmissionReader.svelte';
+  import SubmissionReader from '$lib/components/readers/SubmissionReader.svelte';
   import Badge from '$lib/components/controls/Badge.svelte';
   import Button from '$lib/components/controls/Button.svelte';
   import Icon from '$lib/components/controls/Icon.svelte';
@@ -23,6 +23,7 @@
   import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
   import { browser } from '$app/environment';
   import { uiState } from '$lib/states/ui/uiState.svelte';
+  import SubmissionHero from '$lib/components/library/SubmissionHero.svelte';
 
   // State
   let submission = $state<Submission | null>(null);
@@ -144,117 +145,31 @@
       </div>
     </div>
   {:else if submission}
-    <PageHeader
-      title="Submission Review"
-      description="Review the submission details and contents before accepting or rejecting."
-    >
-      <div class="flex mt-2 mb-4 items-center gap-2">
+    <SubmissionHero {submission}>
+      {#snippet actions()}
         <Button
           onclick={() => (showRejectModal = true)}
           variant="danger"
-          disabled={submission.status !== 'pending'}
+          disabled={submission!.status !== 'pending'}
+          class="shadow-sm"
         >
-          {$user?.id === 'admin' ? 'Reject' : 'Cancel'}
+          {$user?.id === 'admin' ? 'Reject Submission' : 'Cancel Submission'}
         </Button>
+
         {#if $user?.id === 'admin'}
           <Button
             onclick={() => (showAcceptModal = true)}
             variant="success"
-            disabled={submission.status !== 'pending'}
+            disabled={submission!.status !== 'pending'}
+            class="shadow-sm shadow-status-success/20"
           >
-            Accept
+            Accept & Merge
           </Button>
         {/if}
-      </div>
-    </PageHeader>
+      {/snippet}
+    </SubmissionHero>
 
-    <main class="flex-1 flex flex-col gap-8">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div
-          class="md:col-span-1 bg-theme-surface border border-theme-border rounded-xl p-5 shadow-sm"
-        >
-          <h2 class="font-bold text-lg text-theme-primary mb-4 flex items-center gap-2">Details</h2>
-          <div class="space-y-3 text-sm">
-            <div class="flex items-center gap-3">
-              <Icon icon={Shield} class="text-theme-secondary" />
-              <span class="text-theme-secondary">
-                Status:
-                <Badge class={statusColors[submission.status]}>
-                  {submission.status}
-                </Badge>
-              </span>
-            </div>
-            <div class="flex items-center gap-3">
-              <Icon icon={User} class="text-theme-secondary" />
-              <span class="text-theme-secondary">
-                Submitted by: <span class="font-semibold text-theme-primary"
-                  >{submission.user.username}</span
-                >
-              </span>
-            </div>
-            <div class="flex items-center gap-3">
-              <Icon icon={Calendar} class="text-theme-secondary" />
-              <span class="text-theme-secondary">
-                Submitted on: <span class="text-theme-primary"
-                  >{new SvelteDate(submission.submittedAt).toLocaleDateString()}</span
-                >
-              </span>
-            </div>
-            <div class="flex items-center gap-3">
-              <Icon icon={Hash} class="text-theme-secondary" />
-              <span class="text-theme-secondary"
-                >ID: <span class="font-mono text-xs opacity-70">{submission.id}</span></span
-              >
-            </div>
-          </div>
-        </div>
-
-        <div
-          class="md:col-span-2 bg-theme-surface border border-theme-border rounded-xl p-5 shadow-sm"
-        >
-          <h2 class="font-bold text-lg text-theme-primary mb-4 flex items-center gap-2">
-            Target Series
-          </h2>
-          <div class="space-y-3 text-sm">
-            <div class="flex items-center gap-3 text-theme-secondary">
-              <Icon icon={GitMerge} class="text-theme-secondary" />
-              {#if submission.targetSeries}
-                <span>
-                  Merge into existing:
-                  <span class="font-semibold text-accent">{submission.targetSeries.sortTitle}</span>
-                </span>
-              {:else}
-                <span>
-                  Create new series from:
-                  <span class="font-semibold text-accent">{submission.sourceSeries.sortTitle}</span>
-                </span>
-              {/if}
-            </div>
-
-            <p
-              class="text-theme-tertiary text-xs italic bg-theme-main/50 p-3 rounded-lg border border-theme-border/50"
-            >
-              {#if submission.targetSeries}
-                The submitted volumes will be added to the existing shared series <strong
-                  >{submission.targetSeries.sortTitle}</strong
-                >.
-              {:else}
-                A new shared series will be created based on the user's series <strong
-                  >{submission.sourceSeries.sortTitle}</strong
-                >.
-              {/if}
-            </p>
-
-            {#if submission.reviewNote}
-              <div class="mt-4 p-3 bg-theme-surface/50 border border-theme-border rounded">
-                <div class="text-xs font-bold uppercase opacity-50 mb-1">Review Note</div>
-                <p class="text-theme-secondary">{submission.reviewNote}</p>
-              </div>
-            {/if}
-          </div>
-        </div>
-      </div>
-
+    <main class="mt-10 flex-1 flex flex-col gap-8">
       <div class="space-y-4">
         <LibraryListWrapper>
           <h2
@@ -283,9 +198,9 @@
                 href={`#preview-${volume.id}`}
                 viewMode="grid"
                 mainStat={`${volume.pageCount} P`}
-                subStat={`ahead/behind placeholder`}
                 onSelect={() => {}}
                 onLongPress={() => {}}
+                isPrivate={true}
               ></LibraryEntry>
             {/each}
           </div>

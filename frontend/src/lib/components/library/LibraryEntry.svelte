@@ -155,13 +155,17 @@
           >
             {mainStat}
           </div>
+        {/if}
 
+        {#if subStat && mainStat}
           <div class="w-full h-[1px] bg-theme-border/90"></div>
         {/if}
 
-        <div class="text-[11px] text-theme-secondary font-medium leading-none">
-          {subStat}
-        </div>
+        {#if subStat}
+          <div class="text-[11px] text-theme-secondary font-medium leading-none">
+            {subStat}
+          </div>
+        {/if}
       </div>
 
       <div class="flex items-center gap-1">
@@ -289,13 +293,20 @@
       </div>
 
       <div class="text-xs sm:text-sm flex flex-wrap gap-x-4 gap-y-0.5 items-center mt-1.5">
-        <span
-          class={`font-bold transition-colors ${progress.isRead ? 'text-status-success' : 'text-theme-secondary'}`}
-        >
-          {mainStat}
-        </span>
+        {#if mainStat}
+          <span
+            class={`font-bold transition-colors ${progress.isRead ? 'text-status-success' : 'text-theme-secondary'}`}
+          >
+            {mainStat}
+          </span>
+        {/if}
+
+        {#if mainStat && subStat}
+          <span class="text-theme-tertiary font-medium whitespace-nowrap"> • </span>
+        {/if}
+
         {#if subStat}
-          <span class="text-theme-tertiary font-medium whitespace-nowrap">• {subStat}</span>
+          <span class="text-theme-tertiary font-medium whitespace-nowrap">{subStat}</span>
         {/if}
       </div>
     </div>
