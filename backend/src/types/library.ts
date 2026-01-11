@@ -83,7 +83,7 @@ export interface VolumeResponse {
     branchId: string;
     headPatchId: string;
     branchVersion: number;
-    hasAhead: boolean;
-    hasBehind: boolean;
+    hasAhead: number;
+    hasBehind: number;
   };
 }

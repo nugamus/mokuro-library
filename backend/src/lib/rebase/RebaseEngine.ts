@@ -48,9 +48,9 @@ export class RebaseEngine {
     const branch = await this.prisma.ocrBranch.findUnique({
       where: { volumeId_userId: { volumeId, userId } },
       include: {
-        headPatch: { select: { id: true, createdAt: true } },
-        rootPatch: { select: { id: true, createdAt: true } },
-        snapshotPatch: { select: { id: true, createdAt: true } }
+        headPatch: { select: { id: true, createdAt: true, sequence: true } },
+        rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+        snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
       }
     });
     if (!branch) throw new Error('Branch not found');
@@ -58,9 +58,9 @@ export class RebaseEngine {
     const adminBranch = await this.prisma.ocrBranch.findUnique({
       where: { volumeId_userId: { volumeId, userId: 'admin' } },
       include: {
-        headPatch: { select: { id: true, createdAt: true } },
-        rootPatch: { select: { id: true, createdAt: true } },
-        snapshotPatch: { select: { id: true, createdAt: true } }
+        headPatch: { select: { id: true, createdAt: true, sequence: true } },
+        rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+        snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
       }
     });
     if (!adminBranch) throw new Error('Admin branch not found');
@@ -273,14 +273,16 @@ export class RebaseEngine {
     const adminBranch = await this.prisma.ocrBranch.findUnique({
       where: { volumeId_userId: { volumeId: userBranch.volumeId, userId: 'admin' } },
       include: {
-        headPatch: { select: { id: true, createdAt: true } },
-        rootPatch: { select: { id: true, createdAt: true } },
-        snapshotPatch: { select: { id: true, createdAt: true } }
+        headPatch: { select: { id: true, createdAt: true, sequence: true } },
+        rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+        snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
       }
     });
     if (!adminBranch) throw new Error('Admin branch not found');
 
+    let currentSequence = adminBranch.headPatch.sequence;
     for (const op of finalOps) {
+      currentSequence++;
       const newId = ulid();
       newPatchesData.push({
         id: newId,
@@ -289,6 +291,7 @@ export class RebaseEngine {
         userId: ctx.userId,
         operation: JSON.stringify(op),
         createdAt: new Date(),
+        sequence: currentSequence
       });
       prevId = newId;
     }
@@ -323,9 +326,9 @@ export class RebaseEngine {
           snapshotPatchId: null
         },
         include: {
-          headPatch: { select: { id: true, createdAt: true } },
-          rootPatch: { select: { id: true, createdAt: true } },
-          snapshotPatch: { select: { id: true, createdAt: true } }
+          headPatch: { select: { id: true, createdAt: true, sequence: true } },
+          rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+          snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
         }
       });
     });
@@ -345,9 +348,9 @@ export class RebaseEngine {
         version: { increment: 1 }
       },
       include: {
-        headPatch: { select: { id: true, createdAt: true } },
-        rootPatch: { select: { id: true, createdAt: true } },
-        snapshotPatch: { select: { id: true, createdAt: true } }
+        headPatch: { select: { id: true, createdAt: true, sequence: true } },
+        rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+        snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
       }
     });
 

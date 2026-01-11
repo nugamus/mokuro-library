@@ -98,8 +98,8 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
         headPatchId: adminBranch.headPatchId,
         branchVersion: adminBranch.version,
         // Admin is never ahead/behind themselves
-        hasAhead: false,
-        hasBehind: false,
+        hasAhead: 0,
+        hasBehind: 0,
       }
     };
   }
@@ -141,14 +141,14 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     // 3. Snapshot Integrity Check
     // If the snapshot is chronologically ahead of the current HEAD (due to previous undos),
     // we must sync the file back to the current HEAD state before writing new changes.
-    const isSnapshotAhead = snapshotPatch && snapshotPatch.createdAt > headPatch.createdAt;
+    const isSnapshotAhead = snapshotPatch && snapshotPatch.sequence > headPatch.sequence;
     if (isSnapshotAhead) {
       this.fastify.log.info(`[AdminStrategy] Snapshot ahead of HEAD. Syncing back before write.`);
       await syncSnapshot(this.fastify, adminBranch);
     }
 
     // 4. Transactional Write
-    const result = await this.fastify.prisma.$transaction(async (tx: any) => {
+    const result = await this.fastify.prisma.$transaction(async (tx) => {
 
       // Cascade delete will remove all subsequent history
       // We delete nextPatch, not children
@@ -161,6 +161,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
           userId: 'admin',
           parentId: headPatch.id,
           operation: JSON.stringify(op),
+          sequence: headPatch.sequence + 1
         }
       });
 
@@ -276,7 +277,8 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
             parentId: newHeadId,
             userId: currentPatch.userId,
             operation: currentPatch.operation,
-            createdAt: currentPatch.createdAt
+            createdAt: currentPatch.createdAt,
+            sequence: currentPatch.sequence
           }
         });
 
@@ -540,7 +542,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     ]);
     if (!userRootPatch) throw new HttpError(500, 'User root patch not found.');
     if (!userHeadPatch) throw new HttpError(500, 'User head patch not found.');
-    if (userRootPatch.createdAt > userHeadPatch.createdAt) throw new HttpError(400, 'Cannot fast-forward: User head is not ahead of admin');
+    if (userRootPatch.sequence > userHeadPatch.sequence) throw new HttpError(400, 'Cannot fast-forward: User head is not ahead of admin');
     if (userHeadPatch.children.length > 1) throw new HttpError(500, 'Database corrupted: user head patch cannot have more than one children.');
     if (userRootPatch.parentId !== adminBranch.headPatchId) {
       throw new HttpError(409, 'Cannot fast-forward: User branch is not based on current Admin HEAD. User must Rebase first.');

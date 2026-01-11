@@ -79,22 +79,9 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
     // 3. Compute Divergence Status (hasAhead / hasBehind)
     // hasAhead: User has private patches (Dirty branch)
-    const hasAhead = userBranch.rootPatchId !== null;
-    let hasBehind = false;
-
-    if (!hasAhead) {
-      // Clean: Behind if admin moved past the shared HEAD
-      hasBehind = userBranch.headPatchId !== adminBranch.headPatchId;
-    } else {
-      // Dirty: Behind if admin moved past the point where the user forked (root's parent)
-      const rootPatch = await this.fastify.prisma.patch.findUnique({
-        where: { id: userBranch.rootPatchId! },
-        select: { parentId: true }
-      });
-      if (rootPatch) {
-        hasBehind = rootPatch.parentId !== adminBranch.headPatchId;
-      }
-    }
+    const forkSequence = userBranch.rootPatch?.sequence ? userBranch.rootPatch.sequence - 1 : userBranch.headPatch.sequence;
+    const hasAhead = userBranch.headPatch.sequence - forkSequence;
+    const hasBehind = adminBranch.headPatch.sequence - forkSequence;
 
     // 4. Get Computed Document State (Syncs database history to JSON snapshot)
     const mokuroData = (await syncSnapshot(this.fastify, userBranch)).data;
@@ -166,9 +153,9 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
     // 3. Snapshot Sync (outside transaction)
     // If the snapshot is in the "future" (ahead of HEAD), sync it back before writing.
-    const isSnapshotAhead = snapshotPatch && snapshotPatch.createdAt > headPatch.createdAt;
+    const isSnapshotAhead = snapshotPatch && snapshotPatch.sequence > headPatch.sequence;
     if (isSnapshotAhead) {
-      this.fastify.log.info(`[Strategy] Snapshot ahead of HEAD (${snapshotPatch.createdAt} > ${headPatch.createdAt}). Syncing back before write.`);
+      this.fastify.log.info(`[Strategy] Snapshot ahead of HEAD (${snapshotPatch.sequence} > ${headPatch.sequence}). Syncing back before write.`);
       await syncSnapshot(this.fastify, userBranch);
     }
 
@@ -179,7 +166,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
       // CASE 2: Root > Head (User undid past their own root -> Re-fork)
       // We delete the old root, which cascades and deletes the now-abandoned branch history.
-      if (rootPatch && rootPatch.createdAt > headPatch.createdAt) {
+      if (rootPatch && rootPatch.sequence > headPatch.sequence) {
         await tx.patch.delete({ where: { id: rootPatch.id } });
       }
 
@@ -204,12 +191,13 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
           userId,
           parentId: headPatch.id,
           operation: JSON.stringify(op),
+          sequence: headPatch.sequence + 1
         }
       });
 
       // Update Branch Pointers
       // Determine if we need to set a new branch root (first fork or after a re-fork).
-      const shouldSetNewRoot = !rootPatch || (rootPatch.createdAt > headPatch.createdAt);
+      const shouldSetNewRoot = !rootPatch || (rootPatch.sequence > headPatch.sequence);
       const finalRootId = shouldSetNewRoot ? newPatch.id : rootPatch.id;
 
       const updatedBranch = await tx.ocrBranch.update({
@@ -326,13 +314,13 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       rootPatchId
         ? this.fastify.prisma.patch.findUnique({
           where: { id: rootPatchId },
-          select: { id: true, parentId: true, operation: true }
+          select: { id: true, parentId: true, operation: true, sequence: true }
         })
         : null,
       // Check if the current patch has an explicit forward link (used in official/admin history)
       this.fastify.prisma.patch.findUnique({
         where: { id: currentHeadId },
-        select: { nextPatch: { select: { id: true, operation: true } } }
+        select: { nextPatch: { select: { id: true, operation: true } }, sequence: true }
       }),
       // Find all patches that list the current HEAD as their parent
       this.fastify.prisma.patch.findMany({
@@ -343,14 +331,14 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     if (!currentPatch) throw new HttpError(500, 'HEAD patch not found.');
 
     // 4. Selection Logic (Prioritized)
-    let nextPatch = null;
+    let nextPatch: { id: string, operation: string } | null = null;
 
     if (rootPatch?.parentId === currentHeadId) {
       // Redo back into the start of the user's private branch
       nextPatch = rootPatch;
     } else if (currentPatch.nextPatch) {
       // Follow the explicit doubly-linked list (Official history)
-      if (rootPatch && rootPatch.id <= currentHeadId) throw new HttpError(500, 'Branch HEAD in invalid location.');
+      if (rootPatch && rootPatch.sequence <= currentPatch.sequence) throw new HttpError(500, 'Branch HEAD in invalid location.');
       nextPatch = currentPatch.nextPatch;
     } else if (children.length === 1) {
       // Follow the only available child path
@@ -416,9 +404,9 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
           version: { increment: 1 }
         },
         include: {
-          headPatch: { select: { id: true, createdAt: true } },
-          rootPatch: { select: { id: true, createdAt: true } },
-          snapshotPatch: { select: { id: true, createdAt: true } }
+          headPatch: { select: { id: true, createdAt: true, sequence: true } },
+          rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+          snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
         }
       });
     });

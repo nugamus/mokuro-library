@@ -137,6 +137,7 @@ model Patch {
   volumeId    String
   userId      String?  // Attribution (User or Admin)
   createdAt   DateTime @default(now())
+  sequence    Int        // Distance from genesis (genesis = 0)
 
   // --- Payload ---
   // JSON String adhering to PatchOperation interface

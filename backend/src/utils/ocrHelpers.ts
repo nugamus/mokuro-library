@@ -9,9 +9,9 @@ import { ExtendedPrismaClient } from '../lib/prisma';
 import { HttpError } from '../types/error';
 
 export type OcrBranchWithTimestamps = OcrBranch & {
-  headPatch: Pick<Patch, 'id' | 'createdAt'>;
-  rootPatch: Pick<Patch, 'id' | 'createdAt'> | null;
-  snapshotPatch: Pick<Patch, 'id' | 'createdAt'> | null;
+  headPatch: Pick<Patch, 'id' | 'createdAt' | 'sequence'>;
+  rootPatch: Pick<Patch, 'id' | 'createdAt' | 'sequence'> | null;
+  snapshotPatch: Pick<Patch, 'id' | 'createdAt' | 'sequence'> | null;
 };
 
 // ============================================================================
@@ -51,9 +51,9 @@ export async function saveSnapshot(fastify: FastifyInstance, branchId: string, d
     where: { id: branchId },
     data: { snapshotPatchId: dataPatchId },
     include: {
-      headPatch: { select: { id: true, createdAt: true } },
-      rootPatch: { select: { id: true, createdAt: true } },
-      snapshotPatch: { select: { id: true, createdAt: true } }
+      headPatch: { select: { id: true, createdAt: true, sequence: true } },
+      rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+      snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
     }
   });
   await fs.promises.mkdir(path.dirname(snapshotPath), { recursive: true });
@@ -139,10 +139,10 @@ export async function loadSnapshot(
 export async function syncSnapshot(
   fastify: FastifyInstance,
   branch: OcrBranchWithTimestamps,
-  targetPatch: Pick<Patch, 'id' | 'createdAt'> = branch.headPatch
+  targetPatch: Pick<Patch, 'id' | 'createdAt' | 'sequence'> = branch.headPatch
 ): Promise<{ data: MokuroData, branch: OcrBranch }> {
 
-  if (targetPatch.createdAt > branch.headPatch.createdAt) throw Error("Cannot sync to target that is in the future of HEAD");
+  if (targetPatch.sequence > branch.headPatch.sequence) throw Error("Cannot sync to target that is in the future of HEAD");
 
   let data: MokuroData;
   try {
@@ -153,14 +153,14 @@ export async function syncSnapshot(
   }
 
   const startPatchId = branch.snapshotPatchId!;
-  const startPatchCreatedAt = branch.snapshotPatch!.createdAt;
+  const startPatchSequence = branch.snapshotPatch!.sequence;
 
   // Already up to date
   if (startPatchId === targetPatch.id) {
     return { data, branch };
   }
 
-  const isForward = targetPatch.createdAt > startPatchCreatedAt;
+  const isForward = targetPatch.sequence > startPatchSequence;
   fastify.log.info(`Syncing snapshot ${startPatchId} -> ${targetPatch.id} (${isForward ? 'forward' : 'backward'})`);
 
   if (isForward) {
@@ -223,9 +223,9 @@ export async function syncSnapshot(
 
 export async function inheritAdminSnapshot(fastify: FastifyInstance, userBranch: OcrBranchWithTimestamps, adminBranch: OcrBranchWithTimestamps) {
   if (userBranch.volumeId !== adminBranch.volumeId) throw new HttpError(400, `Failed to inherit admin snapshot: branch volume mismatch.`);
-  if (userBranch.rootPatch?.createdAt && userBranch.rootPatch.createdAt <= adminBranch.headPatch.createdAt)
+  if (userBranch.rootPatch?.sequence && userBranch.rootPatch.sequence <= adminBranch.headPatch.sequence)
     throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`);
-  if (userBranch.headPatch.createdAt < adminBranch.headPatch.createdAt)
+  if (userBranch.headPatch.sequence < adminBranch.headPatch.sequence)
     throw new HttpError(400, `Failed to inherit admin snapshot: user must not be behind of admin.`);
 
   const { data: new_data } = await syncSnapshot(fastify, adminBranch);
@@ -237,9 +237,9 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
   let adminBranch = await fastify.prisma.ocrBranch.findUnique({
     where: { volumeId_userId: { volumeId, userId: 'admin' } },
     include: {
-      headPatch: { select: { id: true, createdAt: true } },
-      rootPatch: { select: { id: true, createdAt: true } },
-      snapshotPatch: { select: { id: true, createdAt: true } }
+      headPatch: { select: { id: true, createdAt: true, sequence: true } },
+      rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+      snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
     }
   });
   if (adminBranch) return adminBranch;
@@ -251,7 +251,8 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
         volumeId,
         userId: 'admin',
         parentId: null,
-        operation: JSON.stringify({ op: 'genesis', path: mokuroPath })
+        operation: JSON.stringify({ op: 'genesis', path: mokuroPath }),
+        sequence: 0
       }
     });
 
@@ -264,9 +265,9 @@ export async function ensureAdminBranch(fastify: FastifyInstance, volumeId: stri
         snapshotPatchId: genesisPatch.id
       },
       include: {
-        headPatch: { select: { id: true, createdAt: true } },
-        rootPatch: { select: { id: true, createdAt: true } },
-        snapshotPatch: { select: { id: true, createdAt: true } }
+        headPatch: { select: { id: true, createdAt: true, sequence: true } },
+        rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+        snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
       }
     });
 
@@ -287,9 +288,9 @@ export async function ensureUserBranch(
   let userBranch = await fastify.prisma.ocrBranch.findUnique({
     where: { volumeId_userId: { volumeId, userId } },
     include: {
-      headPatch: { select: { id: true, createdAt: true } },
-      rootPatch: { select: { id: true, createdAt: true } },
-      snapshotPatch: { select: { id: true, createdAt: true } }
+      headPatch: { select: { id: true, createdAt: true, sequence: true } },
+      rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+      snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
     }
   });
   if (userBranch) return userBranch;
@@ -303,9 +304,9 @@ export async function ensureUserBranch(
       snapshotPatchId: adminBranch.snapshotPatchId
     },
     include: {
-      headPatch: { select: { id: true, createdAt: true } },
-      rootPatch: { select: { id: true, createdAt: true } },
-      snapshotPatch: { select: { id: true, createdAt: true } }
+      headPatch: { select: { id: true, createdAt: true, sequence: true } },
+      rootPatch: { select: { id: true, createdAt: true, sequence: true } },
+      snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
     }
   });
 

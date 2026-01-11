@@ -76,8 +76,8 @@ export interface RedoResponse {
 }
 
 export interface BranchStatusResponse {
-  hasAhead: boolean;          // User has patches admin doesn't have
-  hasBehind: boolean;         // Admin has patches user doesn't have
+  hasAhead: number;          // User has patches admin doesn't have
+  hasBehind: number;         // Admin has patches user doesn't have
   version: number;
   headPatchId: string;
 }
@@ -86,6 +86,6 @@ export interface VolumeStateResponse {
   data: import('./mokuro').MokuroData;
   headPatchId: string;
   version: number;
-  hasAhead: boolean;
-  hasBehind: boolean;
+  hasAhead: number;
+  hasBehind: number;
 }
