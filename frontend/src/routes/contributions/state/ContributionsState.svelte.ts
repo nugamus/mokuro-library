@@ -1,7 +1,6 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { apiFetch } from '$lib/services/api';
-import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 import type { Series } from '$lib/types';
 import { sampleStats } from '../lib/constants';
 import type { FilterType, RebaseResolution, VolumeContribution } from '../lib/types';
@@ -75,9 +74,6 @@ export class ContributionsState {
   );
 
   mount() {
-    uiState.setContext('contributions', 'Contributions', []);
-    uiState.clearReturnPath();
-
     this.restoreExpanded();
     window.addEventListener('keydown', this.handleKeyDown);
 
@@ -243,13 +239,6 @@ export class ContributionsState {
     const expandedArray = Array.from(this.expandedSeries);
     sessionStorage.setItem('contributions_expanded', JSON.stringify(expandedArray));
     console.log('[Contributions] Saved expanded series before navigation:', expandedArray);
-
-    try {
-      uiState.setReturnPath('/contributions', 'Back to Contributions');
-      console.log('[Contributions] Set return path to /contributions');
-    } catch (e) {
-      console.error('[Contributions] Failed to set return path:', e);
-    }
 
     console.log('[Contributions] Navigating to /volume/' + volumeId);
     goto(resolve(`/volume/${volumeId}`));

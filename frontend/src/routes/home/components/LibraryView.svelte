@@ -27,8 +27,6 @@
 
   let isEditModalOpen = $state(false);
   let editModalTarget: Series | null = $state(null);
-  let isSubmitModalOpen = $state(false);
-  let preSelectedSeriesIds = $state<string[]>([]);
   let pullDistance = $state(0);
   let touchStartY = $state(0);
   let isRefreshing = $state(false);
@@ -392,8 +390,7 @@
               isPrivate={series.canEdit ?? false}
               progress={{
                 percent: percent,
-                isRead: isRead,
-                showBar: percent > 0
+                isRead: isRead
               }}
               href={resolve(`/series/${series.id}`, {})}
               mainStat={`${series.totalVolumeCount ?? 0} ${series.totalVolumeCount <= 1 ? 'Vol' : 'Vols'}`}

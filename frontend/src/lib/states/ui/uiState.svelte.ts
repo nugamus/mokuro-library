@@ -1,7 +1,7 @@
 import { SvelteMap } from 'svelte/reactivity';
 import type { Series, LibraryItem } from '$lib/types';
 
-export type AppContext = 'library' | 'series' | 'reader' | 'settings' | 'contributions';
+export type AppContext = 'library' | 'series';
 export type ViewMode = 'grid' | 'list';
 export type SortOrder = 'asc' | 'desc';
 export type SortKey = 'title' | 'updated' | 'lastRead' | 'progress';
@@ -12,6 +12,7 @@ export type FilterMissing = 'none' | 'cover' | 'description' | 'title' | 'any';
 class UiState {
   // --- Context & Navigation ---
   context = $state<AppContext>('library');
+  subtext = $state<string | null>(null);
   appTitle = $state('Library');
   activeId = $state<string | null>(null);
 
@@ -71,12 +72,18 @@ class UiState {
     this.libraryVersion += 1;
   }
 
+  setSubtext(subtext: string, title: string) {
+    this.subtext = subtext;
+    this.appTitle = title;
+  }
+
   setContext(
     ctx: AppContext,
     title: string,
     sorts: { key: SortKey; label: string }[],
     id: string | null = null
   ) {
+    this.subtext = null;
     if (this.context === ctx && this.activeId === id) return;
 
     this.context = ctx;
@@ -100,11 +107,11 @@ class UiState {
     }
   }
 
-  enterSelectionMode(initialItem: LibraryItem) {
+  enterSelectionMode(initialItem?: LibraryItem) {
     if (this.isSelectionMode) return;
     this.selection.clear();
     this.isSelectionMode = true;
-    this.selection.set(initialItem.id, initialItem);
+    if (initialItem) this.selection.set(initialItem.id, initialItem);
   }
 
   exitSelectionMode() {

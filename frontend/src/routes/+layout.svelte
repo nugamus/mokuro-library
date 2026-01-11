@@ -11,6 +11,7 @@
   import { handleGlobalKeydown } from '$lib/keybinds/runtime';
   import { prefetchAppData } from '$lib/utils/caching/eagercache';
   import { prefetchCommonRoutes } from '$lib/utils/caching/prefetch';
+  import type { Component } from 'svelte';
 
   // Components - Critical components loaded immediately
   import Header from '$lib/components/layout/Header.svelte';
@@ -26,13 +27,26 @@
   const loadAboutModal = () => import('$lib/components/modals/AboutModal.svelte');
   const loadAppearanceModal = () => import('$lib/components/modals/AppearanceModal.svelte');
 
+  // UploadModal has an extra 'onUploadSuccess' prop
+  type UploadModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+    onUploadSuccess: () => void;
+  };
+
+  // The other modals only share these two props
+  type BaseModalProps = {
+    isOpen: boolean;
+    onClose: () => void;
+  };
+
   let { children } = $props();
 
   // Lazy-loaded modal components
-  let UploadModal = $state<unknown>(null);
-  let StatisticsModal = $state<unknown>(null);
-  let AboutModal = $state<unknown>(null);
-  let AppearanceModal = $state<unknown>(null);
+  let UploadModal = $state<Component<UploadModalProps> | null>(null);
+  let StatisticsModal = $state<Component<BaseModalProps> | null>(null);
+  let AboutModal = $state<Component<BaseModalProps> | null>(null);
+  let AppearanceModal = $state<Component<BaseModalProps> | null>(null);
   let didPrefetch = $state(false);
 
   // Load modals when needed
@@ -143,7 +157,7 @@
 <div
   class="min-h-screen bg-theme-main text-theme-primary font-sans selection:bg-accent-surface selection:text-white"
 >
-  {#if $user && uiState.context !== 'reader'}
+  {#if $user && uiState.subtext !== 'reader'}
     <Header />
   {/if}
 

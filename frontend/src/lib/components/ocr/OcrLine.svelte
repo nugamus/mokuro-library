@@ -2,7 +2,7 @@
   import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
   import { getImageDeltas, ligaturize } from '$lib/utils/ocr/math';
   import ResizeHandles from './ResizeHandles.svelte';
-  import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
+  import type { OcrState } from '$lib/states/reader/OcrState.svelte.ts';
   import type { Quad, Rect } from '$lib/types';
   import { readerState } from '$lib/states/reader/ReaderState.svelte';
   import { onMount, untrack } from 'svelte';

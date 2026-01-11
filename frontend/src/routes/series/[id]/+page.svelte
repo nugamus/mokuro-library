@@ -227,9 +227,8 @@
   $effect(() => {
     if (browser && $user === null) goto(resolve('/login', {}));
   });
-  $effect(() => {
-    // Dependency tracking: include libraryVersion to force re-fetches
 
+  $effect(() => {
     isMounted = true;
     if (seriesId && $user) fetchSeriesData(seriesId);
     // CLEANUP: Flush pending writes when leaving this page
@@ -313,8 +312,7 @@
               isSelectionMode={uiState.isSelectionMode}
               progress={{
                 percent: stats.percent,
-                isRead: stats.isRead,
-                showBar: stats.percent > 0 || stats.isRead
+                isRead: stats.isRead
               }}
               href={resolve(`/volume/${vol.id}`, {})}
               mainStat={`${vol.progress[0]?.page ?? 0}/${vol.pageCount} P`}

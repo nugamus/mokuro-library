@@ -16,7 +16,7 @@
   interface ProgressData {
     percent: number;
     isRead: boolean;
-    showBar: boolean;
+    hideBar?: boolean;
   }
 
   // --- Props ---
@@ -26,7 +26,7 @@
     viewMode = 'grid',
     isSelected = false,
     isSelectionMode = false,
-    progress = { percent: 0, isRead: false, showBar: false },
+    progress = { percent: 0, isRead: false, hideBar: true },
     href = '#',
     mainStat = '',
     subStat = '',
@@ -37,7 +37,7 @@
     titleAction,
     listActions,
     isPrivate = false
-  } = $props<{
+  }: {
     entry: EntryData;
     type?: 'series' | 'volume';
     viewMode?: 'grid' | 'list';
@@ -54,7 +54,7 @@
     titleAction?: Snippet;
     listActions?: Snippet;
     isPrivate?: boolean;
-  }>();
+  } = $props();
 
   // Determine read status for badge
   const getStatusBadge = () => {
@@ -65,7 +65,7 @@
 
   const status = $derived(getStatusBadge());
 
-  const gridAspectClass = type === 'series' ? 'aspect-[7/11]' : 'aspect-[2/3]';
+  const gridAspectClass = $derived(type === 'series' ? 'aspect-[7/11]' : 'aspect-[2/3]');
 </script>
 
 {#if viewMode === 'grid'}
@@ -75,7 +75,7 @@
       vibrate(HAPTIC_PATTERNS.medium);
       onLongPress?.();
     }}
-    class={`library-entry library-entry-grid group relative rounded-2xl border-2 border-theme-primary bg-theme-surface/20 flex flex-col transition-all duration-300 overflow-hidden 
+    class={`library-entry library-entry-grid group relative rounded-2xl border-2 border-theme-primary bg-theme-surface/20 flex flex-col transition-all duration-300 overflow-hidden
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
       isSelected
@@ -85,7 +85,7 @@
     ${isSelectionMode && !isSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}`}
   >
     <a
-      href={resolve(href ?? '#')}
+      {href}
       onpointerdown={onSelect}
       onclick={(e) => {
         if (isSelectionMode) e.preventDefault();
@@ -172,44 +172,49 @@
             {@render secondaryCircleAction()}
           </div>
         {/if}
-        <div class="relative grid place-items-center w-11 h-11 flex-shrink-0">
-          {#if circleAction}
-            <div class="z-30 col-start-1 row-start-1 pointer-events-auto">
-              {@render circleAction()}
-            </div>
-          {/if}
+        {#if circleAction || !progress.hideBar}
+          <div class="relative grid place-items-center w-11 h-11 flex-shrink-0">
+            {#if circleAction}
+              <div class="z-30 col-start-1 row-start-1 pointer-events-auto">
+                {@render circleAction()}
+              </div>
+            {/if}
 
-          <svg
-            class="col-start-1 row-start-1 w-11 h-11 transform -rotate-90 overflow-visible pointer-events-none"
-            viewBox="0 0 44 44"
-          >
-            <circle
-              cx="22"
-              cy="22"
-              r="18"
-              stroke="currentColor"
-              stroke-width="3.5"
-              fill="none"
-              class="text-theme-border-light"
-            />
-            <circle
-              cx="22"
-              cy="22"
-              r="18"
-              stroke="currentColor"
-              stroke-width="3.5"
-              fill="none"
-              class="neon-glow transition-all duration-700 {status.color === 'bg-status-success'
-                ? 'text-status-success'
-                : status.color === 'bg-accent'
-                  ? 'text-accent'
-                  : 'text-status-unread'}"
-              stroke-dasharray="113.10"
-              stroke-dashoffset={113.1 - (113.1 * (progress.isRead ? 100 : progress.percent)) / 100}
-              stroke-linecap="round"
-            />
-          </svg>
-        </div>
+            {#if !progress.hideBar}
+              <svg
+                class="col-start-1 row-start-1 w-11 h-11 transform -rotate-90 overflow-visible pointer-events-none"
+                viewBox="0 0 44 44"
+              >
+                <circle
+                  cx="22"
+                  cy="22"
+                  r="18"
+                  stroke="currentColor"
+                  stroke-width="3.5"
+                  fill="none"
+                  class="text-theme-border-light"
+                />
+                <circle
+                  cx="22"
+                  cy="22"
+                  r="18"
+                  stroke="currentColor"
+                  stroke-width="3.5"
+                  fill="none"
+                  class="neon-glow transition-all duration-700 {status.color === 'bg-status-success'
+                    ? 'text-status-success'
+                    : status.color === 'bg-accent'
+                      ? 'text-accent'
+                      : 'text-status-unread'}"
+                  stroke-dasharray="113.10"
+                  stroke-dashoffset={113.1 -
+                    (113.1 * (progress.isRead ? 100 : progress.percent)) / 100}
+                  stroke-linecap="round"
+                />
+              </svg>
+            {/if}
+          </div>
+        {/if}
       </div>
     </div>
   </div>
@@ -220,7 +225,7 @@
       vibrate(HAPTIC_PATTERNS.medium);
       onLongPress?.();
     }}
-    class={`library-entry library-entry-list group relative rounded-2xl border-2 bg-theme-surface/30 flex items-center 
+    class={`library-entry library-entry-list group relative rounded-2xl border-2 bg-theme-surface/30 flex items-center
     transition-all duration-300 overflow-hidden h-32
     shadow-theme-secondary/10 shadow-[0_4px_16px_0] hover:shadow-[0_8px_24px_0]
     ${
@@ -231,7 +236,7 @@
     ${isSelectionMode && !isSelected ? 'opacity-40 grayscale-[0.4]' : 'opacity-100'}`}
   >
     <a
-      href={resolve(href)}
+      {href}
       onpointerdown={onSelect}
       onclick={(e) => {
         if (isSelectionMode) e.preventDefault();
@@ -301,7 +306,7 @@
       {@render listActions?.()}
     </div>
 
-    {#if progress.showBar || progress.isRead}
+    {#if !progress.hideBar}
       <div class="absolute bottom-0 left-[81.5px] right-0 h-1 bg-theme-surface/50 z-20">
         <div
           class="neon-glow h-full transition-all duration-700 {progress.isRead

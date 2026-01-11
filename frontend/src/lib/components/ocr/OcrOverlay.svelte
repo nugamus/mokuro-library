@@ -2,7 +2,7 @@
   import type { MokuroPage, MokuroBlock } from '$lib/types';
   import type { PanzoomObject } from '@panzoom/panzoom';
   import { contextMenu } from '$lib/stores/contextMenuStore';
-  import { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
+  import { OcrState } from '$lib/states/reader/OcrState.svelte.ts';
   import { getRelativeCoords, getScaleRatios } from '$lib/utils/ocr/math';
   import OcrBlock from './OcrBlock.svelte';
   import { readerState } from '$lib/states/reader/ReaderState.svelte';

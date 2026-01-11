@@ -5,7 +5,7 @@
   import { lineOrderStore } from '$lib/stores/lineOrderStore';
   import { getImageDeltas, computeSmartFont, getRelativeCoords } from '$lib/utils/ocr/math';
   import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
-  import type { OcrState } from '$lib/states/ocr/OcrState.svelte.ts';
+  import type { OcrState } from '$lib/states/reader/OcrState.svelte.ts';
 
   import OcrLine from './OcrLine.svelte';
   import ResizeHandles from './ResizeHandles.svelte';

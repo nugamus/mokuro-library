@@ -6,7 +6,7 @@
   import { page } from '$app/state';
   import { SvelteURLSearchParams } from 'svelte/reactivity';
   import { uiState } from '$lib/states/ui/uiState.svelte.ts';
-  import { onMount } from 'svelte';
+  import { onMount, type Component } from 'svelte';
 
   // Lazy load setting panels - only load when needed
   const loadReaderSettings = () => import('$lib/components/settings/ReaderSettings.svelte');
@@ -20,7 +20,7 @@
     id: string;
     label: string;
     icon: string;
-    loader: () => Promise<{ default: unknown }>;
+    loader: () => Promise<{ default: Component }>;
   };
 
   const categories: Category[] = [
@@ -38,7 +38,7 @@
 
   // State
   let activeCategory = $state('reader');
-  let LoadedComponent = $state<unknown | null>(null);
+  let LoadedComponent = $state<Component | null>(null);
   let isLoadingComponent = $state(false);
 
   // Load component when category changes
@@ -61,7 +61,7 @@
 
   // Initialize
   onMount(() => {
-    uiState.setContext('settings', 'Settings', []);
+    uiState.setSubtext('settings', 'Settings');
 
     // Check URL params for category
     if (browser) {

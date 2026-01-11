@@ -6,7 +6,7 @@
   import type { Series } from '$lib/types';
   import { slide, fade } from 'svelte/transition';
 
-  let { item } = $props<{ item: SubmissionItem }>();
+  let { item }: { item: SubmissionItem } = $props();
 
   // Local Search State
   let searchQuery = $state(item.sourceSeries.sortTitle);

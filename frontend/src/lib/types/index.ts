@@ -199,52 +199,58 @@ export type PatchOperation =
 
 // --- Submission & Contribution Types ---
 
-export interface SubmissionVolume {
+export interface SubmissionComment {
   id: string;
+  content: string;
+  createdAt: string;
   submissionId: string;
-  volumeId: string;
+  userId: string;
+  user: {
+    id: string;
+    username: string;
+  };
+}
+
+export interface SubmissionVolumeDetail {
+  id: string;
+  title: string | null;
+  folderName: string;
+  pageCount: number;
+  coverImageName: string | null;
+  seriesId: string;
 }
 
 export interface Submission {
   id: string;
   userId: string;
   status: 'pending' | 'accepted' | 'rejected';
+
+  // Target logic: Null means "Create New", String means "Append to Existing"
   targetSeriesId: string | null;
-  sourceSeriesId: string | null;
+  sourceSeriesId: string;
+
   submittedAt: string;
   reviewedAt: string | null;
   reviewNote: string | null;
 
-  // Relations
-  volumes?: SubmissionVolume[];
-  user?: { id: string; username: string };
-  targetSeries?: { id: string; title: string; folderName: string };
-  sourceSeries?: { id: string; title: string; folderName: string };
-  _count?: { volumes: number };
-}
+  // --- Relations ---
+  user: {
+    username: string;
+  };
 
-export interface SubmitVolumesRequest {
-  volumeIds: string[];
-  targetSeriesId?: string;
-}
+  sourceSeries: {
+    id: string;
+    sortTitle: string;
+  };
 
-export interface RejectSubmissionRequest {
-  reason: string;
-}
+  // Nullable because targetSeriesId is String?
+  targetSeries: {
+    id: string;
+    sortTitle: string | null;
+  } | null;
 
-export interface BulkAcceptRequest {
-  submissionIds: string[];
-}
-
-export interface BulkRejectRequest {
-  submissionIds: string[];
-  reason: string;
-}
-
-export interface BulkOperationResult {
-  success: number;
-  failed: number;
-  errors: Array<{ id: string; error: string }>;
+  volumes: SubmissionVolumeDetail[];
+  comments: SubmissionComment[];
 }
 
 export interface ContributionsSummary {

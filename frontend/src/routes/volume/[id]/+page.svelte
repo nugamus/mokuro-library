@@ -124,7 +124,7 @@
       mq.addEventListener('change', hintListener);
 
       // Set Context for header
-      uiState.setContext('reader', 'Reader', []);
+      uiState.setSubtext('reader', 'Reader');
 
       return () => {
         mq.removeEventListener('change', hintListener);

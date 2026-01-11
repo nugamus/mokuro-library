@@ -9,7 +9,6 @@
   import { contributionsStore } from '$lib/stores/contributionsStore';
   import { user } from '$lib/stores/authStore';
 
-  // Import your new Menu Components
   import FilterMenu from '$lib/components/menu/FilterMenu.svelte';
   import AppMenu from '$lib/components/menu/AppMenu.svelte';
 
@@ -99,6 +98,15 @@
   });
 
   // --- Handlers ---
+  //
+  const handleBack = () => {
+    if (uiState.context === 'series' && uiState.subtext !== null) {
+      goto(resolve(`/series/${uiState.activeId}`, {}));
+    } else {
+      goto(resolve(`/`, {}));
+    }
+  };
+
   const handleSearchInput = (e: Event) => {
     const val = (e.target as HTMLInputElement).value;
     searchValue = val;
@@ -188,14 +196,16 @@
           </div>
         </div>
 
-        {#if uiState.context === 'series'}
+        {#if uiState.returnPath}
           <div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
 
           <button
-            onclick={() => goto(resolve('/', {}))}
+            onclick={() => {
+              goto(resolve(uiState.returnPath!, {}));
+            }}
             class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
-            title="Back to Library"
-            aria-label="Back to Library"
+            title={uiState.returnLabel}
+            aria-label={uiState.returnLabel}
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -212,16 +222,17 @@
               <path d="m15 18-6-6 6-6" />
             </svg>
 
-            <span class="inline md:hidden lg:inline text-sm font-medium">Back to Library</span>
+            <span class="inline md:hidden lg:inline text-sm font-medium">{uiState.returnLabel}</span
+            >
           </button>
-        {:else if uiState.context !== 'library'}
+        {:else if !(uiState.context === 'library' && uiState.subtext === null)}
           <div class="h-5 w-px bg-white/10" aria-hidden="true"></div>
 
           <button
-            onclick={() => goto(resolve('/', {}))}
+            onclick={handleBack}
             class="group flex items-center gap-2 text-theme-secondary hover:text-theme-primary"
-            title="Back to Library"
-            aria-label="Back to Library"
+            title="Go Back"
+            aria-label="Go Back"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -243,7 +254,7 @@
       </div>
     </div>
 
-    {#if uiState.context !== 'settings'}
+    {#if uiState.context === 'library' || uiState.context === 'series'}
       <div
         transition:fade={{ duration: 200 }}
         class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 hidden w-full md:block z-0 transition-all duration-300"
@@ -316,7 +327,7 @@
     {/if}
 
     <div class="flex flex-shrink-0 items-center gap-2 z-10">
-      {#if uiState.context !== 'settings'}
+      {#if uiState.context === null}
         <button
           class="md:hidden p-2 text-theme-secondary hover:text-white"
           onclick={() => (isMobileSearchOpen = !isMobileSearchOpen)}
