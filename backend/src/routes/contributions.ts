@@ -191,8 +191,8 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
         where: { id },
         include: {
           user: { select: { username: true } },
-          sourceSeries: { select: { id: true, title: true } },
-          targetSeries: { select: { id: true, title: true } },
+          sourceSeries: { select: { id: true, sortTitle: true } },
+          targetSeries: { select: { id: true, sortTitle: true } },
           volumes: {
             select: {
               id: true,

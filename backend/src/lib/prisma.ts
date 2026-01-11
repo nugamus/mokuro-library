@@ -232,6 +232,10 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           return result;
         },
         // --- SAFETY BLOCKS ---
+        async updateMany({ args, query }) {
+          if (args.data.seriesId) throw new Error("Stats Safety: 'updateMany' cannot be used to update seriesId. Use 'update' in a loop.");
+          return await query(args);
+        },
         async upsert() { throw new Error("Stats Safety: 'upsert' is disabled for Volume. Use 'create' to ensure stats are tracked."); },
         async createMany() { throw new Error("Stats Safety: 'createMany' is disabled for Volume. Use 'create' in a loop."); },
         async deleteMany() { throw new Error("Stats Safety: 'deleteMany' is disabled for Volume. Use 'delete' in a loop."); }

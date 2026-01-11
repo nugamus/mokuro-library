@@ -38,7 +38,7 @@ export async function validateAndPlanSubmission(
     description?: string | null;
     sortTitle: string;
     coverPath?: string | null
-  } | null,
+  },
   volumes: { id: string; folderName: string; filePath: string; mokuroPath: string }[]
 ): Promise<SubmissionExecutionPlan> {
   const projectRoot = fastify.projectRoot;
@@ -47,7 +47,6 @@ export async function validateAndPlanSubmission(
 
   // --- 1. Series Validation ---
   if (!targetSeriesId) {
-    if (!sourceSeries) throw new Error('Source series data missing for new series creation.');
 
     const existing = await fastify.prisma.series.findUnique({
       where: { folderName_ownerId: { folderName: sourceSeries.folderName, ownerId: 'admin' } }

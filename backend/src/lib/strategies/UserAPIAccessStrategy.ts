@@ -489,7 +489,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
           userId,
           status: 'pending',
           targetSeriesId: targetSeriesId || null,
-          sourceSeriesId: targetSeriesId ? null : sourceSeries.id,
+          sourceSeriesId: sourceSeries.id,
           submittedAt: new Date()
         }
       });
@@ -501,13 +501,19 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
     });
   }
 
-  // --- Forbidden Actions ---
   async acceptSubmission(submissionId: string): Promise<void> {
     throw new HttpError(403, 'Forbidden: Only admins can accept submissions.');
   }
 
   async rejectSubmission(submissionId: string, reason?: string): Promise<void> {
-    throw new HttpError(403, 'Forbidden: Only admins can reject submissions.');
+    await this.fastify.prisma.submission.update({
+      where: { id: submissionId, userId: this.userId },
+      data: {
+        status: 'rejected',
+        reviewedAt: new Date(),
+        reviewNote: reason
+      }
+    });
   }
 
   async officialize(volumeId: string, sourceUserId: string): Promise<void> {

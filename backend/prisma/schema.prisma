@@ -262,7 +262,7 @@ model Submission {
 
   // --- Source ---
   // The user's private series to clone metadata from (only used when targetSeriesId is NULL)
-  sourceSeriesId  String?
+  sourceSeriesId  String
 
   // --- Timestamps ---
   submittedAt     DateTime @default(now())
@@ -274,7 +274,7 @@ model Submission {
   // --- Relations ---
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   targetSeries    Series?  @relation("SubmissionTarget", fields: [targetSeriesId], references: [id], onDelete: SetNull)
-  sourceSeries    Series?  @relation("SubmissionSource", fields: [sourceSeriesId], references: [id], onDelete: SetNull)
+  sourceSeries    Series   @relation("SubmissionSource", fields: [sourceSeriesId], references: [id], onDelete: Cascade)
 
   // Volumes in this submission (1-to-many: each volume tracks its last submission)
   volumes         Volume[]
