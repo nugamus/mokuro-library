@@ -23,6 +23,7 @@
   import BulkRejectModal from './components/modals/BulkRejectModal.svelte';
   import UserSubmissionPanel from './components/UserSubmissionPanel.svelte';
   import AdminStats from './components/AdminStats.svelte';
+  import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 
   const contributionsState = new ContributionsState();
 
@@ -36,7 +37,10 @@
   // Determine if user is admin
   const isAdmin = $derived($user?.id === 'admin');
 
-  onMount(() => contributionsState.mount());
+  onMount(() => {
+    uiState.setSubtext('contributions', 'Contributions');
+    contributionsState.mount();
+  });
 
   $effect(() => {
     if (browser && $user === null) goto(resolve('/login', {}));
