@@ -37,6 +37,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'change-me-in-production';
 if (process.env.NODE_ENV === 'production' && JWT_SECRET === 'change-me-in-production') {
   console.warn('WARNING: Using default JWT_SECRET in production. Set JWT_SECRET environment variable.');
 }
+const ACCESS_TOKEN_EXPIRY = 60 * 60; // 1 hour
+const COOKIE_MAX_AGE = ACCESS_TOKEN_EXPIRY;
+const REFRESH_COOKIE_MAX_AGE = (rm: boolean) => { return rm ? 60 * 60 * 24 * 30 : 60 * 60 * 24 }; // 30d or 1d
 
 const LOCKOUT_MAX_ATTEMPTS = parseInt(process.env.AUTH_LOCKOUT_MAX_ATTEMPTS || '5', 10);
 const LOCKOUT_WINDOW_MINUTES = parseInt(process.env.AUTH_LOCKOUT_WINDOW_MINUTES || '15', 10);
@@ -245,7 +248,6 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         clearLockout(lockoutKey);
 
         // Generate short-lived access token (15 minutes)
-        const accessTokenExpiry = rememberMe ? '30d' : '1d';
         const deviceHash = hashDeviceFingerprint(deviceFingerprint);
         const accessToken = jwt.sign(
           {
@@ -254,14 +256,12 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
             deviceHash,
           },
           JWT_SECRET,
-          { expiresIn: accessTokenExpiry }
+          { expiresIn: ACCESS_TOKEN_EXPIRY }
         );
 
         // Generate refresh token for database
         const refreshTokenValue = generateRefreshToken();
-        const refreshTokenExpiry = rememberMe
-          ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days
-          : new Date(Date.now() + 24 * 60 * 60 * 1000);     // 1 day
+        const refreshTokenExpiry = new Date(Date.now() + REFRESH_COOKIE_MAX_AGE(rememberMe));
 
         // Store refresh token in database
         await fastify.prisma.refreshToken.create({
@@ -274,37 +274,32 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
         });
 
         // Set access token cookie (short-lived, 15 minutes)
-        const cookieMaxAge = rememberMe ? 60 * 60 * 24 * 30 : 60 * 60 * 24;
         reply.setCookie('sessionId', accessToken, {
           path: '/',
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          maxAge: cookieMaxAge, // 15 minutes
+          maxAge: COOKIE_MAX_AGE,
           signed: true,
         });
-
-        // Set refresh token cookie (long-lived)
-        const refreshCookieMaxAge = rememberMe
-          ? 60 * 60 * 24 * 30  // 30 days
-          : 60 * 60 * 24;       // 1 day
 
         reply.setCookie('refreshToken', refreshTokenValue, {
           path: '/api/auth/refresh', // Only sent to refresh endpoint
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          maxAge: refreshCookieMaxAge,
+          maxAge: REFRESH_COOKIE_MAX_AGE(rememberMe),
           signed: true,
         });
 
         // Set CSRF token (match access token expiration)
-        setCsrfCookie(reply, 15 * 60);
+        setCsrfCookie(reply, COOKIE_MAX_AGE);
         // only send back non-sensitive fields
         const user_response = {
           id: user.id,
           username: user.username,
           settings: user.settings,
+          expiresIn: ACCESS_TOKEN_EXPIRY,
         }
         return reply.status(200).send(user_response);
 
@@ -400,7 +395,7 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
             deviceHash,
           },
           JWT_SECRET,
-          { expiresIn: '15m' }
+          { expiresIn: ACCESS_TOKEN_EXPIRY }
         );
 
         // Update last used timestamp
@@ -415,17 +410,18 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           httpOnly: true,
           secure: process.env.NODE_ENV === 'production',
           sameSite: 'strict',
-          maxAge: 15 * 60,
+          maxAge: COOKIE_MAX_AGE,
           signed: true,
         });
 
         // Regenerate CSRF token
-        setCsrfCookie(reply, 15 * 60);
+        setCsrfCookie(reply, COOKIE_MAX_AGE);
 
         return {
           id: refreshToken.user.id,
           username: refreshToken.user.username,
           settings: refreshToken.user.settings,
+          expiresIn: ACCESS_TOKEN_EXPIRY,
         };
       } catch (error) {
         fastify.log.error(error);

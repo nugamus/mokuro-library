@@ -39,6 +39,7 @@ export interface AuthUser {
   id: string;
   username: string;
   settings: ReaderSettingsData;
+  expiresIn: number;
   role?: 'admin' | 'user'; // Optional role property (derived from id === 'admin')
 }
 

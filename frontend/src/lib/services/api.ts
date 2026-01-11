@@ -3,6 +3,7 @@ import { retryWithBackoff } from '$lib/utils/network/retry';
 import { apiCache } from '$lib/utils/caching/apiCache';
 import { getStoredFingerprint } from './deviceFingerprint';
 import type { UploadResponse } from '$lib/types';
+import type { AuthUser } from '$lib/stores/authStore';
 
 /**
  * It's the same as RequestInit, but 'body' can be 'any'
@@ -162,12 +163,13 @@ let refreshInProgress = false;
 
 /**
  * Attempts to refresh the access token using the refresh token.
+ * Returns the response data (including new expiry) on success, or null on failure.
  */
-export const refreshAccessToken = async (): Promise<boolean> => {
+export const refreshAccessToken = async (): Promise<AuthUser | null> => {
   if (refreshInProgress) {
     // Wait for existing refresh to complete
     await new Promise((resolve) => setTimeout(resolve, 1000));
-    return true;
+    return null; // Return null to indicate we didn't initiate the refresh
   }
 
   refreshInProgress = true;
@@ -175,16 +177,17 @@ export const refreshAccessToken = async (): Promise<boolean> => {
   try {
     const deviceFingerprint = await getStoredFingerprint();
 
-    await apiFetch('/api/auth/refresh', {
+    // Capture the response!
+    const response = await apiFetch<AuthUser>('/api/auth/refresh', {
       method: 'POST',
       body: { deviceFingerprint },
       showErrorToast: false
     });
 
-    return true;
+    return response;
   } catch (e) {
     console.debug('Token refresh failed:', e);
-    return false;
+    return null;
   } finally {
     refreshInProgress = false;
   }

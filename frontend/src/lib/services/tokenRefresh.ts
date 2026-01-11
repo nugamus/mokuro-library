@@ -1,159 +1,131 @@
 import { refreshAccessToken } from './api';
 
-let refreshInterval: ReturnType<typeof setInterval> | null = null;
-const REFRESH_INTERVAL = 12 * 60 * 1000; // 12 minutes (before 15-min token expiry)
-
-// BroadcastChannel for coordinating token refresh across tabs
-let broadcastChannel: BroadcastChannel | null = null;
+// Configuration
+const DEFAULT_REFRESH_INTERVAL = 30 * 60 * 1000; // 30 mins fallback
 const CHANNEL_NAME = 'mokuro-token-refresh';
 
-// Track last user activity to avoid unnecessary refreshes
-let lastActivityTime = Date.now();
-const ACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes of inactivity
+// State
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+let broadcastChannel: BroadcastChannel | null = null;
+let refreshIntervalMs = DEFAULT_REFRESH_INTERVAL;
 
 /**
- * Updates the last activity timestamp
+ * Updates the refresh interval dynamically based on the token's life.
+ * We aim to refresh at 90% of the token's lifetime.
  */
-function updateActivity() {
-  lastActivityTime = Date.now();
-}
+export const updateRefreshInterval = (seconds: number) => {
+  if (!seconds) return;
 
-/**
- * Checks if user has been active recently
- */
-function isUserActive(): boolean {
-  return Date.now() - lastActivityTime < ACTIVITY_TIMEOUT;
-}
+  // Calculate 90% of the duration (in milliseconds)
+  const newInterval = (seconds * 0.9) * 1000;
 
-/**
- * Sets up activity tracking listeners
- */
-function setupActivityTracking() {
-  if (typeof window === 'undefined') return;
+  // Only restart if the time is significantly different (>1 minute difference)
+  if (Math.abs(newInterval - refreshIntervalMs) > 60000) {
+    refreshIntervalMs = newInterval;
+    console.debug(`[TokenRefresh] Interval adjusted to ${(refreshIntervalMs / 1000 / 60).toFixed(1)} minutes`);
 
-  const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-  events.forEach((event) => {
-    window.addEventListener(event, updateActivity, { passive: true });
-  });
-
-  console.debug('[Token Refresh] Activity tracking enabled');
-}
-
-/**
- * Removes activity tracking listeners
- */
-function cleanupActivityTracking() {
-  if (typeof window === 'undefined') return;
-
-  const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-  events.forEach((event) => {
-    window.removeEventListener(event, updateActivity);
-  });
-
-  console.debug('[Token Refresh] Activity tracking disabled');
-}
+    // Restart the timer with the new schedule
+    restartTokenRefresh();
+  }
+};
 
 /**
  * Sets up BroadcastChannel for multi-tab coordination
- * When one tab refreshes the token, it notifies other tabs
  */
 function setupBroadcastChannel() {
   if (typeof window === 'undefined' || typeof BroadcastChannel === 'undefined') {
-    console.debug('[Token Refresh] BroadcastChannel not available');
     return;
   }
 
-  broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
+  try {
+    broadcastChannel = new BroadcastChannel(CHANNEL_NAME);
+    broadcastChannel.onmessage = (event) => {
+      if (event.data.type === 'TOKEN_REFRESHED') {
+        console.debug('[TokenRefresh] Another tab refreshed the token. Resetting local timer.');
 
-  broadcastChannel.onmessage = (event) => {
-    if (event.data.type === 'TOKEN_REFRESHED') {
-      console.debug('[Token Refresh] Another tab refreshed the token');
-      // Token was refreshed by another tab, no need to refresh in this tab
-      // The cookie is shared across tabs
-    }
-  };
+        // If the other tab sent the new expiry, update our interval
+        if (event.data.expiresIn) {
+          updateRefreshInterval(event.data.expiresIn);
+        }
 
-  console.debug('[Token Refresh] BroadcastChannel initialized');
+        // Restart our timer so we don't refresh immediately
+        restartTokenRefresh();
+      }
+    };
+  } catch (e) {
+    console.warn('[TokenRefresh] Failed to setup BroadcastChannel', e);
+  }
 }
 
-/**
- * Cleanup broadcast channel
- */
-function cleanupBroadcastChannel() {
+function notifyTokenRefreshed(expiresIn?: number) {
+  if (broadcastChannel) {
+    broadcastChannel.postMessage({
+      type: 'TOKEN_REFRESHED',
+      timestamp: Date.now(),
+      expiresIn
+    });
+  }
+}
+
+export const startTokenRefresh = () => {
+  if (refreshTimer) return; // Already running
+
+  if (!broadcastChannel) {
+    setupBroadcastChannel();
+  }
+
+  console.debug(`[TokenRefresh] Timer started. Next refresh in ${(refreshIntervalMs / 1000 / 60).toFixed(1)} mins`);
+
+  scheduleNextRefresh();
+};
+
+function scheduleNextRefresh() {
+  // Clear any existing timer just in case
+  if (refreshTimer) clearTimeout(refreshTimer);
+
+  // Use setTimeout (instead of setInterval) to allow dynamic interval changes
+  refreshTimer = setTimeout(async () => {
+    await performRefresh();
+    // Schedule the next one
+    scheduleNextRefresh();
+  }, refreshIntervalMs);
+}
+
+async function performRefresh() {
+  console.debug('[TokenRefresh] Triggering scheduled refresh...');
+
+  // Note: We removed the "isUserActive" check to support infinite sessions
+  const response = await refreshAccessToken();
+
+  // Handle response (supports both boolean and object return types)
+  if (response && typeof response === 'object' && 'accessTokenExpiresIn' in response) {
+    const expiresIn = (response as any).accessTokenExpiresIn;
+    updateRefreshInterval(expiresIn);
+    notifyTokenRefreshed(expiresIn);
+  } else if (response) {
+    // Fallback if backend doesn't return expiry
+    notifyTokenRefreshed();
+  }
+}
+
+export const stopTokenRefresh = () => {
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+    refreshTimer = null;
+  }
   if (broadcastChannel) {
     broadcastChannel.close();
     broadcastChannel = null;
-    console.debug('[Token Refresh] BroadcastChannel closed');
   }
+  console.debug('[TokenRefresh] Timer stopped');
+};
+
+function restartTokenRefresh() {
+  // Reset the countdown without closing the channel
+  if (refreshTimer) clearTimeout(refreshTimer);
+  scheduleNextRefresh();
 }
 
-/**
- * Notify other tabs that token was refreshed
- */
-function notifyTokenRefreshed() {
-  if (broadcastChannel) {
-    broadcastChannel.postMessage({ type: 'TOKEN_REFRESHED', timestamp: Date.now() });
-  }
-}
-
-/**
- * Starts background token refresh every 12 minutes
- * Only refreshes if user has been active recently
- */
-export function startTokenRefresh() {
-  if (refreshInterval) {
-    console.debug('[Token Refresh] Already running, skipping start');
-    return;
-  }
-
-  // Set up activity tracking and broadcast channel
-  setupActivityTracking();
-  setupBroadcastChannel();
-  updateActivity(); // Mark as active now
-
-  refreshInterval = setInterval(async () => {
-    if (!isUserActive()) {
-      console.debug('[Token Refresh] Skipping refresh - user inactive');
-      return;
-    }
-
-    console.debug('[Token Refresh] Proactively refreshing token');
-    try {
-      const success = await refreshAccessToken();
-      if (!success) {
-        console.warn('[Token Refresh] Background refresh failed');
-        // Don't stop - might be temporary network issue
-        // User will get 401 on next action which triggers reactive refresh
-      } else {
-        console.debug('[Token Refresh] Token refreshed successfully');
-        // Notify other tabs
-        notifyTokenRefreshed();
-      }
-    } catch (error) {
-      console.error('[Token Refresh] Error during refresh:', error);
-      // Continue trying - don't stop the interval
-    }
-  }, REFRESH_INTERVAL);
-
-  console.debug('[Token Refresh] Started background refresh (every 12 minutes)');
-}
-
-/**
- * Stops background token refresh and cleanup
- */
-export function stopTokenRefresh() {
-  if (refreshInterval) {
-    clearInterval(refreshInterval);
-    refreshInterval = null;
-    cleanupActivityTracking();
-    cleanupBroadcastChannel();
-    console.debug('[Token Refresh] Stopped background refresh');
-  }
-}
-
-/**
- * Check if token refresh is currently running
- */
-export function isTokenRefreshActive(): boolean {
-  return refreshInterval !== null;
-}
+export const isTokenRefreshActive = (): boolean => {
+  return refreshTimer !== null;
+};

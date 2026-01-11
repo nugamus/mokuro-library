@@ -6,6 +6,7 @@ import type { LibraryQuery, LibraryResponse } from '../types/library';
 import { transformSeriesForLibraryQuery } from '../utils/library/seriesTransform';
 import { handleLibraryUpload, UploadQuery } from '../utils/library/upload';
 import { handleSeriesCoverUpload } from '../utils/library/seriesCover';
+import { HttpError } from '../types/error';
 
 // an interface for the route parameters
 interface VolumeParams {
@@ -182,16 +183,16 @@ const libraryRoutes: FastifyPluginAsync = async (
     '/volume/:id',
     async (request, reply) => {
       const { id: volumeId } = request.params;
-      const userId = request.user.id;
       try {
         const volume = await request.accessStrategy.getVolume(volumeId);
         return volume;
       } catch (err: unknown) {
-        const message = err instanceof Error ? err.message : 'Unexpected error.';
-        if (message.includes('not found') || message.includes('access denied')) {
-          return reply.code(404).send({ error: message });
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ message: err.message });
         }
-        return reply.code(500).send({ error: message });
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Internal Server Error';
+        return reply.code(500).send({ message });
       }
     }
   );

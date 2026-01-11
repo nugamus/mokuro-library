@@ -10,6 +10,7 @@
   import AuthHeader from './AuthHeader.svelte';
   import AuthForm from './AuthForm.svelte';
   import AuthFooter from './AuthFooter.svelte';
+  import { updateRefreshInterval } from '$lib/services/tokenRefresh';
 
   type RegisterMode = 'auto-login' | 'show-success';
 
@@ -69,19 +70,19 @@
     try {
       const deviceFingerprint = await getStoredFingerprint();
 
-      const userData = await apiFetch('/api/auth/login', {
+      const authUser = await apiFetch<AuthUser>('/api/auth/login', {
         method: 'POST',
         body: { username, password, rememberMe, deviceFingerprint }
       });
 
-      const authUser = userData as AuthUser;
+      updateRefreshInterval(authUser.expiresIn);
       user.set(authUser);
 
       // Clear cache if user changed
       apiCache.setUserId(authUser.id);
 
       if (redirectOnAuth) {
-        await goto(resolve('/'));
+        await goto(resolve('/', {}));
       }
     } catch (e) {
       error = (e as Error).message;
@@ -127,7 +128,7 @@
         apiCache.setUserId(authUser.id);
 
         if (redirectOnAuth) {
-          await goto(resolve('/'));
+          await goto(resolve('/', {}));
         }
       } else {
         successMessage = registerSuccessMessage ?? 'Account created! Please sign in.';
@@ -137,7 +138,7 @@
           confirmPassword = '';
           successMessage = null;
           if (registerRedirectTo) {
-            goto(resolve(String(registerRedirectTo)));
+            goto(resolve(String(registerRedirectTo), {}));
           }
         }, 2000);
       }

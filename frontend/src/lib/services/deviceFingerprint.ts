@@ -14,9 +14,6 @@ export const generateDeviceFingerprint = async (): Promise<string> => {
   // User agent
   components.push(navigator.userAgent);
 
-  // Screen resolution
-  components.push(`${screen.width}x${screen.height}x${screen.colorDepth}`);
-
   // Timezone
   components.push(Intl.DateTimeFormat().resolvedOptions().timeZone);
 
