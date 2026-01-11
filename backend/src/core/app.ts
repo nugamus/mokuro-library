@@ -22,7 +22,7 @@ import ocrRoutes from '../routes/ocr';
 import statsRoutes from '../routes/stats';
 import contributionsRoutes from '../routes/contributions';
 import testsRoutes from '../routes/tests';
-import { prisma as defaultPrisma, ExtendedPrismaClient } from '../lib/prisma';
+import { prisma as defaultPrisma, ExtendedPrismaClient } from '../lib/prisma/prisma';
 import { loggerOptions } from '../lib/logger';
 
 type BuildOptions = {

@@ -1,45 +1,9 @@
-import { PrismaClient } from '../generated/prisma/client';
-import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
-import { libraryCache } from './caches/libraryCache';
-import { HttpError } from '../types/error';
-
-function extractTags(userId: string, data: Record<string, any>, hints: string[]): string[] {
-  const tags = new Set<string>();
-
-  for (const hint of hints) {
-    const [model, path, shared] = hint.split(':');
-    const m = model.toLowerCase();
-    const uid = userId.toLowerCase();
-
-    // Always add blanket tag: "user1:series"
-    tags.add(`${m}`);
-    tags.add(`${uid}:${m}`);
-    if (shared === 'shared') tags.add(`admin:${m}`);
-
-    const getValues = (obj: any, pathParts: string[]) => {
-      if (!obj) return;
-      if (pathParts.length === 0 || pathParts[0] === '') {
-        if (obj.id) tags.add(`${m}:${obj.id}`);
-        return;
-      }
-
-      const [current, ...rest] = pathParts;
-      const val = obj[current];
-
-      if (Array.isArray(val)) {
-        val.forEach(item => getValues(item, rest));
-      } else {
-        getValues(val, rest);
-      }
-    };
-
-    getValues(data, path.split('.'));
-  }
-  return Array.from(tags);
-}
+import { HttpError } from "../../types/error";
+import { Prisma } from "../../generated/prisma/client";
+import { DynamicClientExtensionThis, InternalArgs, DefaultArgs } from "@prisma/client/runtime/client";
 
 async function updateSeriesStats(
-  prisma: PrismaClient,
+  prisma: DynamicClientExtensionThis<Prisma.TypeMap<InternalArgs & DefaultArgs, {}>, Prisma.TypeMapCb<{}>, DefaultArgs>,
   userId: string,
   seriesId: string,
   pageDelta: number,
@@ -88,16 +52,8 @@ async function updateSeriesStats(
   }
 }
 
-export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
-  const adapter = new PrismaBetterSqlite3(
-    { url: databaseUrl },
-    { timestampFormat: 'iso8601' }
-  );
-
-  const basePrisma = new PrismaClient({ adapter });
-
-  // --- EXTENSION 1: Stats & Counters ---
-  const statsClient = basePrisma.$extends({
+export const statsExtension = Prisma.defineExtension((client) => {
+  return client.$extends({
     name: 'statsExtension',
     query: {
       volume: {
@@ -105,14 +61,14 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const result = await query(args);
           // 1. Increment Series Stats on Create
           if (!result.seriesId) throw new HttpError(403, `Create volume query must select seriesId for stat sync.`)
-          await basePrisma.series.update({
+          await client.series.update({
             where: { id: result.seriesId },
             data: {
               totalPageCount: { increment: result.pageCount },
               totalVolumeCount: { increment: 1 },
             },
           });
-          await basePrisma.userSeriesSettings.updateMany({
+          await client.userSeriesSettings.updateMany({
             where: { seriesId: result.seriesId, status: 2 },
             data: { status: 1 }
           })
@@ -125,7 +81,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const volId = args.where.id;
           if (!volId) return query(args);
 
-          const volume = await basePrisma.volume.findUnique({
+          const volume = await client.volume.findUnique({
             where: { id: volId },
             include: {
               progress: true // Fetch users who will be affected
@@ -138,7 +94,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const result = await query(args);
 
           // A. Decrement Series Stats
-          const series = await basePrisma.series.update({
+          const series = await client.series.update({
             where: { id: volume.seriesId },
             data: {
               totalPageCount: { decrement: volume.pageCount },
@@ -146,7 +102,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
             },
           });
 
-          await basePrisma.userSeriesSettings.updateMany({
+          await client.userSeriesSettings.updateMany({
             where: { seriesId: series.id, completedVolumeCount: series.totalVolumeCount },
             data: { status: 2 }
           });
@@ -158,14 +114,14 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
             const pagesToRemove = p.completed ? volume.pageCount : p.page;
             const volumesToRemove = p.completed ? 1 : 0;
 
-            await updateSeriesStats(basePrisma, p.userId, volume.seriesId, -pagesToRemove, -volumesToRemove);
+            await updateSeriesStats(client, p.userId, volume.seriesId, -pagesToRemove, -volumesToRemove);
           }
 
           return result;
         },
         async update({ args, query }) {
           // 1. Pre-fetch Old Data
-          const oldVolume = await basePrisma.volume.findFirst({
+          const oldVolume = await client.volume.findFirst({
             where: args.where,
             include: { progress: true }
           });
@@ -184,7 +140,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const result = await query(args);
 
           // 3. LOGIC: REMOVE from Old Location
-          const oldSeries = await basePrisma.series.update({
+          const oldSeries = await client.series.update({
             where: { id: oldVolume.seriesId },
             data: {
               totalPageCount: { decrement: oldVolume.pageCount },
@@ -193,7 +149,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           });
 
           // Auto-Promote users in old series (Standard Delete Logic)
-          await basePrisma.userSeriesSettings.updateMany({
+          await client.userSeriesSettings.updateMany({
             where: { seriesId: oldVolume.seriesId, completedVolumeCount: oldSeries.totalVolumeCount },
             data: { status: 2 }
           });
@@ -202,11 +158,11 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           for (const p of oldVolume.progress) {
             const pages = p.completed ? oldVolume.pageCount : p.page;
             const vol = p.completed ? 1 : 0;
-            await updateSeriesStats(basePrisma, p.userId, oldVolume.seriesId, -pages, -vol);
+            await updateSeriesStats(client, p.userId, oldVolume.seriesId, -pages, -vol);
           }
 
           // 4. LOGIC: ADD to New Location
-          await basePrisma.series.update({
+          await client.series.update({
             where: { id: newSeriesId },
             data: {
               totalPageCount: { increment: newPageCount },
@@ -216,7 +172,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
 
           // Auto-Demote users in new series (Standard Create Logic)
           // "If you were done, you aren't anymore because I just added/moved a book here."
-          await basePrisma.userSeriesSettings.updateMany({
+          await client.userSeriesSettings.updateMany({
             where: { seriesId: newSeriesId, status: 2 },
             data: { status: 1 }
           });
@@ -226,7 +182,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
             // Note: We use newPageCount here. If they completed it, their read-count scales up/down.
             const pages = p.completed ? newPageCount : p.page;
             const vol = p.completed ? 1 : 0;
-            await updateSeriesStats(basePrisma, p.userId, newSeriesId, pages, vol);
+            await updateSeriesStats(client, p.userId, newSeriesId, pages, vol);
           }
 
           return result;
@@ -248,12 +204,12 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const { userId, volumeId } = userId_volumeId;
 
           // Get "Before" State
-          const oldProgress = await basePrisma.userProgress.findUnique({
+          const oldProgress = await client.userProgress.findUnique({
             where: { userId_volumeId: { userId, volumeId } }
           });
 
           // Get Volume Context (for max pages)
-          const volume = await basePrisma.volume.findUnique({
+          const volume = await client.volume.findUnique({
             where: { id: volumeId },
             select: { pageCount: true, seriesId: true }
           });
@@ -276,7 +232,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           const deltaVolumes = (newCompleted ? 1 : 0) - (oldCompleted ? 1 : 0);
 
           if (deltaPages !== 0 || deltaVolumes !== 0) {
-            await updateSeriesStats(basePrisma, userId, volume.seriesId, deltaPages, deltaVolumes);
+            await updateSeriesStats(client, userId, volume.seriesId, deltaPages, deltaVolumes);
           }
 
           return result;
@@ -287,7 +243,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           if (!userId_volumeId) throw new HttpError(403, `Deleting UserProgress cannot be done through direct id queries.`);
 
           const { userId, volumeId } = userId_volumeId;
-          const oldProgress = await basePrisma.userProgress.findUnique({
+          const oldProgress = await client.userProgress.findUnique({
             where: { userId_volumeId: { userId, volumeId } },
             include: { volume: true }
           });
@@ -297,7 +253,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
           if (oldProgress && oldProgress.volume) {
             const pagesToRemove = oldProgress.completed ? oldProgress.volume.pageCount : oldProgress.page;
             const volumesToRemove = oldProgress.completed ? 1 : 0;
-            await updateSeriesStats(basePrisma, userId, oldProgress.volume.seriesId, -pagesToRemove, -volumesToRemove);
+            await updateSeriesStats(client, userId, oldProgress.volume.seriesId, -pagesToRemove, -volumesToRemove);
           }
           return result;
         },
@@ -308,68 +264,5 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
         async deleteMany() { throw new Error("Stats Safety: 'deleteMany' is disabled for UserProgress."); }
       }
     }
-  });
-
-  // --- EXTENSION 2: Caching & Invalidation ---
-  const extendedPrisma = statsClient.$extends({
-    client: {
-      async findCached<T>(
-        userId: string,
-        key: string,
-        hints: string[],
-        queryFn: () => Promise<T>
-      ) {
-        const uid = userId.toLowerCase()
-        const fullCacheKey = `${uid}:${key}`;
-        const result = await queryFn();
-        if (!result) return result;
-
-        // Automatically generate granular tags from the result
-        const tags = extractTags(uid, result, hints);
-        for (let t of tags) console.log(t);
-
-        // return libraryCache.cachedQuery(fullCacheKey, tags, async () => result);
-        return (async () => { return { ...(await libraryCache.cachedQuery(fullCacheKey, tags, async () => result)), tags } })()
-      },
-    },
-
-    query: {
-      $allModels: {
-        async $allOperations({ model, operation, args, query }) {
-          const result = await query(args);
-          const mutations = ['create', 'update', 'upsert', 'delete', 'updateMany', 'deleteMany'];
-
-          if (mutations.includes(operation)) {
-            const m = model.toLowerCase();
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const userId = (args as any).where?.userId || (args as any).data?.userId || (args as any).where?.ownerId;
-
-            // The ID of the primary record being mutated
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const id = (args as any).where?.id || (args as any).data?.id || (result as any)?.id;
-            const tagsToClear = new Set<string>();
-            const uid = userId?.toLowerCase();
-
-            if (id) tagsToClear.add(`${m}:${id}`);
-            else if (uid) tagsToClear.add(`${uid}:${m}`);
-            else tagsToClear.add(`${m}`);
-
-            if (uid && operation === 'create') tagsToClear.add(`${uid}:${m}`);
-            libraryCache.invalidateTags(Array.from(tagsToClear));
-          }
-          return result;
-        },
-      },
-    },
-  });
-  return extendedPrisma;
-}
-
-export const prisma = createPrismaClient();
-export type ExtendedPrismaClient = typeof prisma;
-
-declare module 'fastify' {
-  interface FastifyInstance {
-    prisma: ExtendedPrismaClient;  // Direct reference, same file
-  }
-}
+  })
+});

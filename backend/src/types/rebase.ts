@@ -4,7 +4,6 @@ import { PatchOperation, PatchValue } from './history';
 
 export interface ExtendedPatch {
   id: string;
-  parentId: string | null;
   operation: PatchOperation;
 }
 

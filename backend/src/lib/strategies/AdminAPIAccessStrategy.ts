@@ -28,7 +28,7 @@ import {
   revertMoves
 } from '../../utils/submissionHelper';
 import { HttpError } from '../../types/error';
-import { ExtendedPrismaClient } from '../prisma';
+import { ExtendedPrismaClient } from '../prisma/prisma';
 
 /**
  * Strategy for the Administrator.

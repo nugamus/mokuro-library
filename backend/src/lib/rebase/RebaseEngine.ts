@@ -91,13 +91,11 @@ export class RebaseEngine {
     // Parse operations and reverse to chronological order
     const adminChain: ExtendedPatch[] = adminChainRaw.reverse().map(p => ({
       id: p.id,
-      parentId: p.parentId,
       operation: JSON.parse(p.operation) as PatchOperation
     }));
 
     const userChain: ExtendedPatch[] = userChainRaw.reverse().map(p => ({
       id: p.id,
-      parentId: p.parentId,
       operation: JSON.parse(p.operation) as PatchOperation
     }));
 
@@ -232,7 +230,6 @@ export class RebaseEngine {
         if (result.op) {
           nextPatches.push({
             id: userPatch.id,
-            parentId: null,
             operation: result.op
           });
         }
@@ -376,13 +373,11 @@ export class RebaseEngine {
     // Parse operations and reverse to chronological order
     const adminChain: ExtendedPatch[] = adminChainRaw.reverse().map(p => ({
       id: p.id,
-      parentId: p.parentId,
       operation: JSON.parse(p.operation) as PatchOperation
     }));
 
     const userChain: ExtendedPatch[] = userChainRaw.reverse().map(p => ({
       id: p.id,
-      parentId: p.parentId,
       operation: JSON.parse(p.operation) as PatchOperation
     }));
 

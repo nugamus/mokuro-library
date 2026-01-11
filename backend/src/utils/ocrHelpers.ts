@@ -5,7 +5,7 @@ import { PatchApplicator } from '../lib/PatchApplicator';
 import { PatchInverter } from '../lib/PatchInverter';
 import { MokuroData } from '../types/mokuro';
 import { OcrBranch, Patch } from '../generated/prisma/client';
-import { ExtendedPrismaClient } from '../lib/prisma';
+import { ExtendedPrismaClient } from '../lib/prisma/prisma';
 import { HttpError } from '../types/error';
 
 export type OcrBranchWithTimestamps = OcrBranch & {

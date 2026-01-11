@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import type { FastifyBaseLogger } from 'fastify';
-import { ExtendedPrismaClient } from '../lib/prisma';
+import { ExtendedPrismaClient } from '../lib/prisma/prisma';
 
 export async function ensureAdminUser(prisma: ExtendedPrismaClient, logger: FastifyBaseLogger) {
   try {

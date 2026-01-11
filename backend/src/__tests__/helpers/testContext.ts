@@ -6,7 +6,7 @@ import { randomUUID } from 'crypto';
 import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import pino from 'pino';
 import { buildServer } from '../../core/app';
-import { createPrismaClient, ExtendedPrismaClient } from '../../lib/prisma';
+import { createPrismaClient, ExtendedPrismaClient } from '../../lib/prisma/prisma';
 import { ensureAdminUser } from '../../utils/bootstrap';
 
 const TEST_PNG_BASE64 =

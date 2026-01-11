@@ -36,81 +36,30 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
     const userId = request.user.id;
     const isAdmin = userId === 'admin';
 
-    const userBranches = await fastify.prisma.ocrBranch.findMany({
-      where: {
-        userId,
-        volume: {
-          series: {
-            OR: [{ ownerId: userId }, { ownerId: 'admin' }]
-          }
-        }
-      },
-      select: {
-        volumeId: true,
-        headPatchId: true,
-        rootPatchId: true
-      }
-    });
-
     // Calculate pending submissions count (admin sees all pending, users see 0)
+    // This is cheap and can stay as a standard Prisma count
     const pendingSubmissionsCount = isAdmin
       ? await fastify.prisma.submission.count({ where: { status: 'pending' } })
-      : 0;
+      : await fastify.prisma.submission.count({ where: { status: 'pending', userId: userId } });
 
-    if (userBranches.length === 0) {
-      return reply.send({ ahead: 0, behind: 0, pendingSubmissionsCount });
-    }
+    // --- OPTIMIZED AGGREGATION ---
 
-    const volumeIds = Array.from(new Set(userBranches.map((branch) => branch.volumeId)));
-
-    const adminBranches = await fastify.prisma.ocrBranch.findMany({
+    // 1. Count AHEAD (User has private patches)
+    // Simple check: rootPatchId is NOT NULL on an Admin-owned series
+    const aheadCount = await fastify.prisma.ocrBranch.count({
       where: {
-        userId: 'admin',
-        volumeId: { in: volumeIds }
-      },
-      select: {
-        volumeId: true,
-        headPatchId: true
+        userId,
+        volume: { series: { ownerId: 'admin' } },
+        rootPatchId: { not: null }
       }
     });
 
-    const adminByVolume = new Map(adminBranches.map((branch: any) => [branch.volumeId, branch.headPatchId]));
+    // 2. Count BEHIND (Admin Head Sequence > User Fork Point)
+    // Complex check comparing sequences across joined branches
+    const behindCount = await fastify.prisma.ocrBranch.countBehind(userId);
 
-    const rootPatchIds = userBranches
-      .map((branch: any) => branch.rootPatchId)
-      .filter((id: any): id is string => Boolean(id));
 
-    const rootPatches = rootPatchIds.length
-      ? await fastify.prisma.patch.findMany({
-        where: { id: { in: rootPatchIds } },
-        select: { id: true, parentId: true }
-      })
-      : [];
-
-    const rootParentById = new Map(rootPatches.map((patch) => [patch.id, patch.parentId]));
-
-    let ahead = 0;
-    let behind = 0;
-
-    for (const branch of userBranches) {
-      const adminHead = adminByVolume.get(branch.volumeId);
-      if (!adminHead) continue;
-
-      const hasAhead = branch.rootPatchId !== null;
-      let hasBehind = false;
-
-      if (!hasAhead) {
-        hasBehind = branch.headPatchId !== adminHead;
-      } else if (branch.rootPatchId) {
-        const rootParent = rootParentById.get(branch.rootPatchId) ?? null;
-        hasBehind = rootParent !== adminHead;
-      }
-
-      if (hasAhead) ahead += 1;
-      if (hasBehind) behind += 1;
-    }
-
-    return reply.send({ ahead, behind, pendingSubmissionsCount });
+    return reply.send({ aheadCount, behindCount, pendingSubmissionsCount });
   });
 
   /**
