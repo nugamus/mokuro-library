@@ -53,9 +53,7 @@ export const cacheExtension = Prisma.defineExtension((client) => {
 
         // Automatically generate granular tags from the result
         const tags = extractTags(uid, result, hints);
-        for (let t of tags) console.log(t);
 
-        // return libraryCache.cachedQuery(fullCacheKey, tags, async () => result);
         return (async () => { return { ...(await libraryCache.cachedQuery(fullCacheKey, tags, async () => result)), tags } })()
       },
     },

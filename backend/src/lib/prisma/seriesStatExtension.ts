@@ -1,9 +1,33 @@
 import { HttpError } from "../../types/error";
-import { Prisma } from "../../generated/prisma/client";
-import { DynamicClientExtensionThis, InternalArgs, DefaultArgs } from "@prisma/client/runtime/client";
+import { Prisma, Series, UserSeriesSettings } from "../../generated/prisma/client";
+import { SubmissionExecutionPlan } from "../../utils/submissionHelper";
+import { SeriesFindUniqueArgs, UserSeriesSettingsUpdateArgs, UserSeriesSettingsUpsertArgs } from "../../generated/prisma/models";
+import { z } from 'zod';
+import { Sql, PrismaPromise } from "@prisma/client/runtime/client";
+
+// We use z.coerce.number() because SQL aggregations (SUM, COUNT) often
+// return results as BigInts or Strings depending on the database driver.
+const UserProgressSummarySchema = z.object({
+  userId: z.string(),
+  completedPages: z.coerce.number(),
+  completedVolumes: z.coerce.number(),
+});
+const UserProgressListSchema = z.array(UserProgressSummarySchema);
+
+type FlexibleSeriesClient = {
+  userSeriesSettings: {
+    // 'args: never' allows a function expecting specific args to be assigned here
+    upsert: (args: UserSeriesSettingsUpsertArgs) => Promise<UserSeriesSettings>;
+    update: (args: UserSeriesSettingsUpdateArgs) => Promise<UserSeriesSettings>;
+  };
+  series: {
+    findUnique: (args: SeriesFindUniqueArgs) => Promise<Series | null>;
+  };
+  $queryRaw: <T = unknown>(query: TemplateStringsArray | Sql, ...values: any[]) => PrismaPromise<T>
+};
 
 async function updateSeriesStats(
-  prisma: DynamicClientExtensionThis<Prisma.TypeMap<InternalArgs & DefaultArgs, {}>, Prisma.TypeMapCb<{}>, DefaultArgs>,
+  prisma: FlexibleSeriesClient,
   userId: string,
   seriesId: string,
   pageDelta: number,
@@ -11,7 +35,7 @@ async function updateSeriesStats(
 ) {
   // 1. Atomic Update of Counts
   // We use increment/decrement to ensure thread safety during concurrent writes
-  const updatedSettings = await prisma.userSeriesSettings.upsert({
+  let updatedSettings = await prisma.userSeriesSettings.upsert({
     where: { userId_seriesId: { userId, seriesId } },
     create: {
       userId,
@@ -45,16 +69,162 @@ async function updateSeriesStats(
 
   // Only update status if it actually changed (DB optimization)
   if (updatedSettings.status !== newStatus) {
-    await prisma.userSeriesSettings.update({
+    updatedSettings = await prisma.userSeriesSettings.update({
       where: { userId_seriesId: { userId, seriesId } },
       data: { status: newStatus }
     });
   }
+  console.log(updatedSettings)
+}
+async function getUserTotalProgress(volumeIds: string[], client: FlexibleSeriesClient): Promise<Map<string, {
+  completedPages: number;
+  completedVolumes: number;
+}>> {
+  if (volumeIds.length === 0) return new Map();
+
+  // 2. Execute Raw SQL
+  const rawResults = await client.$queryRaw`
+    SELECT
+      up."userId",
+      SUM(
+        CASE
+          WHEN up.completed = true THEN v."pageCount"
+          ELSE up.page
+        END
+      ) AS "completedPages",
+      COUNT(*) FILTER (WHERE up.completed = true) AS "completedVolumes"
+    FROM "UserProgress" up
+    INNER JOIN "Volume" v ON up."volumeId" = v.id
+    WHERE up."volumeId" IN (${Prisma.join(volumeIds)})
+    GROUP BY up."userId"
+  `;
+
+  // 3. Validate with Zod
+  // .parse() will throw an error if the DB returns unexpected data types
+  const validatedResults = UserProgressListSchema.parse(rawResults);
+
+  // 4. Map the validated results
+  return new Map<string, {
+    completedPages: number;
+    completedVolumes: number;
+  }>(
+    validatedResults.map((r) => [
+      r.userId,
+      {
+        completedPages: r.completedPages,
+        completedVolumes: r.completedVolumes,
+      },
+    ])
+  );
 }
 
 export const statsExtension = Prisma.defineExtension((client) => {
   return client.$extends({
     name: 'statsExtension',
+    client: {
+      async migrateVolumesTransaction(plan: SubmissionExecutionPlan): Promise<string> {
+
+        const volumeIds = plan.volumeMoves.map(v => v.id);
+        const totalPages = plan.volumeMoves.reduce((sum, m) => sum + m.pageCount, 0);
+        const totalVolumes = plan.volumeMoves.length;
+        const userTotalProgress = await getUserTotalProgress(volumeIds, client);
+
+        return await client.$transaction(async (tx) => {
+          let finalSeriesId = plan.targetSeriesId;
+
+          // A. Handle Target Series (Create or Update)
+          if (finalSeriesId) {
+            await tx.series.update({
+              where: { id: finalSeriesId },
+              data: {
+                totalPageCount: { increment: totalPages },
+                totalVolumeCount: { increment: totalVolumes }
+              }
+            });
+          } else if (plan.newSeriesData) {
+            const newSeries = await tx.series.create({
+              data: {
+                ...plan.newSeriesData,
+                ownerId: 'admin',
+                totalPageCount: totalPages,
+                totalVolumeCount: totalVolumes
+              }
+            });
+            finalSeriesId = newSeries.id;
+          } else {
+            throw new Error("Migration Failed: No target ID and no creation data provided.");
+          }
+
+          if (!finalSeriesId) throw new Error("Migration Failed: Logic Error resolving Series ID.");
+
+          // Auto-Demote users in new series (Standard Create Logic)
+          // "If you were done, you aren't anymore because I just added/moved a book here."
+          await tx.userSeriesSettings.updateMany({
+            where: { seriesId: finalSeriesId, status: 2 },
+            data: { status: 1 }
+          });
+
+          // Add User Stats to New Series
+          for (const [userId, p] of userTotalProgress.entries()) {
+            const pages = p.completedPages;
+            const vol = p.completedVolumes;
+            await updateSeriesStats(tx, userId, finalSeriesId, pages, vol);
+          }
+
+          // B. Update Source Series Stats
+          const sourceSeries = await tx.series.update({
+            where: { id: plan.sourceSeriesId },
+            data: {
+              totalPageCount: { decrement: totalPages },
+              totalVolumeCount: { decrement: totalVolumes }
+            }
+          });
+
+          // Auto-Promote users in old series (Standard Delete Logic)
+          await tx.userSeriesSettings.updateMany({
+            where: { seriesId: sourceSeries.id, completedVolumeCount: sourceSeries.totalVolumeCount },
+            data: { status: 2 }
+          });
+
+          // Remove User Stats from Old Series
+          for (const [userId, p] of userTotalProgress.entries()) {
+            const pages = p.completedPages;
+            const vol = p.completedVolumes;
+            await updateSeriesStats(tx, userId, sourceSeries.id, -pages, -vol);
+          }
+
+          // C. Update Volumes
+          for (const move of plan.volumeMoves) {
+            await tx.volume.update({
+              where: { id: move.id },
+              data: {
+                seriesId: finalSeriesId,
+                filePath: move.newPathRel,
+                mokuroPath: move.newMokuroRel
+              }
+            });
+
+            const genesisPatch = await tx.patch.findFirst({
+              where: { volumeId: move.id, parentId: null }
+            });
+
+            if (genesisPatch) {
+              const op = JSON.parse(genesisPatch.operation);
+              if (op.op === 'genesis') {
+                op.path = move.newMokuroRel;
+                await tx.patch.update({
+                  where: { id: genesisPatch.id },
+                  data: { operation: JSON.stringify(op) }
+                });
+              }
+            }
+          }
+
+
+          return finalSeriesId;
+        }, { timeout: 30000 });
+      }
+    },
     query: {
       volume: {
         async create({ args, query }) {

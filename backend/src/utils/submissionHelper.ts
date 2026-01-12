@@ -2,9 +2,11 @@ import { FastifyInstance } from 'fastify';
 import path from 'path';
 import fs from 'fs';
 import { HttpError } from '../types/error';
+import { Series } from '../generated/prisma/browser';
 
 export interface VolumeMovePlan {
-  volumeId: string;
+  id: string;
+  pageCount: number;
   folderName: string;
   oldPathAbs: string;
   newPathRel: string;
@@ -12,17 +14,23 @@ export interface VolumeMovePlan {
   newMokuroRel: string;
 }
 
+export interface submissionSeriesMetadata {
+  folderName: string;
+  coverPath: string | null;
+  title: string | null;
+  sortTitle: string;
+  japaneseTitle: string | null;
+  romajiTitle: string | null;
+  synonyms: string | null;
+  description: string | null;
+}
+
 export interface SubmissionExecutionPlan {
+  sourceSeriesId: string;
   targetSeriesId: string | null;
   targetSeriesFolder: string;
   volumeMoves: VolumeMovePlan[];
-  newSeriesData?: {
-    folderName: string;
-    title: string | null;
-    description: string | null;
-    sortTitle: string;
-    coverPath: string | null;
-  };
+  newSeriesData?: submissionSeriesMetadata;
 }
 
 /**
@@ -32,14 +40,8 @@ export interface SubmissionExecutionPlan {
 export async function validateAndPlanSubmission(
   fastify: FastifyInstance,
   targetSeriesId: string | null | undefined,
-  sourceSeries: {
-    folderName: string;
-    title?: string | null;
-    description?: string | null;
-    sortTitle: string;
-    coverPath?: string | null
-  },
-  volumes: { id: string; folderName: string; filePath: string; mokuroPath: string }[]
+  sourceSeries: Series,
+  volumes: { id: string; pageCount: number; folderName: string; filePath: string; mokuroPath: string }[]
 ): Promise<SubmissionExecutionPlan> {
   const projectRoot = fastify.projectRoot;
   let targetSeriesFolder = '';
@@ -57,13 +59,7 @@ export async function validateAndPlanSubmission(
     }
 
     targetSeriesFolder = sourceSeries.folderName;
-    newSeriesData = {
-      folderName: sourceSeries.folderName,
-      title: sourceSeries.title ?? null,
-      description: sourceSeries.description ?? null,
-      sortTitle: sourceSeries.sortTitle,
-      coverPath: sourceSeries.coverPath ?? null
-    };
+    newSeriesData = structuredClone(sourceSeries);
   } else {
     const targetSeries = await fastify.prisma.series.findUnique({ where: { id: targetSeriesId } });
     if (!targetSeries) {
@@ -100,11 +96,12 @@ export async function validateAndPlanSubmission(
     let newMokuroRel = vol.mokuroPath;
     if (vol.mokuroPath) {
       const fileName = path.basename(vol.mokuroPath);
-      newMokuroRel = path.join(newPathRel, fileName).replace(/\\/g, '/');
+      newMokuroRel = path.join(adminSeriesDirRel, fileName).replace(/\\/g, '/');
     }
 
     volumeMoves.push({
-      volumeId: vol.id,
+      id: vol.id,
+      pageCount: vol.pageCount,
       folderName: vol.folderName,
       oldPathAbs,
       newPathRel: newPathRel.replace(/\\/g, '/'),
@@ -114,6 +111,7 @@ export async function validateAndPlanSubmission(
   }
 
   return {
+    sourceSeriesId: sourceSeries.id,
     targetSeriesId: targetSeriesId || null,
     targetSeriesFolder,
     volumeMoves,
@@ -122,8 +120,26 @@ export async function validateAndPlanSubmission(
 }
 
 /**
- * Executes the file moves defined in the plan using atomic renames.
- * Includes automatic rollback if any move fails.
+ * Robustly moves a directory. Tries atomic rename first, falls back to copy+delete.
+ * Solves EACCES/EXDEV issues across Docker volumes.
+ */
+async function moveDirectory(src: string, dest: string) {
+  try {
+    await fs.promises.rename(src, dest);
+  } catch (error: any) {
+    if (error.code === 'EXDEV' || error.code === 'EACCES' || error.code === 'EPERM') {
+      // Fallback strategy: Copy recursive -> Remove original
+      await fs.promises.cp(src, dest, { recursive: true });
+      await fs.promises.rm(src, { recursive: true, force: true });
+    } else {
+      throw error;
+    }
+  }
+}
+
+/**
+ * Executes the file moves defined in the plan.
+ * Uses the robust moveDirectory helper.
  */
 export async function executeMovePlan(
   fastify: FastifyInstance,
@@ -136,14 +152,15 @@ export async function executeMovePlan(
       // Ensure parent dir exists
       await fs.promises.mkdir(path.dirname(move.newPathAbs), { recursive: true });
 
-      // Atomic Rename
-      await fs.promises.rename(move.oldPathAbs, move.newPathAbs);
+      // Robust Move
+      await moveDirectory(move.oldPathAbs, move.newPathAbs);
+
       movedVolumes.push(move);
     }
   } catch (e) {
     fastify.log.error(`Partial failure during file move. Rolling back ${movedVolumes.length} volumes. Error: ${e}`);
 
-    // Internal Rollback: Undo what we just did in this specific execution attempt
+    // Internal Rollback
     await revertMoves(fastify, movedVolumes);
 
     throw new Error(`Failed to move volume files (Changes rolled back): ${e}`);
@@ -152,8 +169,6 @@ export async function executeMovePlan(
 
 /**
  * Reverts a list of volume moves.
- * Used internally by executeMovePlan for partial failures,
- * or externally by Strategies if a DB transaction fails after a successful move.
  */
 export async function revertMoves(
   fastify: FastifyInstance,
@@ -163,7 +178,7 @@ export async function revertMoves(
   for (const moved of [...moves].reverse()) {
     try {
       // We assume the old parent directory still exists (standard for move operations)
-      await fs.promises.rename(moved.newPathAbs, moved.oldPathAbs);
+      await moveDirectory(moved.newPathAbs, moved.oldPathAbs);
     } catch (rollbackError) {
       fastify.log.error(`CRITICAL: Failed to rollback volume ${moved.folderName}. Filesystem may be inconsistent. ${rollbackError}`);
     }

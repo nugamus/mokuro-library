@@ -53,7 +53,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
       ["volume:.:shared", "userprogress:progress:private"],
       async () => {
         return await this.fastify.prisma.volume.findUnique({
-          where: { id: volumeId, series: { ownerId: 'admin' } },
+          where: { id: volumeId },
           include: {
             // Admin sees their own progress, or could see global stats (implementation choice)
             // Here we just fetch admin's personal progress for consistency.
@@ -425,80 +425,27 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
       throw ioError;
     }
 
-    // 3. DB EXECUTION (Transaction)
+    // 3. DB EXECUTION
     try {
-      await this.fastify.prisma.$transaction(async (tx) => {
-        let finalTargetSeriesId = plan.targetSeriesId;
+      // EXECUTE TRANSACTION via Extension
+      const finalTargetSeriesId = await this.fastify.prisma.migrateVolumesTransaction(plan);
 
-        // A. Create Series (Inside Transaction)
-        if (!finalTargetSeriesId && plan.newSeriesData) {
-          const newSeries = await tx.series.create({
-            data: {
-              ownerId: 'admin',
-              folderName: plan.newSeriesData.folderName,
-              title: plan.newSeriesData.title,
-              description: plan.newSeriesData.description,
-              sortTitle: plan.newSeriesData.sortTitle,
-              coverPath: plan.newSeriesData.coverPath // Path verified by IO step above
-            }
-          });
-          finalTargetSeriesId = newSeries.id;
+      // C. Update Submission Status
+      await this.fastify.prisma.submission.update({
+        where: { id: submissionId },
+        data: {
+          status: 'accepted',
+          reviewedAt: new Date(),
+          targetSeriesId: finalTargetSeriesId
         }
-
-        if (!finalTargetSeriesId) throw new HttpError(500, "Logic Error: Failed to determine target series ID");
-
-        // B. Update Volumes
-        for (const move of plan.volumeMoves) {
-          await tx.volume.update({
-            where: { id: move.volumeId },
-            data: {
-              seriesId: finalTargetSeriesId,
-              filePath: move.newPathRel,
-              mokuroPath: move.newMokuroRel
-            }
-          });
-
-          // Update Genesis Patch Path
-          const genesisPatch = await tx.patch.findFirst({
-            where: { volumeId: move.volumeId, parentId: null }
-          });
-
-          if (genesisPatch) {
-            const op = JSON.parse(genesisPatch.operation);
-            if (op.op === 'genesis') {
-              op.path = move.newMokuroRel;
-              await tx.patch.update({
-                where: { id: genesisPatch.id },
-                data: { operation: JSON.stringify(op) }
-              });
-            }
-          }
-        }
-
-        // C. Update Submission
-        await tx.submission.update({
-          where: { id: submissionId },
-          data: {
-            status: 'accepted',
-            reviewedAt: new Date(),
-            targetSeriesId: finalTargetSeriesId
-          }
-        });
       });
 
     } catch (dbError) {
-      // 4. POST-DB ROLLBACK
-      // The DB failed, so we must manually revert the files on disk to match the pre-transaction state.
       this.fastify.log.error(`DB Transaction failed. Reverting file system... Error: ${dbError}`);
-
-      // Revert Volumes
       await revertMoves(this.fastify, plan.volumeMoves);
 
-      // Revert Cover
       if (coverCopied && newCoverPathAbs) {
-        try { await fs.promises.unlink(newCoverPathAbs); } catch (e) {
-          this.fastify.log.error(`Failed to delete orphaned cover: ${newCoverPathAbs}`);
-        }
+        try { await fs.promises.unlink(newCoverPathAbs); } catch (e) { }
       }
 
       throw dbError;

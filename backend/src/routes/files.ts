@@ -6,6 +6,7 @@ import { createHash } from 'crypto';
 import sharp from 'sharp';
 import { LRUCache } from 'lru-cache';
 import { libraryCache } from '../lib/caches/libraryCache';
+import { SeriesWhereInput } from '../generated/prisma/models';
 
 sharp.cache({ items: 500, memory: 512 });
 sharp.concurrency(Math.max(1, require('os').cpus().length - 1));
@@ -296,16 +297,16 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
       const userId = request.user.id;
       const transformOptions = parseTransformOptions(request.query);
 
+      let ownerCheck: SeriesWhereInput[] | undefined = [{ ownerId: userId }, { ownerId: 'admin' }];
+      if (userId === 'admin') ownerCheck = undefined;
+
       try {
         // Find the volume and verify ownership (User OR Admin)
         const volume = await fastify.prisma.volume.findFirst({
           where: {
             id: volumeId,
             series: {
-              OR: [
-                { ownerId: userId },
-                { ownerId: 'admin' }
-              ]
+              OR: ownerCheck
             },
           },
           select: {
@@ -371,6 +372,9 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
       const userId = request.user.id;
       const transformOptions = parseTransformOptions(request.query);
 
+      let ownerCheck: SeriesWhereInput[] | undefined = [{ ownerId: userId }, { ownerId: 'admin' }];
+      if (userId === 'admin') ownerCheck = undefined;
+
       try {
         const cacheKey = `series:${seriesId}:cover-path`;
         const { coverPath } = await fastify.prisma.findCached(
@@ -379,7 +383,7 @@ const filesRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => 
           ["series:."],
           async () => {
             return await fastify.prisma.series.findFirst({
-              where: { id: seriesId, OR: [{ ownerId: userId }, { ownerId: 'admin' }] },
+              where: { id: seriesId, OR: ownerCheck },
               select: { id: true, coverPath: true }
             });
           }
