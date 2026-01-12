@@ -159,38 +159,36 @@ export async function apiFetch<T = unknown>(
 /**
  * Track if a refresh is in progress to avoid multiple simultaneous refreshes
  */
-let refreshInProgress = false;
+let refreshPromise: Promise<AuthUser | null> | null = null;
 
-/**
- * Attempts to refresh the access token using the refresh token.
- * Returns the response data (including new expiry) on success, or null on failure.
- */
 export const refreshAccessToken = async (): Promise<AuthUser | null> => {
-  if (refreshInProgress) {
-    // Wait for existing refresh to complete
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return null; // Return null to indicate we didn't initiate the refresh
+  // If a refresh is already running, return that existing promise
+  if (refreshPromise) {
+    return refreshPromise;
   }
 
-  refreshInProgress = true;
+  // Create a new promise for the refresh operation
+  refreshPromise = (async () => {
+    try {
+      const deviceFingerprint = await getStoredFingerprint();
 
-  try {
-    const deviceFingerprint = await getStoredFingerprint();
+      const response = await apiFetch<AuthUser>('/api/auth/refresh', {
+        method: 'POST',
+        body: { deviceFingerprint },
+        showErrorToast: false
+      });
 
-    // Capture the response!
-    const response = await apiFetch<AuthUser>('/api/auth/refresh', {
-      method: 'POST',
-      body: { deviceFingerprint },
-      showErrorToast: false
-    });
+      return response;
+    } catch (e) {
+      console.debug('Token refresh failed:', e);
+      return null;
+    } finally {
+      // Clear the promise so subsequent calls can start a new refresh
+      refreshPromise = null;
+    }
+  })();
 
-    return response;
-  } catch (e) {
-    console.debug('Token refresh failed:', e);
-    return null;
-  } finally {
-    refreshInProgress = false;
-  }
+  return refreshPromise;
 };
 
 /**

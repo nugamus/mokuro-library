@@ -98,8 +98,8 @@ async function performRefresh() {
   const response = await refreshAccessToken();
 
   // Handle response (supports both boolean and object return types)
-  if (response && typeof response === 'object' && 'accessTokenExpiresIn' in response) {
-    const expiresIn = (response as any).accessTokenExpiresIn;
+  if (response && typeof response === 'object' && 'expiresIn' in response) {
+    const expiresIn = (response as any).expiresIn;
     updateRefreshInterval(expiresIn);
     notifyTokenRefreshed(expiresIn);
   } else if (response) {

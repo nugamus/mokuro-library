@@ -261,7 +261,7 @@ const authRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
 
         // Generate refresh token for database
         const refreshTokenValue = generateRefreshToken();
-        const refreshTokenExpiry = new Date(Date.now() + REFRESH_COOKIE_MAX_AGE(rememberMe));
+        const refreshTokenExpiry = new Date(Date.now() + REFRESH_COOKIE_MAX_AGE(rememberMe) * 1000);
 
         // Store refresh token in database
         await fastify.prisma.refreshToken.create({
