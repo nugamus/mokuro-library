@@ -1,10 +1,12 @@
 import { ulid } from 'ulid';
 import { FastifyInstance } from 'fastify';
+import { isDeepStrictEqual } from 'util';
 import {
   RebaseResult,
   ExtendedPatch,
   ResolutionType,
-  Effect
+  Effect,
+  TransformResult
 } from '../../types/rebase';
 import { PatchOperation } from '../../types/history';
 import { PatchTransformer } from './PatchTransformer';
@@ -203,12 +205,25 @@ export class RebaseEngine {
         const resolutionKey = `${adminPatch.id}:${userPatch.id}`;
         const resolution = ctx.resolutions.get(resolutionKey);
 
-        const result = PatchTransformer.transform(
-          userPatch,
-          currentEffect,
-          adminPatch,
-          resolution
-        );
+        let result: TransformResult;
+        // --- ROOT PEEK DEDUPLICATION ---
+        // If this is the current root of the user chain (j=0) and it matches the admin patch,
+        // we treat it as already applied. We drop the patch (op: null) and skip the adminPatch (effect: identity)
+        if (j === 0 && isDeepStrictEqual(userPatch.operation, adminPatch.operation)) {
+          result = {
+            success: true,
+            op: null,
+            effect: { type: 'identity', path: '/' },
+            hadConflict: false
+          }
+        } else {
+          result = PatchTransformer.transform(
+            userPatch,
+            currentEffect,
+            adminPatch,
+            resolution
+          );
+        }
 
         if (!result.success) {
           // Save hot state before returning
