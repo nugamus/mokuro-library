@@ -14,8 +14,7 @@
     actions?: import('svelte').Snippet;
   } = $props();
 
-  // 1. Derive the "Hero" cover from the first volume in the submission
-  const firstVol = submission.volumes[0];
+  // 1. Derive the "Hero" cover
   const coverUrlSeriesId = submission.targetSeries?.id ?? submission.sourceSeries.id;
   const coverUrl = `/api/files/series/${coverUrlSeriesId}/cover`;
 
@@ -37,13 +36,16 @@
     accepted: '✅',
     rejected: '❌'
   };
+
+  // 4. Handle Image Load Error (Fallback Switch)
+  let imageLoadError = $state(false);
 </script>
 
 <div
   class="relative w-full overflow-hidden rounded-3xl bg-theme-surface border border-theme-border shadow-2xl group"
 >
   <div class="absolute inset-0 z-0 overflow-hidden">
-    {#if coverUrl}
+    {#if coverUrl && !imageLoadError}
       <AuthenticatedImage
         src={coverUrl}
         alt=""
@@ -63,18 +65,18 @@
       <div
         class="w-48 aspect-[7/11] rounded-lg shadow-[0_8px_32px_rgba(0,0,0,0.5)] overflow-hidden border-2 border-theme-primary/10 bg-theme-main relative group-hover:shadow-[0_12px_48px_rgba(0,0,0,0.6)] transition-all duration-500"
       >
-        {#if coverUrl}
+        {#if coverUrl && !imageLoadError}
           <AuthenticatedImage
             src={coverUrl}
             alt={seriesTitle!}
             class="w-full h-full object-cover"
+            onerror={() => (imageLoadError = true)}
           />
         {:else}
           <div
-            class="w-full h-full flex flex-col items-center justify-center text-theme-tertiary bg-theme-surface/50 p-4 text-center"
+            class="flex h-full w-full items-center justify-center text-theme-tertiary bg-theme-surface/50 font-bold text-6xl"
           >
-            <span class="text-4xl mb-2">📚</span>
-            <span class="text-xs font-mono">No Cover</span>
+            {seriesTitle ? seriesTitle[0].toUpperCase() : '?'}
           </div>
         {/if}
       </div>

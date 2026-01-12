@@ -2,8 +2,6 @@
   import { page } from '$app/state';
   import { goto } from '$app/navigation';
   import { resolve } from '$app/paths';
-  import { SvelteDate } from 'svelte/reactivity';
-  import { Shield, GitMerge, User, Calendar, Hash } from 'lucide-svelte';
 
   // Services & Types
   import { apiFetch } from '$lib/services/api';
@@ -12,13 +10,10 @@
 
   // Components
   import CommentThread from '../../components/CommentThread.svelte';
-  import AcceptSubmissionModal from '../../components/modals/AcceptSubmissionModal.svelte';
-  import RejectSubmissionModal from '../../components/modals/RejectSubmissionModal.svelte';
+  import AcceptSubmissionModal from '$lib/components/modals/submissions/AcceptSubmissionModal.svelte';
+  import RejectSubmissionModal from '$lib/components/modals/submissions/RejectSubmissionModal.svelte';
   import SubmissionReader from '$lib/components/readers/SubmissionReader.svelte';
-  import Badge from '$lib/components/controls/Badge.svelte';
   import Button from '$lib/components/controls/Button.svelte';
-  import Icon from '$lib/components/controls/Icon.svelte';
-  import PageHeader from '$lib/components/layout/PageHeader.svelte';
   import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
   import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
   import { browser } from '$app/environment';
@@ -120,6 +115,7 @@
 {#if showRejectModal && submission}
   <RejectSubmissionModal
     submissionId={submission.id}
+    isSelfCancel={$user?.id !== 'admin'}
     on_close={() => (showRejectModal = false)}
     on_success={handleSuccess}
   />
@@ -153,7 +149,7 @@
           disabled={submission!.status !== 'pending'}
           class="shadow-sm"
         >
-          {$user?.id === 'admin' ? 'Reject Submission' : 'Cancel Submission'}
+          {$user?.id === 'admin' ? 'Reject' : 'Cancel'}
         </Button>
 
         {#if $user?.id === 'admin'}
@@ -163,7 +159,7 @@
             disabled={submission!.status !== 'pending'}
             class="shadow-sm shadow-status-success/20"
           >
-            Accept & Merge
+            Accept
           </Button>
         {/if}
       {/snippet}

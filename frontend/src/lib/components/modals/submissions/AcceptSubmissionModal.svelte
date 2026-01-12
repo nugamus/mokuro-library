@@ -19,7 +19,8 @@
     error = null;
     try {
       await apiFetch(`/api/contributions/submissions/${submissionId}/accept`, {
-        method: 'POST'
+        method: 'POST',
+        body: {}
       });
       toastStore.success('Submission accepted successfully!');
       on_success();
