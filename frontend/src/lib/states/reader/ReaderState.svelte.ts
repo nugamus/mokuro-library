@@ -123,6 +123,7 @@ class ReaderState {
   hasUnsavedChanges = $state(false);
   isSaving = $state(false);
   saveSuccess = $state(false);
+  jumpToPage: (pageIndex: number) => void = () => { };
 
   // --- Version Control ---
   branchVersion = $state(0);
@@ -130,7 +131,6 @@ class ReaderState {
   private patchQueue: PatchTask[] = [];
   mokuroStagingData = $state<MokuroData | null>(null);
   hasUndo = $derived(!!(this.volume?.id && !this.isPatching));
-
   hasRedo = $derived(!!(this.volume?.id && !this.isPatching));
 
   // --- Internals ---
@@ -211,7 +211,7 @@ class ReaderState {
 
         // Whenever prefetchUrls changes, tell the store to fetch them
         this.prefetchUrls.forEach((url) => {
-          imageStore.get(url).catch(() => {});
+          imageStore.get(url).catch(() => { });
         });
       });
     });
@@ -462,6 +462,13 @@ class ReaderState {
 
       // 2. Apply the Single Patch (Inverse or Original)
       if (this.volume?.mokuroData && res.patch) {
+        const parts = res.patch.path.split('/').filter((x) => x);
+        const op = res.patch.op;
+        if (op !== 'genesis') {
+          const pageIndex = parseInt(parts[1]);
+          this.jumpToPage(pageIndex);
+        }
+
         // Apply to COMMITTED (Server Truth)
         PatchApplicator.apply(this.volume.mokuroData, res.patch);
 
@@ -611,21 +618,34 @@ class ReaderState {
       }
 
       const page2Index = page1Index + 1;
+      const page0Index = page1Index - 1;
       const page2 = this.mokuroStagingData.pages[page2Index];
+      const page0 = this.mokuroStagingData.pages[page0Index];
 
-      if (!page2) {
-        return [{ ...page1, index: page1Index }];
+      const page1IsEven = page1Index % 2 === 0;
+
+      let firstPage;
+      let secondPage;
+      if (this.firstPageIsCover === page1IsEven) {
+        firstPage = page0 ? { ...page0, index: page0Index } : undefined;
+        secondPage = { ...page1, index: page1Index };
+      } else {
+        firstPage = { ...page1, index: page1Index };
+        secondPage = page2 ? { ...page2, index: page2Index } : undefined;
       }
+
       return [
-        { ...page1, index: page1Index },
-        { ...page2, index: page2Index }
-      ];
+        firstPage,
+        secondPage
+      ].filter(Boolean) as (MokuroPage & { index: number })[];
     }
     return [];
   }
 
   get hasNext() {
-    return this.currentPageIndex < this.totalPages - 1;
+    const isSingle = this.layoutMode === 'single';
+    const isDouble = this.layoutMode === 'double';
+    return (isSingle && this.currentPageIndex < this.totalPages - 1) || (isDouble && this.currentPageIndex < this.totalPages - 2);
   }
   get hasPrev() {
     return this.currentPageIndex > 0;
@@ -637,31 +657,22 @@ class ReaderState {
     if (this.layoutMode === 'vertical') return;
     if (!this.hasNext) return;
 
-    if (this.layoutMode === 'single') {
-      this.currentPageIndex += 1;
-      // Auto-complete volume when reaching the last page
-      if (
-        this.autoCompleteVolume &&
-        this.volume?.id &&
-        this.currentPageIndex === this.totalPages - 1
-      ) {
-        this.markVolumeComplete();
-      }
-      return;
-    }
 
-    // In double mode: jump by 2, unless we're on the cover (page 0) and firstPageIsCover is true
-    let jump = 2;
-    if (this.firstPageIsCover && this.currentPageIndex === 0) {
+    let jump = 0;
+    if (this.layoutMode === 'single') {
       jump = 1;
     }
+    if (this.layoutMode === 'double') {
+      jump = 2;
+    }
+
     this.currentPageIndex = Math.min(this.totalPages - 1, this.currentPageIndex + jump);
 
     // Auto-complete volume when reaching the last page
     if (
       this.autoCompleteVolume &&
       this.volume?.id &&
-      this.currentPageIndex === this.totalPages - 1
+      !this.hasNext
     ) {
       this.markVolumeComplete();
     }
@@ -671,15 +682,12 @@ class ReaderState {
     if (this.layoutMode === 'vertical') return;
     if (!this.hasPrev) return;
 
+    let jump = 0;
     if (this.layoutMode === 'single') {
-      this.currentPageIndex -= 1;
-      return;
+      jump = 1;
     }
-
-    // In double mode: jump by 2, but handle cover page specially
-    let jump = 2;
-    if (this.firstPageIsCover && this.currentPageIndex === 1) {
-      jump = 1; // From page 1 (after cover), go back to page 0 (cover)
+    if (this.layoutMode === 'double') {
+      jump = 2;
     }
     this.currentPageIndex = Math.max(0, this.currentPageIndex - jump);
   }

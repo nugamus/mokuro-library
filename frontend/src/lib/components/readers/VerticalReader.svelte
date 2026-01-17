@@ -103,6 +103,13 @@
 
   onMount(() => {
     setupObservers();
+    readerState.jumpToPage = (pageIndex: number) => {
+      const pageElements = panzoomElement?.querySelectorAll('[data-page-index]') ?? [];
+      if (pageIndex !== readerState.currentPageIndex && pageElements[pageIndex]) {
+        pageElements[pageIndex].scrollIntoView({ block: 'start' });
+      }
+    };
+
     return () => {
       renderObserver?.disconnect();
       destroyObserver?.disconnect();

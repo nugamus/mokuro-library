@@ -24,6 +24,8 @@
     !readerState.hideHUD || headerForceVisible || isFontSizeOpen || readerState.isSaving
   );
 
+  const pageIndices = $derived(readerState.visiblePages.map((v) => v.index));
+
   const saveShortcut = $derived.by(() => ($keybindStore.saveOcr || []).join(' / '));
   const smartResizeShortcut = $derived.by(() =>
     ($keybindStore.toggleSmartResize || []).join(' / ')
@@ -178,9 +180,7 @@
         rounded-xl bg-black/20 border border-white/5 text-xs font-medium text-theme-primary font-mono"
     >
       <span class="mr-1">
-        {readerState.currentPageIndex + 1}{readerState.visiblePages.length === 2
-          ? `-${readerState.currentPageIndex + 2}`
-          : ''}
+        {pageIndices[0] + 1}{pageIndices[1] ? `-${pageIndices[1] + 1}` : ''}
       </span>
       <span>/ {readerState.totalPages}</span>
     </span>

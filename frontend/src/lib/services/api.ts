@@ -18,6 +18,19 @@ interface ApiFetchOptions<T> extends Omit<RequestInit, 'body' | 'cache'> {
   onStaleRefetch?: (data: T) => void;
 }
 
+export class HttpError extends Error {
+  statusCode: number;
+
+  constructor(statusCode: number, message: string) {
+    super(message);
+    this.statusCode = statusCode;
+    this.name = 'HttpError';
+
+    // Restoration of prototype chain is required when extending built-ins in TS/JS
+    Object.setPrototypeOf(this, HttpError.prototype);
+  }
+}
+
 const getCsrfToken = () => {
   if (typeof document === 'undefined') return null;
   const match = document.cookie.match(/(?:^|; )csrfToken=([^;]+)/);
@@ -114,7 +127,7 @@ export async function apiFetch<T = unknown>(
         throw new Error(errorMessage);
       } catch (e) {
         const errorMessage = (e as Error).message || `HTTP error! Status: ${response.status}`;
-        throw new Error(errorMessage);
+        throw new HttpError(response.status, errorMessage);
       }
     }
 
@@ -150,7 +163,7 @@ export async function apiFetch<T = unknown>(
     }
   } catch (error) {
     if (showErrorToast) {
-      toastStore.error((error as Error).message);
+      toastStore.error(`${(error as Error).message}`);
     }
     throw error;
   }
@@ -203,8 +216,8 @@ export const apiFetchWithRefresh = async <T = unknown>(
   } catch (error) {
     // If 401 and not already a refresh/login request, try to refresh token
     if (
-      error instanceof Error &&
-      error.message.includes('401') &&
+      error instanceof HttpError &&
+      error.statusCode === 401 &&
       !url.includes('/api/auth/refresh') &&
       !url.includes('/api/auth/login')
     ) {

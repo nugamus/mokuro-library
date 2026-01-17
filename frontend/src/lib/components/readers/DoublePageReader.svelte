@@ -4,6 +4,7 @@
   import CachedImage from '$lib/components/media/CachedImage.svelte';
   import OcrOverlay from '$lib/components/ocr/OcrOverlay.svelte';
   import { panzoom } from '$lib/actions/panzoom';
+  import { onMount } from 'svelte';
 
   let {
     panzoomInstance = $bindable(),
@@ -12,6 +13,12 @@
     panzoomInstance: PanzoomObject | null;
     navZoneWidth: number;
   } = $props();
+
+  onMount(() => {
+    readerState.jumpToPage = (pageIndex: number) => {
+      readerState.setPage(pageIndex);
+    };
+  });
 
   const handleClickLeft = () => {
     if (readerState.readingDirection === 'rtl') {
@@ -29,7 +36,7 @@
     }
   };
 
-  function handleZoneClick(e: MouseEvent) {
+  const handleZoneClick = (e: MouseEvent) => {
     // If text is selected, don't navigate
     if (window.getSelection()?.toString()) return;
 
@@ -44,7 +51,7 @@
     } else if (percent >= 100 - navZoneWidth) {
       handleClickRight();
     }
-  }
+  };
 </script>
 
 <div class="relative h-full w-full flex flex-col" onclick={handleZoneClick} role="presentation">
