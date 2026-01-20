@@ -41,6 +41,6 @@ describe('contributions routes', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ ahead: 0, behind: 0, pendingSubmissionsCount: 0 });
+    expect(response.json()).toEqual({ aheadCount: 0, behindCount: 0, pendingSubmissionsCount: 0 });
   });
 });
