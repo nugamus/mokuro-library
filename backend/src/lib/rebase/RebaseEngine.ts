@@ -157,7 +157,6 @@ export class RebaseEngine {
       data: { resolutions: JSON.stringify([...context.resolutions.entries()]) }
     });
 
-    // Continue from hot state (no replay needed)
     return this.runSimulation(context);
   }
 
@@ -232,6 +231,15 @@ export class RebaseEngine {
           ctx.currentAdminIndex = i;
           ctx.currentUserIndex = j;
           ctx.currentEffect = currentEffect;
+
+          // Persist conflict to DB so frontend can resume
+          // We can run this in background, but awaiting ensures consistency
+          await this.prisma.rebaseSession.update({
+            where: { id: ctx.sessionId },
+            data: {
+              currentConflict: JSON.stringify(result.conflict)
+            }
+          });
 
           return {
             status: 'paused',
@@ -323,13 +331,7 @@ export class RebaseEngine {
 
       await tx.rebaseSession.delete({ where: { id: ctx.sessionId } });
 
-      if (ctx.originalUserChain.length > 0) {
-        const oldRootId = userBranch.rootPatchId!;
-        const exists = await tx.patch.findUnique({ where: { id: oldRootId } });
-        if (exists) await tx.patch.delete({ where: { id: oldRootId } });
-      }
-
-      return await tx.ocrBranch.update({
+      const updatedBranch = await tx.ocrBranch.update({
         where: { id: ctx.branchId },
         data: {
           headPatchId: newHeadId,
@@ -343,6 +345,14 @@ export class RebaseEngine {
           snapshotPatch: { select: { id: true, createdAt: true, sequence: true } }
         }
       });
+
+      if (ctx.originalUserChain.length > 0) {
+        const oldRootId = userBranch.rootPatchId!;
+        const exists = await tx.patch.findUnique({ where: { id: oldRootId } });
+        if (exists) await tx.patch.delete({ where: { id: oldRootId } });
+      }
+
+      return updatedBranch;
     });
 
     // Copy admin snapshot to user

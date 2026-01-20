@@ -191,6 +191,11 @@ model OcrBranch {
   // --- Rebase ---
   rebaseSession RebaseSession?
 
+  // --- Review Request Lifecycle ---
+  isPendingReview Boolean @default(false)
+  submissionNote  String? // User's comment: "Fixed ch 5 typos"
+  rejectionReason String? // Admin's feedback: "Please fix capitalization"
+
   // --- Metadata ---
   updatedAt   DateTime @updatedAt
 
@@ -320,6 +325,10 @@ model RebaseSession {
   // Store the user's decisions as a JSON array
   // Type: Array<{ patchId: string, resolution: 'keep_admin' | 'keep_mine' | 'resurrect' }>
   resolutions     String     @default("[]")
+
+  // Stores the active conflict if the session is paused.
+  // This allows the frontend to "resume" without re-triggering simulation immediately.
+  currentConflict String?    // JSON String of RebaseConflict
 
   updatedAt       DateTime   @updatedAt
   expiresAt       DateTime

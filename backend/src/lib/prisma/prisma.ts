@@ -2,7 +2,7 @@ import { PrismaClient } from '../../generated/prisma/client';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 import { cacheExtension } from './cacheExtension';
 import { statsExtension } from './seriesStatExtension';
-import { countBehindExtension } from './countBehindExtension';
+import { rebaseQueryExtension } from './rebaseQueryExtension';
 
 
 export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
@@ -16,7 +16,7 @@ export function createPrismaClient(databaseUrl = process.env.DATABASE_URL) {
   const extendedPrisma = basePrisma
     .$extends(cacheExtension)
     .$extends(statsExtension)
-    .$extends(countBehindExtension);
+    .$extends(rebaseQueryExtension);
   return extendedPrisma;
 }
 
