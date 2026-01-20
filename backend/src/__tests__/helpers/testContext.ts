@@ -49,13 +49,12 @@ export async function createTestContext(): Promise<TestContext> {
 
   if (fs.existsSync(seedDb)) {
     await fs.promises.copyFile(seedDb, dbFile);
-  } else {
-    execSync('npx prisma migrate deploy --schema=prisma/schema.prisma', {
-      cwd: process.cwd(),
-      stdio: 'ignore',
-      env: { ...process.env, DATABASE_URL: databaseUrl },
-    });
   }
+  execSync('npx prisma migrate deploy --schema=prisma/schema.prisma', {
+    cwd: process.cwd(),
+    stdio: 'ignore',
+    env: { ...process.env, DATABASE_URL: databaseUrl },
+  });
 
   const prisma = createPrismaClient(databaseUrl);
   await ensureAdminUser(prisma, createSilentLogger());
