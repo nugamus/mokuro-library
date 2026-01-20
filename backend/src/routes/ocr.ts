@@ -203,6 +203,52 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       }
     }
   );
+  /**
+   * GET /api/library/rebase/sessions
+   * Returns all active rebase sessions for the current user.
+   * Used by the frontend to detect interruptions and resume work.
+   */
+  fastify.get(
+    '/rebase/sessions',
+    async (request, reply) => {
+      const userId = request.user.id;
+
+      try {
+        const sessions = await fastify.prisma.rebaseSession.findMany({
+          where: {
+            branch: { userId } // Only sessions belonging to this user
+          },
+          include: {
+            branch: {
+              include: {
+                volume: {
+                  select: {
+                    series: { select: { sortTitle: true } },
+                    sortTitle: true
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        // Map to a frontend-friendly format
+        const formattedSessions = sessions.map(session => ({
+          sessionId: session.id,
+          volumeId: session.branch.volumeId,
+          volumeTitle: session.branch.volume.sortTitle,
+          seriesTitle: session.branch.volume.series.sortTitle,
+          currentConflict: session.currentConflict ? JSON.parse(session.currentConflict) : null,
+          updatedAt: session.updatedAt
+        }));
+
+        return reply.send({ sessions: formattedSessions });
+      } catch (err) {
+        request.log.error(err);
+        return reply.code(500).send({ message: 'Failed to fetch rebase sessions' });
+      }
+    }
+  );
 
   /**
    * POST /api/library/volumes/:id/rebase/start

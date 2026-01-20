@@ -2,8 +2,8 @@ import { FastifyPluginAsync } from 'fastify';
 import { getUploadJob } from '../lib/uploadQueue';
 import { deleteSeriesById, deleteVolumeById } from '../utils/library/delete';
 import { queryLibrary } from '../utils/library/query';
-import type { LibraryQuery, LibraryResponse } from '../types/library';
-import { transformSeriesForLibraryQuery } from '../utils/library/seriesTransform';
+import type { LibraryQuery, LibraryResponse, SeriesResponse } from '../types/library';
+import { transformSeriesForLibraryQuery, transformVolumeWithBranches } from '../utils/library/seriesTransform';
 import { handleLibraryUpload, UploadQuery } from '../utils/library/upload';
 import { handleSeriesCoverUpload } from '../utils/library/seriesCover';
 import { HttpError } from '../types/error';
@@ -121,55 +121,56 @@ const libraryRoutes: FastifyPluginAsync = async (
       const userId = request.user.id;
 
       try {
-        const response = await fastify.prisma.findCached(
-          userId,
-          `series:${seriesId}`,
-          ["series:.:shared", "volume:volumes:shared", "userprogress:volumes.progress:private"],
-          async () => {
-            const series = await fastify.prisma.series.findFirst({
-              where: {
-                id: seriesId,
-                OR: [{ ownerId: userId }, { ownerId: 'admin' }]
-              },
+        const series = await fastify.prisma.series.findFirst({
+          where: {
+            id: seriesId,
+            OR: [{ ownerId: userId }, { ownerId: 'admin' }]
+          },
+          include: {
+            userSettings: { where: { userId } },
+            volumes: {
+              orderBy: { sortTitle: 'asc' },
               include: {
-                userSettings: { where: { userId } },
-                volumes: {
-                  orderBy: { sortTitle: 'asc' },
+                // Fetch Progress
+                progress: { where: { userId } },
+                branches: {
+                  where: {
+                    OR: [
+                      { userId: userId },
+                      { userId: 'admin' }
+                    ]
+                  },
                   include: {
-                    progress: {
-                      where: { userId: userId },
-                      select: {
-                        id: true,
-                        page: true,
-                        completed: true,
-                        timeRead: true,
-                        charsRead: true,
-                        lastReadAt: true
-                      }
-                    }
+                    headPatch: true,
+                    rootPatch: true
                   }
-                },
-              },
-            });
+                }
+              }
+            },
+          },
+        });
 
-            if (!series) return null;
-
-            return transformSeriesForLibraryQuery(series, userId);
-          }
-        );
-
-        if (!response) {
-          return reply.status(404).send({
-            statusCode: 404,
-            error: 'Not Found',
-            message: 'Series not found or you do not have permission to access it.',
-          });
+        if (!series) {
+          return reply.status(404).send({ message: 'Series not found' });
         }
 
-        return reply.status(200).send(response);
+        // Transform Series Metadata
+        const baseEntry = transformSeriesForLibraryQuery(series, userId);
+
+        // Transform Volumes using the new helper
+        const volumes = series.volumes.map(vol =>
+          transformVolumeWithBranches(vol, userId)
+        );
+
+        const seriesResponse: SeriesResponse = {
+          ...baseEntry,
+          volumes
+        };
+
+        return reply.send(seriesResponse);
 
       } catch (error) {
-        fastify.log.error({ err: error }, 'Error fetching single series');
+        fastify.log.error(error);
         return reply.status(500).send({ message: 'An unexpected error occurred.' });
       }
     }
@@ -179,7 +180,7 @@ const libraryRoutes: FastifyPluginAsync = async (
    * GET /api/library/volume/:id
    * Gets full data for one volume, including the parsed .mokuro JSON.
    */
-  fastify.get<{ Params: { id: string } }>(
+  fastify.get<{ Params: VolumeParams }>(
     '/volume/:id',
     async (request, reply) => {
       const { id: volumeId } = request.params;

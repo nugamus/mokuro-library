@@ -8,6 +8,7 @@ import {
   RedoResponse,
   PatchOperation
 } from '../../types/history';
+import { ReviewRequestEntry, ReviewStatusParams, ReviewStatusResult } from '../../types/reviews';
 import { IAPIAccessStrategy } from './IAPIAccessStrategy';
 import {
   ensureAdminBranch,
@@ -87,7 +88,8 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
 
     return {
       id: volume.id,
-      title: volume.title ?? volume.folderName,
+      title: volume.sortTitle,
+      folderName: volume.folderName,
       seriesId: volume.seriesId,
       pageCount: volume.pageCount,
       coverImageName: volume.coverImageName,
@@ -100,6 +102,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
         // Admin is never ahead/behind themselves
         hasAhead: 0,
         hasBehind: 0,
+        isPendingReview: false,
       }
     };
   }
@@ -145,6 +148,7 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
     if (isSnapshotAhead) {
       this.fastify.log.info(`[AdminStrategy] Snapshot ahead of HEAD. Syncing back before write.`);
       await syncSnapshot(this.fastify, adminBranch);
+      patch.nextPatchId = null; // sync snapshot deletes next patch
     }
 
     // 4. Transactional Write
@@ -556,5 +560,102 @@ export class AdminAPIAccessStrategy implements IAPIAccessStrategy {
 
   async revert(volumeId: string, patchId: string): Promise<void> {
     throw new Error('Pending Implementation: Revert');
+  }
+
+  async getReviews(actorId: string): Promise<ReviewRequestEntry[]> {
+    const prisma = this.fastify.prisma;
+
+    // 1. Fetch ALL pending reviews
+    const branches = await prisma.ocrBranch.findMany({
+      where: {
+        isPendingReview: true
+      },
+      include: {
+        volume: {
+          include: { series: true }
+        },
+        user: true,
+        // We need patch info to calculate "Behind" status
+        rootPatch: true,
+        headPatch: true
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    // 2. Efficiently check "Behind" status for all results
+    // We need the CURRENT Admin Head for these volumes to compare.
+    const volumeIds = branches.map(b => b.volumeId);
+
+    // Fetch Admin Branches for these volumes
+    const adminBranches = await prisma.ocrBranch.findMany({
+      where: {
+        userId: 'admin',
+        volumeId: { in: volumeIds }
+      },
+      include: { headPatch: true }
+    });
+
+    // Create a Map for O(1) lookup: VolumeID -> AdminHeadSequence
+    const adminHeadMap = new Map<string, number>();
+    adminBranches.forEach(ab => {
+      if (ab.headPatch) adminHeadMap.set(ab.volumeId, ab.headPatch.sequence);
+    });
+
+    // 3. Map to DTO
+    return branches.map(b => {
+      const adminHeadSeq = adminHeadMap.get(b.volumeId) || 0;
+      // If rootPatch is missing, they technically have 0 edits, but we handle it gracefully.
+      const forkPointSeq = b.rootPatch ? (b.rootPatch.sequence - 1) : b.headPatch.sequence;
+
+      // IS BEHIND Condition: Admin has moved past the fork point
+      const isBehind = adminHeadSeq > forkPointSeq;
+
+      return {
+        id: b.id,
+        volumeId: b.volumeId,
+        volumeTitle: b.volume.sortTitle,
+        seriesId: b.volume.seriesId,
+        seriesTitle: b.volume.series.sortTitle,
+        coverImageName: b.volume.coverImageName,
+
+        userId: b.userId,
+        userDisplayName: b.user?.username || 'Unknown',
+        submittedAt: b.updatedAt,
+        submissionNote: b.submissionNote,
+        rejectionReason: b.rejectionReason,
+
+        headPatchId: b.headPatchId,
+        isBehind: isBehind
+      };
+    });
+  }
+
+  async setReviewStatus(actorId: string, params: ReviewStatusParams): Promise<ReviewStatusResult> {
+    const { volumeId, status, reason, targetUserId } = params;
+    const prisma = this.fastify.prisma;
+
+    if (!targetUserId) {
+      throw new HttpError(400, "Admin must provide 'targetUserId' to act on a review.");
+    }
+
+    if (status === true) {
+      throw new HttpError(403, 'Admins cannot submit reviews on behalf of users via this route. Use Merge.');
+    }
+
+    // REJECT FLOW
+    await prisma.ocrBranch.update({
+      where: {
+        volumeId_userId: {
+          volumeId: volumeId,
+          userId: targetUserId
+        }
+      },
+      data: {
+        isPendingReview: false,
+        rejectionReason: reason || "Rejected by Admin"
+      }
+    });
+
+    return { volumeId, status: false, action: 'rejected' };
   }
 }

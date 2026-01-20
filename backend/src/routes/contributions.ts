@@ -1,4 +1,6 @@
 import { FastifyPluginAsync } from 'fastify';
+import { ReviewStatusParams } from '../types/reviews';
+import { HttpError } from '../types/error';
 import * as similarity from 'string-similarity';
 
 // Define types for request bodies/queries
@@ -42,8 +44,6 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
       ? await fastify.prisma.submission.count({ where: { status: 'pending' } })
       : await fastify.prisma.submission.count({ where: { status: 'pending', userId: userId } });
 
-    // --- OPTIMIZED AGGREGATION ---
-
     // 1. Count AHEAD (User has private patches)
     // Simple check: rootPatchId is NOT NULL on an Admin-owned series
     const aheadCount = await fastify.prisma.ocrBranch.count({
@@ -61,6 +61,69 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
 
     return reply.send({ aheadCount, behindCount, pendingSubmissionsCount });
   });
+
+  /**
+   * GET /api/contributions/rebase
+   * Returns a list of volumes that require user attention (Rebase Inbox).
+   * These volumes have local edits (Ahead) but are missing server updates (Behind).
+   */
+  fastify.get('/rebase', async (request, reply) => {
+    const userId = request.user.id;
+    try {
+      // Use the rebaseQueryExtension we created in Step 1
+      const queue = await fastify.prisma.ocrBranch.getVolumesNeedingRebase(userId);
+      return reply.send(queue);
+    } catch (err) {
+      request.log.error(err);
+      return reply.code(500).send({ message: 'Failed to fetch rebase queue' });
+    }
+  });
+
+  /**
+   * GET /api/contributions/reviews
+   * Fetches review requests using the injected Strategy.
+   */
+  fastify.get(
+    '/reviews',
+    async (request, reply) => {
+      const userId = request.user.id;
+      try {
+        const reviews = await request.accessStrategy.getReviews(userId);
+        return reply.send({ reviews });
+      } catch (err) {
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Failed to fetch reviews';
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ message });
+        }
+        return reply.code(500).send({ message });
+      }
+    }
+  );
+
+  /**
+   * POST /api/contributions/reviews/set
+   * Sets the status of a review request.
+   */
+  fastify.post<{ Body: ReviewStatusParams }>(
+    '/reviews/set',
+    async (request, reply) => {
+      const userId = request.user.id;
+      const params = request.body;
+
+      try {
+        const result = await request.accessStrategy.setReviewStatus(userId, params);
+        return reply.send(result);
+      } catch (err) {
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Failed to update review status';
+        if (err instanceof HttpError) {
+          return reply.code(err.statusCode).send({ message });
+        }
+        return reply.code(500).send({ message });
+      }
+    }
+  );
 
   /**
    * POST /api/contributions/submissions
@@ -113,8 +176,8 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
       const submissions = await fastify.prisma.submission.findMany({
         where: whereClause,
         include: {
-          sourceSeries: { select: { title: true, folderName: true } },
-          targetSeries: { select: { title: true, folderName: true } },
+          sourceSeries: { select: { sortTitle: true } },
+          targetSeries: { select: { sortTitle: true } },
           user: { select: { username: true } },
           _count: { select: { volumes: true } }
         },

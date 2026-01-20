@@ -6,6 +6,7 @@ import {
   RedoResponse,
   PatchOperation
 } from '../../types/history';
+import { ReviewRequestEntry, ReviewStatusParams, ReviewStatusResult } from '../../types/reviews';
 import { IAPIAccessStrategy } from './IAPIAccessStrategy';
 import {
   ensureAdminBranch,
@@ -88,7 +89,8 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
     return {
       id: volume.id,
-      title: volume.title ?? volume.folderName,
+      title: volume.sortTitle,
+      folderName: volume.folderName,
       seriesId: volume.seriesId,
       pageCount: volume.pageCount,
       coverImageName: volume.coverImageName,
@@ -100,6 +102,7 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
         branchVersion: userBranch.version,
         hasAhead,
         hasBehind,
+        isPendingReview: userBranch.isPendingReview
       }
     };
   }
@@ -510,5 +513,135 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
 
   async revert(volumeId: string, patchId: string): Promise<void> {
     throw new HttpError(403, 'Forbidden: Only admins can revert changes.');
+  }
+
+  async getReviews(actorId: string): Promise<ReviewRequestEntry[]> {
+    const prisma = this.fastify.prisma;
+
+    // 1. Fetch User's Pending Reviews
+    const branches = await prisma.ocrBranch.findMany({
+      where: {
+        userId: actorId,
+        isPendingReview: true
+      },
+      include: {
+        volume: {
+          include: { series: true }
+        },
+        rootPatch: true,
+        headPatch: true
+      },
+      orderBy: { updatedAt: 'desc' }
+    });
+
+    if (branches.length === 0) return [];
+
+    // 2. Batch Fetch Admin Status for these volumes
+    // We need to know if the Admin has moved ahead of our fork point
+    const volumeIds = branches.map(b => b.volumeId);
+
+    const adminBranches = await prisma.ocrBranch.findMany({
+      where: {
+        userId: 'admin',
+        volumeId: { in: volumeIds }
+      },
+      include: { headPatch: true }
+    });
+
+    // Create Map: VolumeID -> AdminHeadSequence
+    const adminHeadMap = new Map<string, number>();
+    adminBranches.forEach(ab => {
+      if (ab.headPatch) adminHeadMap.set(ab.volumeId, ab.headPatch.sequence);
+    });
+
+    // 3. Map & Calculate Status
+    return branches.map(b => {
+      const adminHeadSeq = adminHeadMap.get(b.volumeId) || 0;
+
+      // Fork Point Logic:
+      // The user's branch started diverging at (rootPatch.sequence - 1).
+      // If rootPatch is null, they have no edits (technically shouldn't be pending, but handle safely).
+      const forkPointSeq = b.rootPatch ? (b.rootPatch.sequence - 1) : b.headPatch.sequence;
+
+      // IS BEHIND Condition: Admin Head > Fork Point
+      // If true, the admin has pushed new patches that this submission does not include.
+      const isBehind = adminHeadSeq > forkPointSeq;
+
+      return {
+        id: b.id,
+        volumeId: b.volumeId,
+        volumeTitle: b.volume.sortTitle,
+        seriesId: b.volume.seriesId,
+        seriesTitle: b.volume.series.sortTitle,
+        coverImageName: b.volume.coverImageName,
+
+        userId: b.userId,
+        submittedAt: b.updatedAt,
+        submissionNote: b.submissionNote,
+        rejectionReason: b.rejectionReason,
+
+        headPatchId: b.headPatchId,
+        isBehind: isBehind
+      };
+    });
+  }
+
+  async setReviewStatus(actorId: string, params: ReviewStatusParams): Promise<ReviewStatusResult> {
+    const { volumeId, status, reason } = params;
+    const prisma = this.fastify.prisma;
+
+    if (status === true) {
+      // --- SUBMIT FLOW ---
+
+      const branch = await prisma.ocrBranch.findUnique({
+        where: {
+          volumeId_userId: {
+            volumeId: volumeId,
+            userId: actorId
+          }
+        },
+        include: { rootPatch: true }
+      });
+
+      if (!branch) throw new HttpError(404, 'Branch not found');
+      if (!branch.rootPatchId) throw new HttpError(400, 'Nothing to submit (No edits made).');
+
+      const needingRebase = await prisma.ocrBranch.getVolumesNeedingRebase(actorId);
+      if (needingRebase.find(v => v.id === volumeId)) {
+        throw new HttpError(409, 'Cannot submit: Your branch is behind. Please Rebase first.');
+      }
+
+      await prisma.ocrBranch.update({
+        where: {
+          volumeId_userId: {
+            volumeId: volumeId,
+            userId: actorId
+          }
+        },
+        data: {
+          isPendingReview: true,
+          submissionNote: reason || null,
+          rejectionReason: null
+        }
+      });
+
+      return { volumeId, status: true, action: 'submitted' };
+
+    } else {
+      // --- CANCEL FLOW ---
+      await prisma.ocrBranch.update({
+        where: {
+          volumeId_userId: {
+            volumeId: volumeId,
+            userId: actorId
+          }
+        },
+        data: {
+          isPendingReview: false
+        }
+      });
+
+      return { volumeId, status: false, action: 'cancelled' };
+    }
   }
 }

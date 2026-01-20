@@ -1,5 +1,5 @@
 // backend/src/lib/strategies/IAPIAccessStrategy.ts
-
+import { ReviewRequestEntry, ReviewStatusParams, ReviewStatusResult } from '../../types/reviews';
 import { VolumeResponse } from '../../types/library';
 import {
   ApplyPatchResponse,
@@ -11,6 +11,7 @@ import { MokuroData } from '../../types/mokuro';
 import { OcrBranch } from '../../generated/prisma/client';
 
 export interface IAPIAccessStrategy {
+
   // --- Volume State ---
   /**
    * Admin: Returns Master state (hasAhead/hasBehind = false).
@@ -64,4 +65,16 @@ export interface IAPIAccessStrategy {
    * User: Throws 403.
    */
   revert(volumeId: string, patchId: string): Promise<void>;
+
+  /**
+     * Fetch pending review requests.
+     * - User: Returns their own requests.
+     * - Admin: Returns ALL requests.
+     */
+  getReviews(actorId: string): Promise<ReviewRequestEntry[]>;
+
+  /**
+   * Set the review status (Request, Cancel, or Reject).
+   */
+  setReviewStatus(actorId: string, params: ReviewStatusParams): Promise<ReviewStatusResult>;
 }

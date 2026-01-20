@@ -74,6 +74,7 @@ export interface SeriesResponse extends LibraryEntry {
 export interface VolumeResponse {
   id: string;
   title: string;
+  folderName: string;
   seriesId: string;
   pageCount: number;
   coverImageName: string | null;
@@ -85,5 +86,6 @@ export interface VolumeResponse {
     branchVersion: number;
     hasAhead: number;
     hasBehind: number;
+    isPendingReview: boolean;
   };
 }

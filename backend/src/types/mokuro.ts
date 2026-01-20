@@ -33,5 +33,7 @@ export interface MokuroData {
   patch_id?: string;
 
   title?: string;
+  title_uuid?: string;
+  volume?: string;
   pages: MokuroPage[];
 }
