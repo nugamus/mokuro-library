@@ -6,7 +6,7 @@
   // Services & Types
   import { apiFetch } from '$lib/services/api';
   import { user } from '$lib/stores/authStore';
-  import type { Submission } from '$lib/types';
+  import type { SubmissionDetail } from '$lib/types';
 
   // Components
   import CommentThread from '../../components/CommentThread.svelte';
@@ -21,7 +21,7 @@
   import SubmissionHero from '$lib/components/library/SubmissionHero.svelte';
 
   // State
-  let submission = $state<Submission | null>(null);
+  let submission = $state<SubmissionDetail | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
 
@@ -31,7 +31,7 @@
   let showAcceptModal = $state(false);
   let showRejectModal = $state(false);
 
-  const statusColors: Record<Submission['status'], string> = {
+  const statusColors: Record<SubmissionDetail['status'], string> = {
     pending: 'bg-status-warning/20 text-status-warning border-status-warning/30',
     accepted: 'bg-status-success/20 text-status-success border-status-success/30',
     rejected: 'bg-status-danger/20 text-status-danger border-status-danger/30'
@@ -42,7 +42,7 @@
     loading = true;
     error = null;
     try {
-      submission = await apiFetch<Submission>(`/api/contributions/submissions/${id}`);
+      submission = await apiFetch<SubmissionDetail>(`/api/contributions/submissions/${id}`);
     } catch (e) {
       console.error('Failed to load submission:', e);
       error = e instanceof Error ? e.message : 'Failed to load submission';

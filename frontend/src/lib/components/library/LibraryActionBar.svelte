@@ -6,29 +6,57 @@
   import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
   import { onMount, onDestroy } from 'svelte';
   import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
-  import type { Series } from '$lib/types';
+  import type { Series, Volume } from '$lib/types';
   import SelectionMoreMenu from '$lib/components/menu/SelectionMoreMenu.svelte';
   import BulkScrapePanel from '$lib/components/modals/scraping/BulkScrapePanel.svelte';
+  import SubmitReviewModal from '$lib/components/modals/contributions/SubmitReviewModal.svelte';
   import { apiCache } from '$lib/utils/caching/apiCache';
+
+  // Review workflow
+  import { GitPullRequest, GitMerge } from 'lucide-svelte';
+  import { setReviewStatus } from '$lib/services/reviewApi';
+  import { toastStore } from '$lib/stores/toastStore.svelte';
 
   let {
     type = 'series',
     onRename,
     onRefresh,
     onSelectAll,
-    onSubmit
+    onSubmit,
+    seriesOwnerId
   } = $props<{
     type: 'series' | 'volume';
     onRename: () => void;
     onRefresh: () => void;
     onSelectAll?: () => void;
     onSubmit?: () => void;
+    seriesOwnerId?: string | null;
   }>();
 
   const SCRAPE_LIMIT = 100;
   let isProcessing = $state(false);
   let showScrapeModal = $state(false);
+  let showReviewModal = $state(false);
   let selectionCount = $derived(uiState.selection.size);
+
+  // --- Review submission ---
+  const singleSelection = $derived(
+    selectionCount === 1 ? Array.from(uiState.selection.values())[0] : null
+  );
+
+  const versionInfo = $derived(
+    singleSelection && 'versionInfo' in singleSelection
+      ? (singleSelection as any).versionInfo
+      : null
+  );
+
+  const canSubmitReview = $derived(
+    type === 'volume' &&
+      versionInfo &&
+      versionInfo.hasAhead > 0 &&
+      !versionInfo.isPendingReview &&
+      seriesOwnerId === 'admin'
+  );
 
   // --- Hotkeys ---
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -36,7 +64,7 @@
       if (showScrapeModal) return;
       if (uiState.isSelectionMode) uiState.exitSelectionMode();
     }
-    // Ctrl+A support
+
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
       if (uiState.isSelectionMode && onSelectAll) {
         e.preventDefault();
@@ -54,16 +82,12 @@
   });
 
   // --- Actions ---
-
-  // --- 1. Batch ZIP Logic (Ticket Pattern) ---
   const executeBatchDownload = async (includeImages: boolean) => {
     if (selectionCount === 0) return;
     const ids = Array.from(uiState.selection.keys());
 
     try {
       isProcessing = true;
-
-      // A. Request Ticket
       const response = await apiFetch('/api/export/batch/ticket', {
         method: 'POST',
         body: {
@@ -72,10 +96,7 @@
           options: { include_images: includeImages }
         }
       });
-
       const { ticket } = response as { ticket: string };
-
-      // B. Trigger Download via Link
       triggerDownload(`/api/export/batch?ticket=${ticket}`);
     } catch (e) {
       console.error(e);
@@ -85,24 +106,19 @@
     }
   };
 
-  // --- 2. Single PDF Logic (Legacy GET) ---
   const executePdfDownload = () => {
     const id = Array.from(uiState.selection.keys())[0];
     if (!id) return;
-
-    // Use existing GET endpoint for single PDF
     triggerDownload(`/api/export/${type}/${id}/pdf`);
     uiState.exitSelectionMode();
   };
 
-  // --- 3. Menu Trigger ---
   const openDownloadMenu = (e: MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     const target = e.currentTarget as HTMLButtonElement;
     const rect = target.getBoundingClientRect();
 
-    // Define Menu Options
     const menuItems: MenuOption[] = [
       {
         label: `Download ZIP ${selectionCount > 1 ? '(Batch)' : ''}`,
@@ -114,7 +130,6 @@
       }
     ];
 
-    // Conditionally add PDF for Single Selection
     if (selectionCount === 1) {
       menuItems.push({ separator: true });
       menuItems.push({
@@ -123,20 +138,17 @@
       });
     }
 
-    // Open Menu (Use rect.top to open UPWARDS since bar is at bottom)
-    // We subtract a small buffer to ensure it doesn't overlap the cursor/button weirdly
     contextMenu.open(rect.left, rect.top, menuItems, {}, { anchorElement: target, yAlign: 'top' });
   };
+
   const handleDelete = () => {
     const ids = Array.from(uiState.selection.keys());
-
     confirmation.open(
       `Delete ${selectionCount} item${selectionCount > 1 ? 's' : ''}?`,
       'This action cannot be undone. Files and progress will be permanently removed.',
       async () => {
         try {
           isProcessing = true;
-          // apiFetch automatically handles JSON.stringify for objects
           await apiFetch('/api/library/batch/delete', {
             method: 'POST',
             body: { ids, type }
@@ -156,23 +168,26 @@
     );
   };
 
-  // Scrape Setup (The New Logic)
   async function startScrapeSession() {
     if (type !== 'series') return;
-
-    // We cast to Series[] because we checked type === 'series' above
     const selectedItems = Array.from(uiState.selection.values()) as Series[];
-
-    // Initialize the state machine
     scrapingState.initSession(selectedItems);
-
-    // Open the UI (The Panel will auto-start the queue on mount)
     showScrapeModal = true;
   }
 
   function handleScrapeClose() {
     showScrapeModal = false;
-    // Refresh library to show new covers/titles/organized status
+    onRefresh();
+    uiState.exitSelectionMode();
+  }
+
+  function handleOpenReviewModal() {
+    if (canSubmitReview) {
+      showReviewModal = true;
+    }
+  }
+
+  function handleReviewSuccess() {
     onRefresh();
     uiState.exitSelectionMode();
   }
@@ -260,7 +275,6 @@
               <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
               <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
               <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"></path>
-
               <g>
                 <circle cx="16" cy="16" r="5" fill="white" stroke="currentColor"></circle>
                 <line x1="19.5" y1="19.5" x2="23" y2="23"></line>
@@ -295,6 +309,32 @@
         {/if}
 
         {#if selectionCount === 1}
+          {#if canSubmitReview}
+            <button
+              onclick={handleOpenReviewModal}
+              disabled={isProcessing}
+              class="p-2.5 rounded-xl hover:bg-accent/10 text-theme-secondary hover:text-accent transition-colors disabled:opacity-50 relative group"
+              title={`Submit Edits (+${versionInfo?.hasAhead || 0})`}
+            >
+              <GitPullRequest class="w-5 h-5" />
+              {#if versionInfo?.hasAhead}
+                <span class="absolute top-1 right-1 flex h-2.5 w-2.5">
+                  <span
+                    class="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent opacity-75"
+                  ></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-accent"></span>
+                </span>
+              {/if}
+            </button>
+          {:else if versionInfo?.hasBehind && versionInfo.hasBehind > 0 && !versionInfo.isPendingReview}
+            <div
+              class="p-2.5 text-status-warning opacity-50 cursor-help"
+              title={`Behind by ${versionInfo.hasBehind} commits`}
+            >
+              <GitMerge class="w-5 h-5" />
+            </div>
+          {/if}
+
           <button
             onclick={onRename}
             disabled={isProcessing}
@@ -375,4 +415,12 @@
 
 {#if showScrapeModal}
   <BulkScrapePanel provider={scrapingState.preferredProvider} onClose={handleScrapeClose} />
+{/if}
+
+{#if showReviewModal && singleSelection}
+  <SubmitReviewModal
+    volume={singleSelection as Volume}
+    on_close={() => (showReviewModal = false)}
+    onSuccess={handleReviewSuccess}
+  />
 {/if}

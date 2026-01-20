@@ -34,10 +34,12 @@
 
   const handleOverlayClick = (e: MouseEvent) => {
     if (e.target !== e.currentTarget) return;
+    const activeElement = document.activeElement;
     if (readerState.ocrMode === 'TEXT') {
       readerState.unsetFocusedLine();
       readerState.setOcrMode('BOX');
     }
+    if (activeElement instanceof HTMLElement) activeElement.blur();
     const selection = window.getSelection();
     if (selection) selection.removeAllRanges();
   };

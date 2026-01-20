@@ -1,5 +1,5 @@
 import type {
-  VolumeReaderResponse,
+  Volume,
   MokuroData,
   MokuroPage,
   UserProgress,
@@ -35,7 +35,7 @@ interface PatchTask {
 
 class ReaderState {
   // --- Core State ---
-  volume = $state<VolumeReaderResponse | null>(null);
+  volume = $state<Volume | null>(null);
   currentPageIndex = $state(0);
   isLoading = $state(true);
   error = $state<string | null>(null);
@@ -280,11 +280,11 @@ class ReaderState {
   }
 
   private async loadVolumeData(volumeId: string, isPreview = false) {
-    const promises: [Promise<VolumeReaderResponse>, Promise<UserProgress | undefined>] = [
-      apiFetch<VolumeReaderResponse>(`/api/library/volume/${volumeId}`, {
+    const promises: [Promise<Volume>, Promise<UserProgress | undefined>] = [
+      apiFetch<Volume>(`/api/library/volume/${volumeId}`, {
         cache: true,
         onStaleRefetch: (data) => {
-          if (this.canLazyServe) this.volume = data as VolumeReaderResponse;
+          if (this.canLazyServe) this.volume = data as Volume;
         }
       }),
       isPreview
@@ -338,6 +338,18 @@ class ReaderState {
         document.documentElement.style.setProperty('--reader-invert', `${inv}%`);
         document.documentElement.style.setProperty('--reader-invert-brightness', `${invBright}%`);
         document.documentElement.style.setProperty('--reader-red-shift', `${redShift}%`);
+      });
+
+
+      $effect(() => {
+        // Auto-complete volume when reaching the last page
+        if (
+          this.autoCompleteVolume &&
+          this.mokuroStagingData &&
+          this.visiblePages[this.visiblePages.length - 1].index === this.mokuroStagingData.pages.length - 1
+        ) {
+          this.markVolumeComplete();
+        }
       });
     });
   }
@@ -600,7 +612,7 @@ class ReaderState {
     return this.mokuroData?.pages.length ?? 0;
   }
 
-  get visiblePages(): (MokuroPage & { index: number })[] {
+  visiblePages: (MokuroPage & { index: number })[] = $derived.by(() => {
     if (!this.mokuroStagingData) return [];
 
     const page1Index = this.currentPageIndex;
@@ -640,12 +652,10 @@ class ReaderState {
       ].filter(Boolean) as (MokuroPage & { index: number })[];
     }
     return [];
-  }
+  });
 
   get hasNext() {
-    const isSingle = this.layoutMode === 'single';
-    const isDouble = this.layoutMode === 'double';
-    return (isSingle && this.currentPageIndex < this.totalPages - 1) || (isDouble && this.currentPageIndex < this.totalPages - 2);
+    return this.currentPageIndex < this.totalPages - 1;
   }
   get hasPrev() {
     return this.currentPageIndex > 0;
@@ -667,15 +677,6 @@ class ReaderState {
     }
 
     this.currentPageIndex = Math.min(this.totalPages - 1, this.currentPageIndex + jump);
-
-    // Auto-complete volume when reaching the last page
-    if (
-      this.autoCompleteVolume &&
-      this.volume?.id &&
-      !this.hasNext
-    ) {
-      this.markVolumeComplete();
-    }
   }
 
   prevPage() {

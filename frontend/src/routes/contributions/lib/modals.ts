@@ -54,7 +54,7 @@ export function openRebaseModal(volume: VolumeContribution, seriesTitle: string)
   return {
     isOpen: true,
     volumeId: volume.id,
-    volumeTitle: volume.title || volume.folderName,
+    volumeTitle: volume.title,
     seriesTitle,
     conflicts: sampleConflicts,
     currentConflictIndex: 0
@@ -73,6 +73,6 @@ export function openResetModal(volume: VolumeContribution): ResetModalState {
   return {
     isOpen: true,
     volumeId: volume.id,
-    volumeTitle: volume.title || volume.folderName
+    volumeTitle: volume.title
   };
 }

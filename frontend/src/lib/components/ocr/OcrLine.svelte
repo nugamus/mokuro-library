@@ -236,6 +236,7 @@
   };
   const handleBlur = () => {
     // Sync local -> parent (upsync)
+    console.log('blurring');
     if (hasPendingInputChange) {
       let innerText = textHoldingElement?.innerText;
       onLineChange(innerText ?? '');

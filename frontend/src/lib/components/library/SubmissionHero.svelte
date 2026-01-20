@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Submission } from '$lib/types';
+  import type { SubmissionDetail } from '$lib/types';
   import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
   import Badge from '$lib/components/controls/Badge.svelte';
   import { SvelteDate } from 'svelte/reactivity';
@@ -10,7 +10,7 @@
     submission,
     actions
   }: {
-    submission: Submission;
+    submission: SubmissionDetail;
     actions?: import('svelte').Snippet;
   } = $props();
 

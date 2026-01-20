@@ -10,18 +10,25 @@ import {
 const createVolume = (
   id: string,
   seriesId: string,
-  hasAhead = false,
-  hasBehind = false
+  hasAhead = 0,
+  hasBehind = 0
 ): VolumeContribution => ({
   id,
   seriesId,
   title: `Volume ${id}`,
-  sortTitle: `Volume ${id}`,
   folderName: `volume-${id}`,
   pageCount: 10,
   coverImageName: null,
-  createdAt: '2025-01-01T00:00:00Z',
   progress: [],
+  mokuroData: { pages: [] },
+  versionInfo: {
+    branchId: `branch-${id}`,
+    headPatchId: `head-${id}`,
+    branchVersion: 0,
+    hasAhead,
+    hasBehind,
+    isPendingReview: false
+  },
   hasAhead,
   hasBehind,
   userPatchCount: 0,

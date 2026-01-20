@@ -8,16 +8,23 @@ import {
   getVolumesNeedingRebase
 } from '../lib/utils';
 
-const createVolume = (id: string): Volume => ({
+const createVolume = (id: string, hasAhead = 0, hasBehind = 0): Volume => ({
   id,
   seriesId: 'series-1',
   title: id,
-  sortTitle: id,
-  folderName: id,
+  folderName: `folder-${id}`,
   pageCount: 10,
   coverImageName: null,
-  createdAt: '2025-01-01T00:00:00Z',
-  progress: []
+  progress: [],
+  mokuroData: { pages: [] },
+  versionInfo: {
+    branchId: `branch-${id}`,
+    headPatchId: `head-${id}`,
+    branchVersion: 0,
+    hasAhead,
+    hasBehind,
+    isPendingReview: false
+  }
 });
 
 const createSeries = (volumes: Volume[]): Series => ({
@@ -30,16 +37,29 @@ const createSeries = (volumes: Volume[]): Series => ({
   folderName: 'series-one',
   description: null,
   coverPath: null,
+  createdAt: new Date('2025-01-01T00:00:00Z'),
   bookmarked: false,
   organized: false,
   status: 0,
-  updatedAt: '2025-01-01T00:00:00Z',
+  updatedAt: new Date('2025-01-01T00:00:00Z'),
+  ownerId: 'admin',
+  lastReadAt: new Date('2025-01-01T00:00:00Z'),
+  isOfficial: true,
+  canEdit: true,
+  totalPageCount: volumes.reduce((sum, volume) => sum + volume.pageCount, 0),
+  totalVolumeCount: volumes.length,
+  readPageCount: 0,
+  completedVolumeCount: 0,
   volumes
 });
 
 describe('contributions utils', () => {
   it('builds contribution series and filter counts', () => {
-    const volumes = [createVolume('vol-a'), createVolume('vol-b'), createVolume('vol-c')];
+    const volumes = [
+      createVolume('vol-a', 3, 2),
+      createVolume('vol-b', 0, 1),
+      createVolume('vol-c', 1, 0)
+    ];
     const series = createSeries(volumes);
 
     const result = buildSeriesContributions([series]);
@@ -50,14 +70,14 @@ describe('contributions utils', () => {
 
     const [contributionSeries] = result.seriesList;
     expect(contributionSeries.volumes).toHaveLength(3);
-    expect(contributionSeries.volumes[0].hasAhead).toBe(true);
-    expect(contributionSeries.volumes[0].hasBehind).toBe(true);
-    expect(contributionSeries.volumes[2].hasAhead).toBe(true);
-    expect(contributionSeries.volumes[2].hasBehind).toBe(false);
+    expect(contributionSeries.volumes[0].hasAhead).toBe(3);
+    expect(contributionSeries.volumes[0].hasBehind).toBe(2);
+    expect(contributionSeries.volumes[2].hasAhead).toBe(1);
+    expect(contributionSeries.volumes[2].hasBehind).toBe(0);
   });
 
   it('filters series by ahead/behind state', () => {
-    const volumes = [createVolume('vol-a')];
+    const volumes = [createVolume('vol-a', 2, 1)];
     const series = createSeries(volumes);
     const result = buildSeriesContributions([series]);
 
@@ -69,7 +89,11 @@ describe('contributions utils', () => {
   });
 
   it('collects volumes needing rebase', () => {
-    const volumes = [createVolume('vol-a'), createVolume('vol-b'), createVolume('vol-c')];
+    const volumes = [
+      createVolume('vol-a', 1, 2),
+      createVolume('vol-b', 0, 1),
+      createVolume('vol-c', 0, 0)
+    ];
     const series = createSeries(volumes);
     const result = buildSeriesContributions([series]);
 

@@ -20,12 +20,14 @@
   import ToastContainer from '$lib/components/feedback/ToastContainer.svelte';
   import KeyboardShortcutsModal from '$lib/components/modals/KeyboardShortcutsModal.svelte';
   import { apiCache } from '$lib/utils/caching/apiCache';
+  import { rebaseState } from '$lib/states/rebase/RebaseState.svelte';
 
   // Lazy load modals that are less frequently used
   const loadUploadModal = () => import('$lib/components/modals/UploadModal.svelte');
   const loadStatisticsModal = () => import('$lib/components/modals/StatisticsModal.svelte');
   const loadAboutModal = () => import('$lib/components/modals/AboutModal.svelte');
   const loadAppearanceModal = () => import('$lib/components/modals/AppearanceModal.svelte');
+  const loadRebaseModal = () => import('$lib/components/modals/rebase/RebaseManagerModal.svelte');
 
   // UploadModal has an extra 'onUploadSuccess' prop
   type UploadModalProps = {
@@ -47,6 +49,7 @@
   let StatisticsModal = $state<Component<BaseModalProps> | null>(null);
   let AboutModal = $state<Component<BaseModalProps> | null>(null);
   let AppearanceModal = $state<Component<BaseModalProps> | null>(null);
+  let RebaseManagerModal = $state<Component<{}> | null>(null);
   let didPrefetch = $state(false);
 
   // Load modals when needed
@@ -71,6 +74,12 @@
   $effect(() => {
     if (uiState.isAppearanceOpen && !AppearanceModal) {
       loadAppearanceModal().then((m) => (AppearanceModal = m.default));
+    }
+  });
+
+  $effect(() => {
+    if (rebaseState.isModalOpen && !RebaseManagerModal) {
+      loadRebaseModal().then((m) => (RebaseManagerModal = m.default));
     }
   });
 
@@ -191,6 +200,10 @@
         isOpen={uiState.isAppearanceOpen}
         onClose={() => (uiState.isAppearanceOpen = false)}
       />
+    {/if}
+
+    {#if rebaseState.isModalOpen && RebaseManagerModal}
+      <RebaseManagerModal />
     {/if}
   {/if}
 

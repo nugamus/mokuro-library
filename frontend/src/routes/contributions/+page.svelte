@@ -1,273 +1,240 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { user } from '$lib/stores/authStore';
-  import { goto } from '$app/navigation';
-  import { resolve } from '$app/paths';
-  import { browser } from '$app/environment';
-  import { sampleStats } from './lib/constants';
-  import { ContributionsState } from './state/ContributionsState.svelte.ts';
+  import { fade } from 'svelte/transition';
+  import { apiFetch } from '$lib/services/api';
+  import { rebaseState } from '$lib/states/rebase/RebaseState.svelte';
+  import { user as authUser } from '$lib/stores/authStore';
+
+  import {
+    Inbox,
+    ClipboardList,
+    RefreshCw,
+    PartyPopper,
+    GitMerge,
+    GitPullRequest
+  } from 'lucide-svelte';
+
+  // Components
   import ContributionsHeader from './components/ContributionsHeader.svelte';
   import ActivityTimeline from './components/ActivityTimeline.svelte';
-  import DevelopmentNotice from './components/DevelopmentNotice.svelte';
-  import ErrorState from './components/ErrorState.svelte';
-  import FilterBar from './components/FilterBar.svelte';
+  import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
   import LoadingState from './components/LoadingState.svelte';
-  import EmptyState from './components/EmptyState.svelte';
-  import SeriesGrid from './components/SeriesGrid.svelte';
-  import ResetModal from './components/modals/ResetModal.svelte';
-  import RebaseModal from './components/modals/RebaseModal.svelte';
-  import DiffViewerModal from './components/modals/DiffViewerModal.svelte';
-  import SubmitVolumesModal from './components/modals/SubmitVolumesModal.svelte';
-  import SubmissionsList from './components/SubmissionsList.svelte';
-  import AdminQueue from './components/AdminQueue.svelte';
+  import UserQueue from '$lib/components/layout/contributions/UserQueue.svelte';
+  import AdminQueue from '$lib/components/layout/contributions/AdminQueue.svelte';
   import BulkRejectModal from './components/modals/BulkRejectModal.svelte';
-  import UserSubmissionPanel from './components/UserSubmissionPanel.svelte';
-  import AdminStats from './components/AdminStats.svelte';
-  import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+  import UserReviewRequestList from '$lib/components/layout/contributions/UserReviewRequestList.svelte';
+  import AdminReviewRequestList from '$lib/components/layout/contributions/AdminReviewRequestList.svelte';
 
-  const contributionsState = new ContributionsState();
+  import { sampleStats } from './lib/constants';
+  import type { RebaseQueueEntry } from '$lib/types';
 
-  let activeTab = $state<'my-contributions' | 'review-queue'>('my-contributions');
-  let userSubTab = $state<'ocr-edits' | 'submit-manga' | 'my-submissions'>('ocr-edits');
-  let showSubmitModal = $state(false);
-  let showBulkRejectModal = $state(false);
-  let bulkRejectSubmissionIds = $state<string[]>([]);
-  let adminQueueRef: AdminQueue | undefined = $state();
+  // --- Local State ---
+  let isLoading = $state(true);
+  let rebaseQueue = $state<RebaseQueueEntry[]>([]);
+  let showActivityTimeline = $state(false);
+  let activeTab = $state<'rebase' | 'submissions' | 'reviews'>('rebase');
+  let showRejectModal = $state(false);
+  let rejectIds = $state<string[]>([]);
+  let adminQueue: { reload: () => void } | null = $state(null);
 
-  // Determine if user is admin
-  const isAdmin = $derived($user?.id === 'admin');
+  // Admin check
+  let isAdmin = $derived($authUser?.id === 'admin' || $authUser?.role === 'admin');
+
+  // --- Actions ---
+  const loadQueue = async () => {
+    isLoading = true;
+    try {
+      const res = await apiFetch<RebaseQueueEntry[]>('/api/contributions/rebase');
+      rebaseQueue = res || [];
+    } catch (err) {
+      console.error('Failed to load queue:', err);
+    } finally {
+      isLoading = false;
+    }
+  };
+
+  const handleRebaseAll = () => {
+    if (rebaseQueue.length === 0) return;
+    const ids = rebaseQueue.map((v) => v.id);
+    rebaseState.open(ids);
+  };
+
+  const getEntryData = (task: RebaseQueueEntry) => ({
+    id: task.id,
+    title: task.title,
+    folderName: task.title,
+    coverUrl: task.coverImageName
+      ? `/api/files/volume/${task.id}/image/${task.coverImageName}`
+      : null
+  });
 
   onMount(() => {
-    uiState.setSubtext('contributions', 'Contributions');
-    contributionsState.mount();
-  });
-
-  $effect(() => {
-    if (browser && $user === null) goto(resolve('/login', {}));
-  });
-
-  $effect(() => {
-    if (browser) {
-      contributionsState.persistExpanded();
+    if (isAdmin) {
+      activeTab = 'submissions';
+      return;
     }
+    loadQueue();
   });
-
-  // Reset to my-contributions tab if non-admin tries to access review queue
-  $effect(() => {
-    if (!isAdmin && activeTab === 'review-queue') {
-      activeTab = 'my-contributions';
-    }
-  });
-
-  // Handle bulk reject modal
-  function handleOpenBulkReject(ids: string[]) {
-    bulkRejectSubmissionIds = ids;
-    showBulkRejectModal = true;
-  }
-
-  function handleBulkRejectComplete() {
-    showBulkRejectModal = false;
-    bulkRejectSubmissionIds = [];
-    // Reload admin queue
-    adminQueueRef?.reload();
-  }
 </script>
 
-<div class="max-w-7xl mx-auto p-4">
-  <DevelopmentNotice />
-
+<div class="max-w-5xl mx-auto p-4 space-y-6 pb-20">
   <ContributionsHeader
     {sampleStats}
-    activityGraph={contributionsState.activityGraph}
-    showQuickActions={Boolean(
-      contributionsState.lastContinueVolume || contributionsState.recentlyEdited.length > 0
-    )}
-    volumesNeedingRebase={contributionsState.volumesNeedingRebase}
-    activityHistoryCount={contributionsState.activityHistory.length}
-    selectedItemsCount={contributionsState.selectedItems.size}
-    onRebaseAll={() => contributionsState.handleRebaseAll()}
-    onToggleActivityTimeline={() =>
-      (contributionsState.showActivityTimeline = !contributionsState.showActivityTimeline)}
-    onBatchRebase={() => contributionsState.handleBatchRebase()}
-    onExportEdits={() => contributionsState.handleExportEdits()}
+    activityGraph={[]}
+    showQuickActions={true}
+    volumesNeedingRebase={rebaseQueue}
+    activityHistoryCount={0}
+    selectedItemsCount={0}
+    onRebaseAll={handleRebaseAll}
+    onToggleActivityTimeline={() => (showActivityTimeline = !showActivityTimeline)}
+    onBatchRebase={() => {}}
+    onExportEdits={() => {}}
   />
 
-  <!-- Activity Timeline Panel -->
-  {#if contributionsState.showActivityTimeline && contributionsState.activityHistory.length > 0}
-    <ActivityTimeline
-      activityHistory={contributionsState.activityHistory}
-      onClose={() => (contributionsState.showActivityTimeline = false)}
-      onViewVolume={(volumeId) => contributionsState.handleViewVolume(volumeId)}
+  <div class="flex items-center gap-6 border-b border-theme-border overflow-x-auto">
+    {#if !isAdmin}
+      <button
+        onclick={() => (activeTab = 'rebase')}
+        class="pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap
+        {activeTab === 'rebase'
+          ? 'border-accent text-accent'
+          : 'border-transparent text-theme-secondary hover:text-theme-primary'}"
+      >
+        <Inbox class="w-4 h-4" />
+        <span>Needs Attention</span>
+        {#if rebaseQueue.length > 0}
+          <span
+            class="px-1.5 py-0.5 rounded-full bg-status-warning text-white text-[10px] leading-none"
+          >
+            {rebaseQueue.length}
+          </span>
+        {/if}
+      </button>
+    {/if}
+
+    <button
+      onclick={() => (activeTab = 'submissions')}
+      class="pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap
+      {activeTab === 'submissions'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-theme-secondary hover:text-theme-primary'}"
+    >
+      <ClipboardList class="w-4 h-4" />
+      <span>Asset Submissions</span>
+    </button>
+
+    <button
+      onclick={() => (activeTab = 'reviews')}
+      class="pb-3 text-sm font-bold border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap
+      {activeTab === 'reviews'
+        ? 'border-accent text-accent'
+        : 'border-transparent text-theme-secondary hover:text-theme-primary'}"
+    >
+      <GitPullRequest class="w-4 h-4" />
+      <span>Edit Reviews</span>
+    </button>
+  </div>
+
+  {#if !isAdmin && activeTab === 'rebase'}
+    <section class="min-h-[300px]" transition:fade={{ duration: 200 }}>
+      <div class="flex items-center justify-end mb-4">
+        <button
+          class="text-xs text-theme-secondary hover:text-theme-primary transition-colors flex items-center gap-1.5"
+          onclick={loadQueue}
+        >
+          <RefreshCw class="w-3 h-3" />
+          Refresh
+        </button>
+      </div>
+
+      {#if isLoading}
+        <LoadingState />
+      {:else if rebaseQueue.length === 0}
+        <div
+          class="py-16 text-center bg-theme-surface/30 rounded-2xl border-2 border-dashed border-theme-border flex flex-col items-center"
+        >
+          <PartyPopper class="w-12 h-12 mb-4 text-theme-tertiary" />
+          <h3 class="font-bold text-theme-primary text-lg mb-1">All Caught Up!</h3>
+          <p class="text-sm text-theme-secondary max-w-xs mx-auto">
+            You have no conflicting edits.
+          </p>
+        </div>
+      {:else}
+        <div class="grid grid-cols-1 gap-3">
+          {#each rebaseQueue as task (task.id)}
+            <div>
+              <LibraryEntry
+                entry={getEntryData(task)}
+                type="volume"
+                viewMode="list"
+                progress={{ percent: 0, isRead: false, hideBar: true }}
+                mainStat={`Ahead: +${task.versionInfo.hasAhead}`}
+                subStat={`Behind: -${task.versionInfo.hasBehind}`}
+              >
+                {#snippet listActions()}
+                  <button
+                    class="px-4 py-2 bg-status-warning text-white text-sm font-bold rounded-lg shadow-lg shadow-status-warning/20 hover:bg-status-warning-hover transition-transform active:scale-95 flex items-center gap-2"
+                    onclick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      rebaseState.open([task.id]);
+                    }}
+                  >
+                    <GitMerge class="w-4 h-4" />
+                    Rebase
+                  </button>
+                {/snippet}
+              </LibraryEntry>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </section>
+  {:else if activeTab === 'submissions'}
+    <div transition:fade={{ duration: 200 }}>
+      {#if isAdmin}
+        <AdminQueue
+          bind:this={adminQueue}
+          onOpenBulkReject={(selectedIds) => {
+            rejectIds = selectedIds;
+            showRejectModal = true;
+          }}
+        />
+      {:else}
+        <UserQueue />
+      {/if}
+    </div>
+  {:else if activeTab === 'reviews'}
+    <div transition:fade={{ duration: 200 }}>
+      <div class="mb-4 text-sm text-theme-tertiary">
+        {#if isAdmin}
+          Review pending edits from contributors.
+        {:else}
+          Track the status of text edits you have submitted for review.
+        {/if}
+      </div>
+
+      {#if isAdmin}
+        <AdminReviewRequestList />
+      {:else}
+        <UserReviewRequestList />
+      {/if}
+    </div>
+  {/if}
+
+  {#if showRejectModal}
+    <BulkRejectModal
+      bind:isOpen={showRejectModal}
+      bind:submissionIds={rejectIds}
+      onComplete={() => adminQueue?.reload()}
     />
   {/if}
 
-  <!-- Tab Navigation -->
-  <div class="flex items-center gap-2 border-b border-theme-border mb-6 mt-6">
-    <button
-      onclick={() => (activeTab = 'my-contributions')}
-      class="px-4 py-2 font-semibold text-sm transition-all relative {activeTab ===
-      'my-contributions'
-        ? 'text-accent border-b-2 border-accent'
-        : 'text-theme-secondary hover:text-theme-primary'}"
-    >
-      My Contributions
-    </button>
-
-    {#if isAdmin}
-      <button
-        onclick={() => (activeTab = 'review-queue')}
-        class="px-4 py-2 font-semibold text-sm transition-all relative {activeTab === 'review-queue'
-          ? 'text-accent border-b-2 border-accent'
-          : 'text-theme-secondary hover:text-theme-primary'}"
-      >
-        Review Queue
-      </button>
-    {/if}
-
-    <div class="flex-1"></div>
-  </div>
-
-  <!-- Tab Content -->
-  {#if activeTab === 'my-contributions'}
-    <!-- User Sub-Tabs -->
-    <div class="flex items-center gap-2 border-b border-theme-border/50 mb-4">
-      <button
-        onclick={() => (userSubTab = 'ocr-edits')}
-        class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab === 'ocr-edits'
-          ? 'text-accent border-b-2 border-accent'
-          : 'text-theme-tertiary hover:text-theme-primary'}"
-      >
-        ✏️ OCR Edits
-      </button>
-      <button
-        onclick={() => (userSubTab = 'submit-manga')}
-        class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab ===
-        'submit-manga'
-          ? 'text-accent border-b-2 border-accent'
-          : 'text-theme-tertiary hover:text-theme-primary'}"
-      >
-        📤 Submit Manga
-      </button>
-      <button
-        onclick={() => (userSubTab = 'my-submissions')}
-        class="px-3 py-2 font-semibold text-xs transition-all relative {userSubTab ===
-        'my-submissions'
-          ? 'text-accent border-b-2 border-accent'
-          : 'text-theme-tertiary hover:text-theme-primary'}"
-      >
-        📋 My Submissions
-      </button>
-    </div>
-
-    <!-- User Sub-Tab Content -->
-    {#if userSubTab === 'ocr-edits'}
-      <FilterBar
-        activeFilter={contributionsState.activeFilter}
-        filterCounts={contributionsState.filterCounts}
-        onFilterChange={(filter) => (contributionsState.activeFilter = filter)}
-      />
-
-      <!-- OCR Sync Grid -->
-      {#if contributionsState.isLoading}
-        <LoadingState />
-      {:else if contributionsState.error}
-        <ErrorState message={contributionsState.error} />
-      {:else if contributionsState.filteredSeries.length === 0}
-        <EmptyState activeFilter={contributionsState.activeFilter} />
-      {:else}
-        <SeriesGrid
-          seriesList={contributionsState.filteredSeries}
-          expandedSeries={contributionsState.expandedSeries}
-          selectedItems={contributionsState.selectedItems}
-          isSelectionMode={contributionsState.isSelectionMode}
-          onToggleSeries={(e, seriesId) => contributionsState.toggleSeries(e, seriesId)}
-          onSeriesLongPress={(seriesId) => contributionsState.handleSeriesLongPress(seriesId)}
-          onSeriesSelect={(e, seriesId) => contributionsState.handleSeriesSelect(e, seriesId)}
-          onVolumeLongPress={(volumeId) => contributionsState.handleVolumeLongPress(volumeId)}
-          onVolumeSelect={(e, volumeId) => contributionsState.handleVolumeSelect(e, volumeId)}
-          onViewVolume={(volumeId) => contributionsState.handleViewVolume(volumeId)}
-          onRebase={(e, volume, seriesTitle) =>
-            contributionsState.handleRebase(e, volume, seriesTitle)}
-          onReset={(e, volume) => contributionsState.handleReset(e, volume)}
-          onOpenDiffViewer={(volume) => contributionsState.openDiffViewer(volume)}
-        />
-      {/if}
-    {:else if userSubTab === 'submit-manga'}
-      <!-- Submit Manga Panel -->
-      <UserSubmissionPanel />
-    {:else if userSubTab === 'my-submissions'}
-      <!-- My Submissions List -->
-      <SubmissionsList />
-    {/if}
-  {:else if activeTab === 'review-queue'}
-    <!-- Tab 2: Admin Review Queue -->
-    <AdminStats />
-    <AdminQueue bind:this={adminQueueRef} onOpenBulkReject={handleOpenBulkReject} />
+  {#if showActivityTimeline}
+    <ActivityTimeline
+      activityHistory={[]}
+      onClose={() => (showActivityTimeline = false)}
+      onViewVolume={() => {}}
+    />
   {/if}
 </div>
-
-<ResetModal
-  isOpen={contributionsState.resetModal.isOpen}
-  volumeTitle={contributionsState.resetModal.volumeTitle}
-  isResetting={contributionsState.isResetting}
-  onClose={() => (contributionsState.resetModal.isOpen = false)}
-  onConfirm={() => contributionsState.confirmReset()}
-/>
-
-<RebaseModal
-  isOpen={contributionsState.rebaseModal.isOpen}
-  rebaseModal={contributionsState.rebaseModal}
-  onAbort={() => contributionsState.abortRebase()}
-  onResolve={(resolution) => contributionsState.resolveConflict(resolution)}
-/>
-
-<DiffViewerModal
-  isOpen={contributionsState.showDiffViewer}
-  volume={contributionsState.selectedDiffVolume}
-  onClose={() => (contributionsState.showDiffViewer = false)}
-  onStartRebase={() => {
-    contributionsState.showDiffViewer = false;
-    alert('Would start rebase process for this volume');
-  }}
-/>
-
-<SubmitVolumesModal bind:isOpen={showSubmitModal} />
-
-<BulkRejectModal
-  bind:isOpen={showBulkRejectModal}
-  bind:submissionIds={bulkRejectSubmissionIds}
-  onComplete={handleBulkRejectComplete}
-/>
-
-<style>
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateY(20px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  @keyframes expandDown {
-    from {
-      opacity: 0;
-      max-height: 0;
-    }
-    to {
-      opacity: 1;
-      max-height: 3000px;
-    }
-  }
-
-  @keyframes fadeIn {
-    from {
-      opacity: 0;
-    }
-    to {
-      opacity: 1;
-    }
-  }
-</style>

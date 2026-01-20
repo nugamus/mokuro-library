@@ -18,15 +18,17 @@ export interface MokuroPage {
   img_path: string;
 }
 export interface MokuroData {
-  title: string;
-  title_uuid: string;
-  volume: string;
+  patch_id?: string;
+  title?: string;
+  title_uuid?: string;
+  volume?: string;
   pages: MokuroPage[];
 }
 
-export interface VolumeReaderResponse {
+export interface Volume {
   id: string;
   title: string;
+  folderName: string;
   seriesId: string;
   pageCount: number;
   coverImageName: string | null;
@@ -36,8 +38,9 @@ export interface VolumeReaderResponse {
     branchId: string;
     headPatchId: string;
     branchVersion: number;
-    hasAhead: boolean;
-    hasBehind: boolean;
+    hasAhead: number;
+    hasBehind: number;
+    isPendingReview: boolean;
   };
 }
 
@@ -49,19 +52,6 @@ export interface UserProgress {
   timeRead: number;
   charsRead: number;
   lastReadAt?: string;
-}
-
-export interface Volume {
-  id: string;
-  seriesId?: string; // Helpful for back-references
-  title: string | null;
-  sortTitle?: string | null;
-  folderName: string;
-  pageCount: number;
-  coverImageName: string | null;
-  createdAt: string;
-  // Progress is usually an array from Prisma relations, though often 1 item per user
-  progress: UserProgress[];
 }
 
 export interface Series {
@@ -169,7 +159,7 @@ export type FineValue =
   | Rect // For block 'box'
   | Quad; // For line 'coords'
 
-// --- 2. Coarse / Unified Values ---
+// --- Coarse / Unified Values ---
 
 // UnifiedLine: Merges the split arrays (lines + lines_coords) into one atomic unit.
 export interface UnifiedLine {
@@ -187,7 +177,7 @@ export interface UnifiedBlock {
 
 export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
 
-// --- 3. The Patch Operation ---
+// --- The Patch Operation ---
 export type OpType = 'replace' | 'add' | 'remove' | 'reorder' | 'genesis';
 
 export type PatchOperation =
@@ -220,7 +210,7 @@ export interface SubmissionVolumeDetail {
   seriesId: string;
 }
 
-export interface Submission {
+export interface SubmissionDetail {
   id: string;
   userId: string;
   status: 'pending' | 'accepted' | 'rejected';
@@ -252,8 +242,118 @@ export interface Submission {
   comments: SubmissionComment[];
 }
 
+export interface SubmissionEntry {
+  id: string;
+  userId: string;
+  status: 'pending' | 'accepted' | 'rejected';
+
+  // --- Relations ---
+  user: {
+    username: string;
+  };
+
+  sourceSeries: {
+    sortTitle: string;
+  };
+
+  targetSeries: {
+    sortTitle: string;
+  } | null;
+
+  submittedAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  _count: { volumes: number };
+}
+
 export interface ContributionsSummary {
-  ahead: number;
-  behind: number;
+  aheadCount: number;
+  behindCount: number;
   pendingSubmissionsCount: number;
+}
+
+// --- Rebase Types ---
+
+/**
+ * The Strict Resolution accepted by the Backend API.
+ */
+export type RebaseResolution = 'keep_admin' | 'keep_mine';
+
+/**
+ * Only the conflict reasons that result in a pause (User Intervention).
+ * Automatic conflicts (shift_down_into_add, effect_shift, double_delete)
+ * are resolved by the engine and never returned to the UI.
+ */
+export type RebaseConflictReason =
+  | 'dead_zone'           // Admin deleted node, User edited inside it
+  | 'reverse_dead_zone'   // Admin edited node, User deleted it
+  | 'reorder_collision'   // Both reordered the same array
+  | 'content_conflict';   // Both edited the same value
+
+/**
+ * A patch combined with its database ID.
+ */
+export interface ExtendedPatch {
+  id: string;
+  operation: PatchOperation;
+}
+
+/**
+ * The Conflict object returned by the API when status is 'paused'.
+ */
+export interface RebaseConflict {
+  reason: RebaseConflictReason;
+  userPatch: ExtendedPatch;
+  adminPatch: ExtendedPatch;
+}
+
+export interface RebaseQueueEntry {
+  id: string;
+  title: string;
+  seriesId: string;
+  seriesTitle: string;
+  pageCount: number;
+  coverImageName: string | null;
+  versionInfo: {
+    branchId: string;
+    headPatchId: string;
+    branchVersion: number;
+    hasAhead: number;
+    hasBehind: number;
+  };
+}
+
+// Review / Contribution Types
+
+export interface ReviewRequestEntry {
+  id: string; // The Branch ID
+  volumeId: string;
+  volumeTitle: string;
+  seriesId: string;
+  seriesTitle: string;
+  coverImageName: string | null;
+
+  // Metadata
+  userId: string;
+  userDisplayName?: string; // Present if viewed by Admin
+  submittedAt: string;      // ISO Date String
+  submissionNote: string | null;
+  rejectionReason: string | null;
+
+  // State
+  headPatchId: string;
+  isBehind: boolean; // Vital for UI warnings
+}
+
+export interface ReviewStatusParams {
+  volumeId: string;
+  status: boolean;       // true = Request, false = Cancel/Reject
+  reason?: string;       // Optional note
+  targetUserId?: string; // Only required for Admin actions
+}
+
+export interface ReviewStatusResult {
+  volumeId: string;
+  status: boolean;
+  action: 'submitted' | 'cancelled' | 'rejected' | 'accepted';
 }

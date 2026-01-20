@@ -1,18 +1,18 @@
 <script lang="ts">
-  import type { Submission } from '$lib/types';
+  import type { SubmissionDetail } from '$lib/types';
   import { apiFetch } from '$lib/services/api';
   import { resolve } from '$app/paths';
-  import { SvelteDate } from 'svelte/reactivity';
+  import { SvelteDate, SvelteSet } from 'svelte/reactivity';
   import { contributionsStore } from '$lib/stores/contributionsStore';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
   import { onMount } from 'svelte';
-  import { SvelteSet } from 'svelte/reactivity';
+  import { ArrowRight, ClipboardList, FileText, LoaderCircle, TriangleAlert } from 'lucide-svelte';
 
   let { onOpenBulkReject } = $props<{
     onOpenBulkReject: (selectedIds: string[]) => void;
   }>();
 
-  let submissions = $state<Submission[]>([]);
+  let submissions = $state<SubmissionDetail[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
   let selectedIds = new SvelteSet<string>();
@@ -24,7 +24,7 @@
     try {
       const data = (await apiFetch('/api/contributions/submissions?status=pending', {
         showErrorToast: false
-      })) as Submission[];
+      })) as SubmissionDetail[];
       submissions = data || [];
     } catch (e) {
       const msg = (e as Error).message || 'Failed to load submissions';
@@ -42,29 +42,24 @@
     } else {
       selectedIds.add(submissionId);
     }
-    selectedIds = selectedIds; // Trigger reactivity
+    selectedIds = selectedIds;
   }
 
-  // Select all
   function selectAll() {
     selectedIds = new SvelteSet(submissions.map((s) => s.id));
   }
 
-  // Deselect all
   function deselectAll() {
     selectedIds = new SvelteSet();
   }
 
-  // Accept single submission
   async function handleAccept(submissionId: string) {
     if (!confirm('Accept this submission? Files will be moved to the admin library.')) return;
 
     try {
       await contributionsStore.acceptSubmission(submissionId);
       toastStore.addToast('Submission accepted successfully', 'success');
-      // Reload submissions
       await loadSubmissions();
-      // Clear selection if it was selected
       selectedIds.delete(submissionId);
       selectedIds = selectedIds;
     } catch (e) {
@@ -72,12 +67,10 @@
     }
   }
 
-  // Reject single submission (opens modal)
   function handleReject(submissionId: string) {
     onOpenBulkReject([submissionId]);
   }
 
-  // Bulk accept selected submissions
   async function handleBulkAccept() {
     if (selectedIds.size === 0) return;
 
@@ -97,7 +90,6 @@
         toastStore.addToast(`Successfully accepted ${result.success} submission(s)`, 'success');
       }
 
-      // Reload submissions
       await loadSubmissions();
       deselectAll();
     } catch (e) {
@@ -105,13 +97,11 @@
     }
   }
 
-  // Bulk reject (opens modal)
   function handleBulkReject() {
     if (selectedIds.size === 0) return;
     onOpenBulkReject(Array.from(selectedIds));
   }
 
-  // Format date
   function formatDate(dateString: string): string {
     const date = new SvelteDate(dateString);
     return date.toLocaleDateString('en-US', {
@@ -123,7 +113,6 @@
     });
   }
 
-  // Reload when bulk reject completes
   export function reload() {
     loadSubmissions();
     deselectAll();
@@ -135,7 +124,6 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Bulk Actions Toolbar -->
   {#if selectedIds.size > 0}
     <div
       class="bg-accent/10 border-2 border-accent rounded-lg p-4 flex items-center gap-3 animate-slideIn"
@@ -167,36 +155,38 @@
     </div>
   {/if}
 
-  <!-- Loading State -->
   {#if loading}
-    <div class="bg-theme-surface/30 border border-theme-border rounded-lg p-8 text-center">
-      <div class="text-3xl mb-2">⏳</div>
-      <div class="text-sm text-theme-secondary">Loading pending submissions...</div>
+    <div
+      class="bg-theme-surface/30 border border-theme-border rounded-lg p-12 text-center flex flex-col items-center"
+    >
+      <LoaderCircle class="w-8 h-8 mb-3 text-accent animate-spin" />
+      <div class="text-sm text-theme-secondary font-medium">Loading pending submissions...</div>
     </div>
   {:else if error}
-    <!-- Error State -->
-    <div class="bg-status-danger/10 border border-status-danger/30 rounded-lg p-6 text-center">
-      <div class="text-3xl mb-2">⚠️</div>
-      <div class="text-sm text-status-danger font-semibold mb-2">Failed to Load</div>
-      <div class="text-xs text-theme-secondary">{error}</div>
+    <div
+      class="bg-status-danger/5 border border-status-danger/20 rounded-lg p-8 text-center flex flex-col items-center"
+    >
+      <TriangleAlert class="w-8 h-8 mb-3 text-status-danger" />
+      <div class="text-sm text-status-danger font-bold mb-1">Failed to Load</div>
+      <div class="text-xs text-theme-secondary mb-4">{error}</div>
       <button
         onclick={loadSubmissions}
-        class="mt-3 px-4 py-2 rounded-lg bg-accent text-white hover:bg-accent-hover transition-all text-xs font-semibold"
+        class="px-4 py-2 rounded-lg bg-status-danger text-white hover:bg-status-danger-hover transition-all text-xs font-bold shadow-lg shadow-status-danger/20"
       >
         Retry
       </button>
     </div>
   {:else if submissions.length === 0}
-    <!-- Empty State -->
-    <div class="bg-theme-surface/30 border border-theme-border rounded-lg p-8 text-center">
-      <div class="text-4xl mb-3">✨</div>
-      <div class="text-sm font-semibold text-theme-primary mb-1">All Caught Up!</div>
-      <div class="text-xs text-theme-tertiary">
+    <div
+      class="bg-theme-surface/30 border border-theme-border rounded-lg p-12 text-center flex flex-col items-center"
+    >
+      <ClipboardList class="w-12 h-12 mb-4 text-theme-tertiary/50" />
+      <div class="text-sm font-bold text-theme-primary mb-1">All Caught Up!</div>
+      <div class="text-xs text-theme-tertiary max-w-xs">
         No pending submissions to review. New submissions from users will appear here.
       </div>
     </div>
   {:else}
-    <!-- Header Actions -->
     <div class="flex items-center gap-2 pb-2">
       <button
         onclick={selectAll}
@@ -206,7 +196,6 @@
       </button>
     </div>
 
-    <!-- Submissions Grid -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
       {#each submissions as submission (submission.id)}
         <div
@@ -217,7 +206,6 @@
             : 'border-theme-border hover:border-accent/30'}"
         >
           <div class="p-4">
-            <!-- Selection Checkbox & Header -->
             <div class="flex items-start gap-3 mb-3">
               <button
                 onclick={() => toggleSelection(submission.id)}
@@ -233,70 +221,44 @@
               </button>
 
               <div class="flex-1 min-w-0">
-                <!-- Submitter Info -->
                 <div class="flex items-center gap-2 mb-2">
                   <div class="text-xs font-semibold text-theme-primary">
                     {submission.user?.username || 'Unknown User'}
                   </div>
-                  <span
-                    class="px-2 py-0.5 rounded bg-status-warning/20 text-status-warning text-[10px] font-bold border border-status-warning/30"
-                  >
-                    Pending
+                  <div class="text-[10px] text-theme-tertiary">
+                    {formatDate(submission.submittedAt)}
+                  </div>
+                </div>
+                <div class="flex items-center gap-3 text-xs text-theme-tertiary">
+                  <span class="flex items-center gap-1">
+                    <FileText class="w-3 h-3" />
+                    {submission._count?.volumes || 0} volume{submission._count?.volumes === 1 ? '' : 's'}
                   </span>
-                </div>
-
-                <!-- Series Info -->
-                <div class="text-sm font-bold text-theme-primary mb-1">
-                  {#if submission.sourceSeries}
-                    <span class="text-theme-secondary text-xs">From:</span>
-                    {submission.sourceSeries.title || submission.sourceSeries.folderName}
-                  {/if}
-                </div>
-
-                {#if submission.targetSeries}
-                  <div class="text-xs text-theme-tertiary mb-2">
-                    → Merge into: <strong
-                      >{submission.targetSeries.title || submission.targetSeries.folderName}</strong
-                    >
-                  </div>
-                {:else}
-                  <div class="text-xs text-theme-tertiary mb-2">
-                    → <span
-                      class="px-2 py-0.5 rounded bg-accent/20 text-accent border border-accent/30 font-semibold"
-                      >New Series</span
-                    >
-                  </div>
-                {/if}
-
-                <!-- Metadata -->
-                <div class="flex items-center gap-2 text-xs text-theme-tertiary flex-wrap">
-                  <span class="font-semibold">{submission._count?.volumes || 0} volume(s)</span>
                   <span>•</span>
-                  <span>{formatDate(submission.submittedAt)}</span>
+                  <span>Submitted {formatDate(submission.submittedAt)}</span>
                 </div>
               </div>
             </div>
 
-            <!-- Action Buttons -->
-            <div class="flex items-center gap-2 mt-4 pt-3 border-t border-theme-border">
-              <a
-                href={resolve(`/contributions/submissions/${submission.id}`)}
-                class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold text-center bg-theme-surface text-theme-primary hover:bg-theme-surface-hover border border-theme-border transition-all"
-              >
-                👁️ Review
-              </a>
+            <div class="flex items-center gap-2 mt-4">
               <button
                 onclick={() => handleAccept(submission.id)}
-                class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold bg-status-success/10 text-status-success hover:bg-status-success/20 border border-status-success/30 transition-all"
+                class="px-3 py-2 rounded-lg text-xs font-semibold bg-status-success text-white hover:bg-status-success/90 transition-all"
               >
-                ✅ Accept
+                Accept
               </button>
               <button
                 onclick={() => handleReject(submission.id)}
-                class="flex-1 px-3 py-2 rounded-lg text-xs font-semibold bg-status-danger/10 text-status-danger hover:bg-status-danger/20 border border-status-danger/30 transition-all"
+                class="px-3 py-2 rounded-lg text-xs font-semibold bg-status-danger text-white hover:bg-status-danger/90 transition-all"
               >
-                ❌ Reject
+                Reject
               </button>
+              <a
+                href={resolve(`/contributions/submissions/${submission.id}`, {})}
+                class="ml-auto text-xs text-accent hover:text-accent-hover font-bold transition-colors flex items-center gap-1 group-hover:gap-2 duration-200"
+              >
+                View Details <ArrowRight class="w-3.5 h-3.5" />
+              </a>
             </div>
           </div>
         </div>
@@ -304,20 +266,3 @@
     </div>
   {/if}
 </div>
-
-<style>
-  @keyframes slideIn {
-    from {
-      opacity: 0;
-      transform: translateY(-10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
-  }
-
-  .animate-slideIn {
-    animation: slideIn 0.2s ease-out;
-  }
-</style>

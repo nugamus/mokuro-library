@@ -17,8 +17,6 @@ export function buildSeriesContributions(library: Series[]) {
   let behindCount = 0;
   let aheadCount = 0;
 
-  // NOTE: OCR branch status (hasAhead, hasBehind, etc.) is still sample data
-  // TODO: Query actual OCR branch data from the database
   library.forEach((series) => {
     if (!series.volumes || series.totalVolumeCount === 0) return;
 
@@ -29,22 +27,17 @@ export function buildSeriesContributions(library: Series[]) {
     let volumesBehind = 0;
 
     // Use actual volumes from the API
-    series.volumes.forEach((volume, idx) => {
-      // TODO: Replace with actual OCR branch status from database
-      const hasAhead = idx % 2 === 0;
-      const hasBehind = idx % 3 !== 2;
-      // Use deterministic sample data based on volume ID to prevent re-render flickering
-      const hashCode = volume.id
-        .split('')
-        .reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
-      const userPatchCount = hasAhead ? (hashCode % 15) + 3 : 0;
-      const behindByCount = hasBehind ? (hashCode % 10) + 2 : 0;
+    series.volumes.forEach((volume) => {
+      const hasAhead = volume.versionInfo?.hasAhead ?? 0;
+      const hasBehind = volume.versionInfo?.hasBehind ?? 0;
+      const userPatchCount = hasAhead;
+      const behindByCount = hasBehind;
 
-      if (hasAhead) {
+      if (hasAhead > 0) {
         totalAhead += userPatchCount;
         volumesAhead++;
       }
-      if (hasBehind) {
+      if (hasBehind > 0) {
         totalBehind += behindByCount;
         volumesBehind++;
       }
@@ -92,13 +85,13 @@ export function filterSeriesByStatus(seriesList: SeriesContribution[], activeFil
 }
 
 export function getStatusInfo(volume: VolumeContribution): StatusInfo {
-  if (volume.hasAhead && volume.hasBehind) {
+  if (volume.hasAhead > 0 && volume.hasBehind > 0) {
     return { color: 'bg-status-warning', textColor: 'text-status-warning', icon: '⚠️' };
   }
-  if (volume.hasAhead) {
+  if (volume.hasAhead > 0) {
     return { color: 'bg-accent', textColor: 'text-accent', icon: '✏️' };
   }
-  if (volume.hasBehind) {
+  if (volume.hasBehind > 0) {
     return { color: 'bg-status-unread', textColor: 'text-status-unread', icon: '🔄' };
   }
   return { color: 'bg-status-success', textColor: 'text-status-success', icon: '✓' };
@@ -171,7 +164,7 @@ export function buildActivityHistory(seriesList: SeriesContribution[]): Activity
   // Generate diverse activity across the last 30 days
   seriesList.slice(0, 3).forEach((series) => {
     series.volumes.slice(0, 2).forEach((volume, volIdx) => {
-      if (volume.hasAhead) {
+      if (volume.hasAhead > 0) {
         const rand = createSeededRandom(`${seedBase}:${volume.id}`);
         // Create multiple edits for each volume across different days
         const numEdits = Math.floor(rand() * 4) + 2; // 2-5 edit sessions per volume
@@ -202,7 +195,7 @@ export function getRecentlyEdited(seriesList: SeriesContribution[]): VolumeContr
   const allVolumes: VolumeContribution[] = [];
   seriesList.forEach((series) => {
     series.volumes.forEach((volume) => {
-      if (volume.hasAhead) allVolumes.push(volume);
+      if (volume.hasAhead > 0) allVolumes.push(volume);
     });
   });
   return allVolumes.slice(0, 5);
@@ -257,7 +250,7 @@ export function getVolumesNeedingRebase(seriesList: SeriesContribution[]): Volum
   const volumes: VolumeContribution[] = [];
   seriesList.forEach((series) => {
     series.volumes.forEach((volume) => {
-      if (volume.hasBehind) volumes.push(volume);
+      if (volume.hasBehind > 0) volumes.push(volume);
     });
   });
   return volumes;

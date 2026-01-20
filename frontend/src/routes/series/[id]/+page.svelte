@@ -65,7 +65,7 @@
 
     if (uiState.searchQuery) {
       const q = uiState.searchQuery.toLowerCase();
-      vols = vols.filter((v) => (v.title || v.folderName).toLowerCase().includes(q));
+      vols = vols.filter((v) => v.title.toLowerCase().includes(q));
     }
 
     if (uiState.filterStatus !== 'all') {
@@ -83,18 +83,15 @@
       const statsB = volumeStatsMap.get(b.id) ?? defaultVolumeStats;
       switch (uiState.sortKey) {
         case 'title': {
-          const tA = a.sortTitle || a.title || a.folderName;
-          const tB = b.sortTitle || b.title || b.folderName;
+          const tA = a.title;
+          const tB = b.title;
           return (
             (uiState.sortOrder === 'asc' ? 1 : -1) *
             tA.localeCompare(tB, undefined, { numeric: true })
           );
         }
         case 'updated':
-          return (
-            (uiState.sortOrder === 'asc' ? 1 : -1) *
-            (new SvelteDate(a.createdAt).getTime() - new SvelteDate(b.createdAt).getTime())
-          );
+          return 0;
         case 'lastRead':
           return (uiState.sortOrder === 'asc' ? 1 : -1) * (statsA.lastRead - statsB.lastRead);
         case 'progress':
@@ -316,7 +313,7 @@
               }}
               href={resolve(`/volume/${vol.id}`, {})}
               mainStat={`${vol.progress[0]?.page ?? 0}/${vol.pageCount} P`}
-              subStat={formatLastReadDate(vol.progress[0]?.lastReadAt)}
+              subStat={`▲ ${vol.versionInfo.hasAhead}  ▼ ${vol.versionInfo.hasBehind}`}
               onSelect={(e) => handleVolumeClick(e, vol)}
             >
               {#snippet circleAction()}
@@ -411,6 +408,7 @@
     onRefresh={handleRefresh}
     onSelectAll={() => uiState.selectAll(processedVolumes)}
     onRename={handleOpenVolumeEdit}
+    seriesOwnerId={series?.ownerId}
   />
   <EditSeriesModal
     {series}

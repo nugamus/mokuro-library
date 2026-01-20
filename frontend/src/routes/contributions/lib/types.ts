@@ -1,8 +1,8 @@
 import type { Volume } from '$lib/types';
 
 export type VolumeContribution = Volume & {
-  hasAhead: boolean;
-  hasBehind: boolean;
+  hasAhead: number;
+  hasBehind: number;
   userPatchCount: number;
   behindByCount: number;
 };

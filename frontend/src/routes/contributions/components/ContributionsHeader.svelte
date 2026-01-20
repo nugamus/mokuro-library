@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { ActivityGraphDay, VolumeContribution } from '../lib/types';
+  import type { RebaseQueueEntry } from '$lib/types';
+  import type { ActivityGraphDay } from '../lib/types';
   import { SvelteDate } from 'svelte/reactivity';
 
   type SampleStats = {
@@ -24,7 +25,7 @@
     sampleStats: SampleStats;
     activityGraph: ActivityGraphDay[];
     showQuickActions: boolean;
-    volumesNeedingRebase: VolumeContribution[];
+    volumesNeedingRebase: RebaseQueueEntry[];
     activityHistoryCount: number;
     selectedItemsCount: number;
     onRebaseAll: () => void;

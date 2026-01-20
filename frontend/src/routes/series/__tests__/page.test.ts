@@ -54,15 +54,39 @@ describe('series page', () => {
       coverPath: null,
       bookmarked: false,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sortTitle: 'Test Series',
+      japaneseTitle: null,
+      romajiTitle: null,
+      synonyms: null,
+      organized: false,
+      status: 0,
+      ownerId: 'admin',
+      lastReadAt: new Date().toISOString(),
+      isOfficial: true,
+      canEdit: true,
+      totalPageCount: 10,
+      totalVolumeCount: 1,
+      readPageCount: 0,
+      completedVolumeCount: 0,
       volumes: [
         {
           id: 'vol-1',
+          seriesId: 'series-1',
           title: 'Volume 1',
           folderName: 'Volume_1',
-          sortTitle: 'Volume_1',
           pageCount: 10,
-          createdAt: new Date().toISOString(),
-          progress: [{ page: 1, completed: false, timeRead: 0, charsRead: 0, lastReadAt: null }]
+          coverImageName: null,
+          progress: [{ page: 1, completed: false, timeRead: 0, charsRead: 0, lastReadAt: null }],
+          mokuroData: { pages: [] },
+          versionInfo: {
+            branchId: 'branch-vol-1',
+            headPatchId: 'head-vol-1',
+            branchVersion: 0,
+            hasAhead: 0,
+            hasBehind: 0,
+            isPendingReview: false
+          }
         }
       ]
     });

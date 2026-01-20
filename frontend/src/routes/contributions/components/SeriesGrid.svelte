@@ -214,7 +214,7 @@
           <div class="divide-y divide-theme-border/20">
             {#each series.volumes as volume, idx (volume.id)}
               {@const status = getStatusInfo(volume)}
-              {@const hasActivity = volume.hasAhead || volume.hasBehind}
+              {@const hasActivity = volume.hasAhead > 0 || volume.hasBehind > 0}
               {@const isVolumeSelected = selectedItems.has(volume.id)}
               <div
                 use:longpress
@@ -232,7 +232,7 @@
                   {#if volume.coverImageName}
                     <AuthenticatedImage
                       src={getVolumeCoverUrl(volume.id, volume.coverImageName) || ''}
-                      alt={volume.title || volume.folderName}
+                      alt={volume.title}
                       class="w-10 h-14 sm:w-14 sm:h-20 object-cover rounded-md shadow-md transition-all duration-200 border border-theme-border/30"
                       loading="lazy"
                       onerror={(e) => handleImageError(e, 'volume', volume.id)}
@@ -258,12 +258,12 @@
                   <div
                     class="text-xs sm:text-base font-bold text-theme-primary truncate mb-1.5 sm:mb-2 tracking-tight"
                   >
-                    {volume.title || volume.folderName}
+                    {volume.title}
                   </div>
                   <div
                     class="flex items-center gap-1 xs:gap-1.5 sm:gap-2 text-[9px] xs:text-[10px] sm:text-xs font-semibold flex-wrap"
                   >
-                    {#if volume.hasAhead}
+                    {#if volume.hasAhead > 0}
                       <span
                         class="inline-flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md bg-accent/15 text-accent border border-accent/30 whitespace-nowrap"
                       >
@@ -288,7 +288,7 @@
                         >
                       </span>
                     {/if}
-                    {#if volume.hasBehind}
+                    {#if volume.hasBehind > 0}
                       <span
                         class="inline-flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 px-1 xs:px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md bg-status-warning/15 text-status-warning border border-status-warning/30 whitespace-nowrap"
                       >
@@ -325,7 +325,7 @@
                 <!-- Action Buttons -->
                 <div class="flex flex-row items-center gap-1 sm:gap-1.5 md:gap-2 flex-shrink-0">
                   <!-- Diff Viewer Button -->
-                  {#if volume.hasAhead || volume.hasBehind}
+                  {#if volume.hasAhead > 0 || volume.hasBehind > 0}
                     <button
                       onclick={(e) => {
                         e.stopPropagation();
@@ -354,7 +354,7 @@
                   {/if}
 
                   {#if hasActivity}
-                    {#if volume.hasBehind}
+                    {#if volume.hasBehind > 0}
                       <!-- Rebase Button -->
                       <button
                         onclick={(e) => onRebase(e, volume, series.title)}
@@ -364,7 +364,7 @@
                         🔄 Rebase
                       </button>
                     {/if}
-                    {#if volume.hasAhead}
+                    {#if volume.hasAhead > 0}
                       <!-- Reset Button -->
                       <button
                         onclick={(e) => onReset(e, volume)}

@@ -13,6 +13,12 @@ export interface ContributionCounts {
   pendingSubmissionsCount: number;
 }
 
+interface ContributionCountsResponse {
+  aheadCount: number;
+  behindCount: number;
+  pendingSubmissionsCount: number;
+}
+
 function createContributionsStore() {
   const { subscribe, set, update } = writable<ContributionCounts>({
     behind: 0,
@@ -41,12 +47,16 @@ function createContributionsStore() {
 
       inFlight = (async () => {
         try {
-          const data = await apiFetch<ContributionCounts>('/api/contributions/summary', {
+          const data = await apiFetch<ContributionCountsResponse>('/api/contributions/summary', {
             showErrorToast: false,
             cache: true,
             skipCache: options?.force ?? false
           });
-          set(data);
+          set({
+            ahead: data.aheadCount,
+            behind: data.behindCount,
+            pendingSubmissionsCount: data.pendingSubmissionsCount
+          });
           lastRefreshAt = Date.now();
         } catch (error) {
           console.error('Failed to refresh contributions summary', error);

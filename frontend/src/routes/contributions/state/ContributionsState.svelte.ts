@@ -1,6 +1,7 @@
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import { apiFetch } from '$lib/services/api';
+import { uiState } from '$lib/states/ui/uiState.svelte.ts';
 import type { Series } from '$lib/types';
 import { sampleStats } from '../lib/constants';
 import type { FilterType, RebaseResolution, VolumeContribution } from '../lib/types';
@@ -27,7 +28,6 @@ import {
   startSelection,
   toggleSelection as toggleSelectionItems
 } from '../lib/selection';
-import { runSampleBatchRebase, runSampleRebaseAll } from '../lib/rebaseActions';
 
 export class ContributionsState {
   activeFilter = $state<FilterType>('behind');
@@ -151,7 +151,7 @@ export class ContributionsState {
       this.isLoading = true;
       this.error = null;
 
-      const response = await apiFetch('/api/library');
+      const response = await apiFetch<Series[]>('/api/library');
       const basicLibrary = response.data as Series[];
 
       const detailedLibrary = await Promise.all(
@@ -239,6 +239,13 @@ export class ContributionsState {
     const expandedArray = Array.from(this.expandedSeries);
     sessionStorage.setItem('contributions_expanded', JSON.stringify(expandedArray));
     console.log('[Contributions] Saved expanded series before navigation:', expandedArray);
+
+    try {
+      uiState.setReturnPath('/contributions', 'Back to Contributions');
+      console.log('[Contributions] Set return path to /contributions');
+    } catch (e) {
+      console.error('[Contributions] Failed to set return path:', e);
+    }
 
     console.log('[Contributions] Navigating to /volume/' + volumeId);
     goto(resolve(`/volume/${volumeId}`));
