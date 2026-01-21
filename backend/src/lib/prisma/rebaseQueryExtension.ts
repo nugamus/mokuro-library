@@ -13,6 +13,7 @@ interface RebaseQueueRawRow {
   branchVersion: number;
   hasAhead: bigint | number;
   hasBehind: bigint | number;
+  isPendingReview?: boolean;
 }
 
 // Clean Output Object (Nested, pure Numbers)
@@ -29,50 +30,94 @@ export interface RebaseQueueEntry {
     branchVersion: number;
     hasAhead: number;
     hasBehind: number;
+    isPendingReview: boolean;
   };
 }
 
 export const rebaseQueryExtension = Prisma.defineExtension((client) => {
+  const baseQueueSelect = Prisma.sql`
+    SELECT
+      v.id as "id",
+      v."sortTitle" as "title",
+      v."seriesId" as "seriesId",
+      v."pageCount" as "pageCount",
+      v."coverImageName" as "coverImageName",
+      s."sortTitle" as "seriesTitle",
+
+      -- Branch Info
+      ub.id as "branchId",
+      ub."headPatchId" as "headPatchId",
+      ub."version" as "branchVersion",
+      ub."isPendingReview" as "isPendingReview",
+
+      -- Math (Same as Rebase Queue)
+      (uh.sequence - (ur.sequence - 1)) as "hasAhead",
+      (ah.sequence - (ur.sequence - 1)) as "hasBehind"
+  `;
+
+  const baseBranchJoins = Prisma.sql`
+    FROM "OcrBranch" ub
+    JOIN "Volume" v ON ub."volumeId" = v.id
+    JOIN "Series" s ON v."seriesId" = s.id
+
+    -- Admin Branch for 'Behind' calc
+    LEFT JOIN "OcrBranch" ab ON ab."volumeId" = ub."volumeId" AND ab."userId" = 'admin'
+  `;
+
+  const basePatchJoins = Prisma.sql`
+    -- Patch Sequences
+    LEFT JOIN "Patch" ah ON ab."headPatchId" = ah.id
+    JOIN "Patch" uh ON ub."headPatchId" = uh.id
+  `;
+
+  const rootPatchJoinRequired = Prisma.sql`
+    JOIN "Patch" ur ON ub."rootPatchId" = ur.id
+  `;
+
+  const rootPatchJoinOptional = Prisma.sql`
+    LEFT JOIN "Patch" ur ON ub."rootPatchId" = ur.id
+  `;
+
+  const mapRebaseQueueRows = (rows: RebaseQueueRawRow[]): RebaseQueueEntry[] => {
+    return rows.map(r => ({
+      id: r.id,
+      title: r.title,
+      seriesId: r.seriesId,
+      seriesTitle: r.seriesTitle,
+      pageCount: r.pageCount,
+      coverImageName: r.coverImageName,
+      versionInfo: {
+        branchId: r.branchId,
+        headPatchId: r.headPatchId,
+        branchVersion: r.branchVersion,
+        hasAhead: Number(r.hasAhead || 0),
+        hasBehind: Number(r.hasBehind || 0),
+        isPendingReview: Boolean(r.isPendingReview)
+      }
+    }));
+  };
+
   return client.$extends({
     name: 'rebaseQuery',
     model: {
       ocrBranch: {
         async getVolumesNeedingRebase(userId: string, limit = 50): Promise<RebaseQueueEntry[]> {
+          if (userId === 'admin') {
+            return [];
+          }
+
           const result = await client.$queryRaw<RebaseQueueRawRow[]>`
-            SELECT
-              v.id as "id",
-              v."sortTitle" as "title",   -- Use sortTitle
-              v."seriesId" as "seriesId",
-              v."pageCount" as "pageCount",
-              v."coverImageName" as "coverImageName",
-              s."sortTitle" as "seriesTitle",   -- Useful context for the UI
-
-              -- Branch Info for versionInfo
-              ub.id as "branchId",
-              ub."headPatchId" as "headPatchId",
-              ub."version" as "branchVersion",
-
-              -- Calculated Counts
-              (uh.sequence - (ur.sequence - 1)) as "hasAhead",
-              (ah.sequence - (ur.sequence - 1)) as "hasBehind"
-
-            FROM "OcrBranch" ub
-            JOIN "Volume" v ON ub."volumeId" = v.id
-            JOIN "Series" s ON v."seriesId" = s.id
-
-            -- Join Admin Branch (Source of Truth)
-            JOIN "OcrBranch" ab ON ab."volumeId" = ub."volumeId" AND ab."userId" = 'admin'
-
-            -- Join Patch Sequences for Math
-            JOIN "Patch" ah ON ab."headPatchId" = ah.id   -- Admin Head
-            JOIN "Patch" uh ON ub."headPatchId" = uh.id   -- User Head
-            JOIN "Patch" ur ON ub."rootPatchId" = ur.id   -- User Root (Fork Point)
+            ${baseQueueSelect}
+            ${baseBranchJoins}
+            ${basePatchJoins}
+            ${rootPatchJoinRequired}
 
             WHERE
               ub."userId" = ${userId}
               AND s."ownerId" = 'admin'
 
-              -- Inner join on rootPatchId already enforce ahead condition
+              -- Ahead condition: User Head > Fork Point
+              AND uh.sequence > (ur.sequence - 1)
               -- Behind Condition: Admin Head > Fork Point
               AND ah.sequence > (ur.sequence - 1)
 
@@ -80,21 +125,29 @@ export const rebaseQueryExtension = Prisma.defineExtension((client) => {
           `;
 
           // Map to the requested nested structure
-          return result.map(r => ({
-            id: r.id,
-            title: r.title,
-            seriesId: r.seriesId,
-            seriesTitle: r.seriesTitle, // Keeping this as it's vital for the inbox view
-            pageCount: r.pageCount,
-            coverImageName: r.coverImageName,
-            versionInfo: {
-              branchId: r.branchId,
-              headPatchId: r.headPatchId,
-              branchVersion: r.branchVersion,
-              hasAhead: Number(r.hasAhead || 0),
-              hasBehind: Number(r.hasBehind || 0)
-            }
-          }));
+          return mapRebaseQueueRows(result);
+        },
+        async getRandomEligibleReviews(userId: string, limit = 1): Promise<RebaseQueueEntry[]> {
+          if (userId === 'admin') {
+            return [];
+          }
+
+          const result = await client.$queryRaw<RebaseQueueRawRow[]>`
+            ${baseQueueSelect}
+            ${baseBranchJoins}
+            ${basePatchJoins}
+            ${rootPatchJoinRequired}
+
+            WHERE
+              ub."userId" = ${userId}
+              AND ub."isPendingReview" = false
+              AND uh.sequence > (ur.sequence - 1)
+
+            ORDER BY RANDOM()
+            LIMIT ${limit};
+          `;
+
+          return mapRebaseQueueRows(result);
         },
         /**
          * Calculates how many branches for this user are behind the Admin's latest state.
@@ -104,15 +157,9 @@ export const rebaseQueryExtension = Prisma.defineExtension((client) => {
           // Use $queryRaw on the client context
           const result = await client.$queryRaw<[{ count: bigint }]>`
             SELECT COUNT(*) as count
-            FROM "OcrBranch" ub
-            JOIN "Volume" v ON ub."volumeId" = v.id
-            JOIN "Series" s ON v."seriesId" = s.id
-            -- Join Admin Branch
-            JOIN "OcrBranch" ab ON ab."volumeId" = ub."volumeId" AND ab."userId" = 'admin'
-            -- Join Patch Sequences
-            JOIN "Patch" ah ON ab."headPatchId" = ah.id
-            JOIN "Patch" uh ON ub."headPatchId" = uh.id
-            LEFT JOIN "Patch" ur ON ub."rootPatchId" = ur.id
+            ${baseBranchJoins}
+            ${basePatchJoins}
+            ${rootPatchJoinOptional}
 
             WHERE ub."userId" = ${userId}
               AND s."ownerId" = 'admin'

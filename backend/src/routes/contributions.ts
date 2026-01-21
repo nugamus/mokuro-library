@@ -67,11 +67,12 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
    * Returns a list of volumes that require user attention (Rebase Inbox).
    * These volumes have local edits (Ahead) but are missing server updates (Behind).
    */
-  fastify.get('/rebase', async (request, reply) => {
+  fastify.get<{ Querystring: { limit?: number } }>('/rebase', async (request, reply) => {
     const userId = request.user.id;
+    const limit = Math.min(100, Number(request.query.limit ?? 50));
     try {
       // Use the rebaseQueryExtension we created in Step 1
-      const queue = await fastify.prisma.ocrBranch.getVolumesNeedingRebase(userId);
+      const queue = await fastify.prisma.ocrBranch.getVolumesNeedingRebase(userId, limit);
       return reply.send(queue);
     } catch (err) {
       request.log.error(err);
@@ -96,6 +97,26 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
         if (err instanceof HttpError) {
           return reply.code(err.statusCode).send({ message });
         }
+        return reply.code(500).send({ message });
+      }
+    }
+  );
+
+  /**
+   * GET /api/contributions/reviews/candidates
+   * Fetches random eligible review candidates.
+   */
+  fastify.get<{ Querystring: { limit?: number } }>(
+    '/reviews/candidates',
+    async (request, reply) => {
+      const userId = request.user.id;
+      const limit = Math.min(100, Number(request.query.limit ?? 1));
+      try {
+        const candidates = await fastify.prisma.ocrBranch.getRandomEligibleReviews(userId, limit);
+        return reply.send({ candidates });
+      } catch (err) {
+        request.log.error(err);
+        const message = err instanceof Error ? err.message : 'Failed to fetch review candidates';
         return reply.code(500).send({ message });
       }
     }

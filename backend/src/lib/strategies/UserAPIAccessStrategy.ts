@@ -604,10 +604,22 @@ export class UserAPIAccessStrategy implements IAPIAccessStrategy {
       });
 
       if (!branch) throw new HttpError(404, 'Branch not found');
-      if (!branch.rootPatchId) throw new HttpError(400, 'Nothing to submit (No edits made).');
+      if (!branch.rootPatch) throw new HttpError(400, 'Nothing to submit (No edits made).');
 
-      const needingRebase = await prisma.ocrBranch.getVolumesNeedingRebase(actorId);
-      if (needingRebase.find(v => v.id === volumeId)) {
+      const adminBranch = await prisma.ocrBranch.findUnique({
+        where: {
+          volumeId_userId: {
+            volumeId,
+            userId: 'admin'
+          }
+        },
+        select: { headPatch: { select: { sequence: true } } }
+      });
+      const adminSeq = adminBranch?.headPatch?.sequence;
+      const forkPointSeq = branch.rootPatch.sequence - 1;
+      const isBehind = adminSeq !== undefined && adminSeq > forkPointSeq;
+
+      if (isBehind) {
         throw new HttpError(409, 'Cannot submit: Your branch is behind. Please Rebase first.');
       }
 
