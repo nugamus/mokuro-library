@@ -19,6 +19,7 @@ backend/.env
 # Database
 backend/prisma/library.db
 backend/prisma/library.db-journal
+backend/library.db
 
 # SvelteKit
 frontend/.svelte-kit/
