@@ -406,14 +406,8 @@ export class PatchTransformer {
     const newOp = structuredClone(userOp);
     const newEffect = structuredClone(effect);
 
-    const userSegments = PathUtils.parse(userOp.path);
-    const userIndex = parseInt(userSegments[userSegments.length - 1], 10);
-    if (isNaN(userIndex)) throw new Error(`Unexpected non-numeric path segment in ${userOp.path}`);
-
-
     // --- User reorder + shift effect = discard reorder, accumulate permutation ---
-    // appease the linter
-    if (newOp.op === 'reorder' && userOp.op === 'reorder') {
+    if (userOp.op === 'reorder') {
       if (newEffect.type === 'shift_up' && effect.type === 'shift_up') {
         // Expand user's reorder to account for the added element
         newOp.new_order = Permutation.expandPermutation(userOp.new_order, effect.index);
@@ -428,6 +422,10 @@ export class PatchTransformer {
       }
       throw new Error(`Unexpected reorder in sibling_hit with permute effect (should be direct_hit).`);
     }
+
+    const userSegments = PathUtils.parse(userOp.path);
+    const userIndex = parseInt(userSegments[userSegments.length - 1], 10);
+    if (isNaN(userIndex)) throw new Error(`Unexpected non-numeric path segment in ${userOp.path}`);
 
     // --- User add/remove + shift/permute effect ---
     if (userOp.op === 'add') {
@@ -588,14 +586,12 @@ export class PatchTransformer {
       if (reason === 'reverse_dead_zone') {
         if (userOp.op !== 'remove') throw new Error(`reverse_dead_zone can only occur if userOp type is 'remove'`);
         const newOp = structuredClone(userOp);
+        const effectOp = EffectUtilities.toOperation(effect);
 
-        // Update old_value to reflect the admin's change
-        const relativeSegments = PathUtils.getRelativeSegments(effect.path, userOp.path);
-
-        if (relativeSegments.length > 0) {
-          // Effect is inside the removed item - apply the change to old_value
-          const effectOp = EffectUtilities.toOperation(effect);
-          if (effectOp) {
+        if (effectOp) {
+          const relativeSegments = PathUtils.getRelativeSegments(effectOp.path, userOp.path);
+          if (relativeSegments.length > 0) {
+            // Effect is inside the removed item - apply the change to old_value
             this.applyLocalChange(newOp.old_value, relativeSegments, effectOp);
           }
         }

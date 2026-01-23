@@ -1656,7 +1656,7 @@ describe('RebaseEngine', () => {
     );
   });
 
-  it('drops reorder and transforms following patch when admin shift exists', async () => {
+  it('expands reorder and keeps following replace path when admin shift exists', async () => {
     const base = await seedVolumeWithBlocks(ctx, userId, ['b0', 'b1', 'b2']);
     const adminBranch = base.adminBranch;
     const adminHeadId = adminBranch.headPatchId;
@@ -1706,7 +1706,194 @@ describe('RebaseEngine', () => {
     });
     const op = JSON.parse(headPatch!.operation) as PatchOperation;
     expect(op.op).toBe('replace');
-    expect(op.path).toBe('/pages/0/blocks/2/lines/0/text');
+    expect(op.path).toBe('/pages/0/blocks/0/lines/0/text');
+
+    const parentPatch = await ctx.prisma.patch.findUnique({
+      where: { id: headPatch!.parentId ?? '' }
+    });
+    const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
+    expect(parentOp.op).toBe('reorder');
+    expect(parentOp.new_order).toEqual([3, 0, 1, 2]);
+  });
+
+  it('shrinks reorder and keeps following replace path when admin shift_down exists', async () => {
+    const base = await seedVolumeWithBlocks(ctx, userId, ['b0', 'b1', 'b2', 'b3']);
+    const adminBranch = base.adminBranch;
+    const adminHeadId = adminBranch.headPatchId;
+    const adminHeadSeq = adminBranch.headPatch.sequence;
+
+    const userBranch = await ensureUserBranch(ctx.app, base.volumeId, userId, adminBranch);
+    const userOps: PatchOperation[] = [
+      { op: 'reorder', path: '/pages/0/blocks', new_order: [3, 0, 1, 2] },
+      { op: 'replace', path: '/pages/0/blocks/0/lines/0/text', value: 'user-edit', old_value: 'b0' }
+    ];
+    const userChain = await createUserPatches(
+      ctx,
+      base.volumeId,
+      userId,
+      adminHeadId,
+      adminHeadSeq,
+      userOps
+    );
+    await ctx.prisma.ocrBranch.update({
+      where: { id: userBranch.id },
+      data: { headPatchId: userChain.headId, rootPatchId: userChain.rootId }
+    });
+
+    const adminOp: PatchOperation = {
+      op: 'remove',
+      path: '/pages/0/blocks/1',
+      old_value: base.blocks[1]
+    };
+    await createAdminPatch(
+      ctx,
+      base.volumeId,
+      adminBranch.id,
+      adminHeadId,
+      adminHeadSeq,
+      adminOp
+    );
+
+    const engine = new RebaseEngine(ctx.app);
+    const result = await engine.start(base.volumeId, userId);
+    expect(result.status).toBe('complete');
+
+    const updatedBranch = await ctx.prisma.ocrBranch.findUnique({
+      where: { id: userBranch.id }
+    });
+    const headPatch = await ctx.prisma.patch.findUnique({
+      where: { id: updatedBranch?.headPatchId ?? '' }
+    });
+    const op = JSON.parse(headPatch!.operation) as PatchOperation;
+    expect(op.op).toBe('replace');
+    expect(op.path).toBe('/pages/0/blocks/0/lines/0/text');
+
+    const parentPatch = await ctx.prisma.patch.findUnique({
+      where: { id: headPatch!.parentId ?? '' }
+    });
+    const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
+    expect(parentOp.op).toBe('reorder');
+    expect(parentOp.new_order).toEqual([2, 0, 1]);
+  });
+
+  it('expands reorder and keeps following add when admin shift_up exists', async () => {
+    const base = await seedVolumeWithBlocks(ctx, userId, ['b0', 'b1', 'b2']);
+    const adminBranch = base.adminBranch;
+    const adminHeadId = adminBranch.headPatchId;
+    const adminHeadSeq = adminBranch.headPatch.sequence;
+
+    const userBranch = await ensureUserBranch(ctx.app, base.volumeId, userId, adminBranch);
+    const userOps: PatchOperation[] = [
+      { op: 'reorder', path: '/pages/0/blocks', new_order: [2, 0, 1] },
+      { op: 'add', path: '/pages/0/blocks/0', value: buildUnifiedBlock('user-add') }
+    ];
+    const userChain = await createUserPatches(
+      ctx,
+      base.volumeId,
+      userId,
+      adminHeadId,
+      adminHeadSeq,
+      userOps
+    );
+    await ctx.prisma.ocrBranch.update({
+      where: { id: userBranch.id },
+      data: { headPatchId: userChain.headId, rootPatchId: userChain.rootId }
+    });
+
+    const adminOp: PatchOperation = {
+      op: 'add',
+      path: '/pages/0/blocks/1',
+      value: buildUnifiedBlock('inserted')
+    };
+    await createAdminPatch(
+      ctx,
+      base.volumeId,
+      adminBranch.id,
+      adminHeadId,
+      adminHeadSeq,
+      adminOp
+    );
+
+    const engine = new RebaseEngine(ctx.app);
+    const result = await engine.start(base.volumeId, userId);
+    expect(result.status).toBe('complete');
+
+    const updatedBranch = await ctx.prisma.ocrBranch.findUnique({
+      where: { id: userBranch.id }
+    });
+    const headPatch = await ctx.prisma.patch.findUnique({
+      where: { id: updatedBranch?.headPatchId ?? '' }
+    });
+    const op = JSON.parse(headPatch!.operation) as PatchOperation;
+    expect(op.op).toBe('add');
+    expect(op.path).toBe('/pages/0/blocks/0');
+
+    const parentPatch = await ctx.prisma.patch.findUnique({
+      where: { id: headPatch!.parentId ?? '' }
+    });
+    const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
+    expect(parentOp.op).toBe('reorder');
+    expect(parentOp.new_order).toEqual([3, 0, 1, 2]);
+  });
+
+  it('shrinks reorder and keeps following remove when admin shift_down exists', async () => {
+    const base = await seedVolumeWithBlocks(ctx, userId, ['b0', 'b1', 'b2', 'b3']);
+    const adminBranch = base.adminBranch;
+    const adminHeadId = adminBranch.headPatchId;
+    const adminHeadSeq = adminBranch.headPatch.sequence;
+
+    const userBranch = await ensureUserBranch(ctx.app, base.volumeId, userId, adminBranch);
+    const userOps: PatchOperation[] = [
+      { op: 'reorder', path: '/pages/0/blocks', new_order: [3, 0, 1, 2] },
+      { op: 'remove', path: '/pages/0/blocks/0', old_value: base.blocks[0] }
+    ];
+    const userChain = await createUserPatches(
+      ctx,
+      base.volumeId,
+      userId,
+      adminHeadId,
+      adminHeadSeq,
+      userOps
+    );
+    await ctx.prisma.ocrBranch.update({
+      where: { id: userBranch.id },
+      data: { headPatchId: userChain.headId, rootPatchId: userChain.rootId }
+    });
+
+    const adminOp: PatchOperation = {
+      op: 'remove',
+      path: '/pages/0/blocks/1',
+      old_value: base.blocks[1]
+    };
+    await createAdminPatch(
+      ctx,
+      base.volumeId,
+      adminBranch.id,
+      adminHeadId,
+      adminHeadSeq,
+      adminOp
+    );
+
+    const engine = new RebaseEngine(ctx.app);
+    const result = await engine.start(base.volumeId, userId);
+    expect(result.status).toBe('complete');
+
+    const updatedBranch = await ctx.prisma.ocrBranch.findUnique({
+      where: { id: userBranch.id }
+    });
+    const headPatch = await ctx.prisma.patch.findUnique({
+      where: { id: updatedBranch?.headPatchId ?? '' }
+    });
+    const op = JSON.parse(headPatch!.operation) as PatchOperation;
+    expect(op.op).toBe('remove');
+    expect(op.path).toBe('/pages/0/blocks/0');
+
+    const parentPatch = await ctx.prisma.patch.findUnique({
+      where: { id: headPatch!.parentId ?? '' }
+    });
+    const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
+    expect(parentOp.op).toBe('reorder');
+    expect(parentOp.new_order).toEqual([2, 0, 1]);
   });
 
   it('handles multiple admin conflicts with sequential resolutions', async () => {
