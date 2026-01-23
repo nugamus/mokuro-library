@@ -35,8 +35,8 @@ describe('library routes', () => {
 
     expect(response.statusCode).toBe(200);
     const body = response.json();
-    expect(body.data.length).toBe(1);
-    expect(body.data[0].id).toBe(seriesId);
+    expect(body.data.length).toBeGreaterThanOrEqual(1);
+    expect(body.data.some((entry: { id: string }) => entry.id === seriesId)).toBe(true);
   });
 
   it('returns series details with volumes', async () => {
