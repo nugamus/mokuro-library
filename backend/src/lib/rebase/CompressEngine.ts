@@ -56,6 +56,9 @@ export class CompressEngine {
         if (!compressed) {
           throw new Error('Failed to materialize compressed effect');
         }
+        if (compressed.op !== 'replace') {
+          throw new Error('Compression produced a non-replace operation');
+        }
         compressed.old_value = originalOld;
         compressed.value = originalNew;
         compressedContent.push(compressed);

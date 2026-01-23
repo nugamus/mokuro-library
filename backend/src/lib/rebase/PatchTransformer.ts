@@ -408,16 +408,18 @@ export class PatchTransformer {
 
     // --- User reorder + shift effect = discard reorder, accumulate permutation ---
     if (userOp.op === 'reorder') {
+      const reorderOp = userOp as Extract<PatchOperation, { op: 'reorder' }>;
+      const newReorderOp = newOp as Extract<PatchOperation, { op: 'reorder' }>;
       if (newEffect.type === 'shift_up' && effect.type === 'shift_up') {
         // Expand user's reorder to account for the added element
-        newOp.new_order = Permutation.expandPermutation(userOp.new_order, effect.index);
-        newEffect.index = Permutation.mapIndex(newOp.new_order, effect.index);
+        newReorderOp.new_order = Permutation.expandPermutation(reorderOp.new_order, effect.index);
+        newEffect.index = Permutation.mapIndex(newReorderOp.new_order, effect.index);
         return { op: newOp, effect: newEffect };
       }
       if (newEffect.type === 'shift_down' && effect.type === 'shift_down') {
         // Shrink user's reorder to account for the removed element
-        newEffect.index = Permutation.mapIndex(userOp.new_order, effect.index);
-        newOp.new_order = Permutation.shrinkPermutation(userOp.new_order, effect.index);
+        newEffect.index = Permutation.mapIndex(reorderOp.new_order, effect.index);
+        newReorderOp.new_order = Permutation.shrinkPermutation(reorderOp.new_order, effect.index);
         return { op: newOp, effect: newEffect };
       }
       throw new Error(`Unexpected reorder in sibling_hit with permute effect (should be direct_hit).`);
@@ -539,7 +541,8 @@ export class PatchTransformer {
       // reorder_collision: discard user's reorder, accumulate A⁻¹ * U
       if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.op === 'reorder') {
         const newEffect = structuredClone(effect);
-        newEffect.permutation = Permutation.compose(effect.permutation, userOp.new_order);
+        const reorderOp = userOp as Extract<PatchOperation, { op: 'reorder' }>;
+        newEffect.permutation = Permutation.compose(effect.permutation, reorderOp.new_order);
         return {
           success: true,
           op: null,
@@ -607,8 +610,9 @@ export class PatchTransformer {
 
       // reorder_collision: transform user's reorder to A⁻¹ * U, effect absorbed
       if (reason === 'reorder_collision' && effect.type === 'permute' && userOp.op === 'reorder') {
-        const newOp = structuredClone(userOp);
-        newOp.new_order = Permutation.compose(effect.permutation, userOp.new_order);
+        const reorderOp = userOp as Extract<PatchOperation, { op: 'reorder' }>;
+        const newOp = structuredClone(reorderOp);
+        newOp.new_order = Permutation.compose(effect.permutation, reorderOp.new_order);
         return {
           success: true,
           op: newOp,
@@ -693,14 +697,15 @@ export class PatchTransformer {
       throw new Error(`Cannot remove on object target: ${targetKey}`);
     }
     if (op.op === 'reorder') {
+      const reorderOp = op as Extract<PatchOperation, { op: 'reorder' }>;
       const arr = obj[targetKey];
       if (!Array.isArray(arr)) {
         throw new Error(`Cannot reorder on non-array target: ${targetKey}`);
       }
-      if (arr.length !== op.new_order.length) {
-        throw new Error(`Reorder length mismatch: new_order has ${op.new_order.length} elements, but array has ${arr.length} items`);
+      if (arr.length !== reorderOp.new_order.length) {
+        throw new Error(`Reorder length mismatch: new_order has ${reorderOp.new_order.length} elements, but array has ${arr.length} items`);
       }
-      PatchApplicator.reorderArray(arr, op.new_order);
+      PatchApplicator.reorderArray(arr, reorderOp.new_order);
       return;
     }
   }

@@ -1713,6 +1713,9 @@ describe('RebaseEngine', () => {
     });
     const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
     expect(parentOp.op).toBe('reorder');
+    if (parentOp.op !== 'reorder') {
+      throw new Error('Expected reorder parent patch');
+    }
     expect(parentOp.new_order).toEqual([3, 0, 1, 2]);
   });
 
@@ -1773,6 +1776,9 @@ describe('RebaseEngine', () => {
     });
     const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
     expect(parentOp.op).toBe('reorder');
+    if (parentOp.op !== 'reorder') {
+      throw new Error('Expected reorder parent patch');
+    }
     expect(parentOp.new_order).toEqual([2, 0, 1]);
   });
 
@@ -1833,6 +1839,9 @@ describe('RebaseEngine', () => {
     });
     const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
     expect(parentOp.op).toBe('reorder');
+    if (parentOp.op !== 'reorder') {
+      throw new Error('Expected reorder parent patch');
+    }
     expect(parentOp.new_order).toEqual([3, 0, 1, 2]);
   });
 
@@ -1893,6 +1902,9 @@ describe('RebaseEngine', () => {
     });
     const parentOp = JSON.parse(parentPatch!.operation) as PatchOperation;
     expect(parentOp.op).toBe('reorder');
+    if (parentOp.op !== 'reorder') {
+      throw new Error('Expected reorder parent patch');
+    }
     expect(parentOp.new_order).toEqual([2, 0, 1]);
   });
 
