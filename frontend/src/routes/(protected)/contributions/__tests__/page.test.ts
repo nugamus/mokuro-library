@@ -30,6 +30,7 @@ const { userStore } = vi.hoisted(() => {
 
 const apiFetchMock = vi.hoisted(() => vi.fn());
 const gotoMock = vi.hoisted(() => vi.fn());
+const pageState = vi.hoisted(() => ({ url: new URL('http://localhost/') }));
 
 vi.mock('$lib/services/api', () => ({
   apiFetch: apiFetchMock,
@@ -37,6 +38,7 @@ vi.mock('$lib/services/api', () => ({
 }));
 vi.mock('$app/environment', () => ({ browser: true }));
 vi.mock('$app/navigation', () => ({ goto: gotoMock }));
+vi.mock('$app/state', () => ({ page: pageState }));
 vi.mock('$lib/stores/authStore', () => ({ user: userStore }));
 
 afterEach(() => {
@@ -46,7 +48,7 @@ afterEach(() => {
 
 describe('contributions page', () => {
   it('renders empty state when no contributions exist', async () => {
-    apiFetchMock.mockResolvedValue({ data: [] });
+    apiFetchMock.mockResolvedValue([]);
 
     render(Page);
 

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from '@testing-library/svelte';
+import { render, screen } from '@testing-library/svelte';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import Page from '../+page.svelte';
+import Page from '../(protected)/+page.svelte';
 
 type SimpleStore<T> = {
   subscribe: (run: (value: T) => void) => () => void;
@@ -47,22 +47,10 @@ afterEach(() => {
 });
 
 describe('home page', () => {
-  it('renders the login view by default', () => {
+  it('renders a redirect placeholder when unauthenticated', () => {
     render(Page);
 
-    expect(screen.getByText('Welcome Back!')).toBeTruthy();
-    expect(screen.getByLabelText('Username')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /sign in/i })).toBeTruthy();
-  });
-
-  it('switches to register mode when toggled', async () => {
-    render(Page);
-
-    const toggleButton = screen.getByRole('button', { name: /create an account/i });
-    await fireEvent.click(toggleButton);
-
-    expect(screen.getByText('Join the Library!')).toBeTruthy();
-    expect(screen.getByLabelText('Confirm Password')).toBeTruthy();
+    expect(screen.getByText('Redirecting...')).toBeTruthy();
   });
 
   it('renders the library view and fetches data for authenticated users', async () => {
