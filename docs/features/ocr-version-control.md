@@ -148,6 +148,95 @@ Admin incorporates user's patches:
 3. Set `nextPatchId` on merged patches (doubly-link admin chain)
 4. Reset user branch to clean state
 
+### 4.7 Patch Compression
+
+Reduces redundant patches by leveraging the rebase transform machinery. Useful after officialize to compact admin history.
+
+**Key Insight:** In compression (unlike rebase), patches are from the same timeline — paths are already correct relative to each other. Only `replace` patches can be compressed; structural patches (`add`, `remove`, `reorder`) pass through unchanged but transform effect paths as they propagate.
+
+**Algorithm:**
+
+```
+input:  [P1, P2, P3, ..., Pn]
+compressed_structural = []
+compressed_content = []
+
+for i = 0 to n-1:
+  if patches[i].op !== 'replace':
+    compressed_structural.push(patches[i])
+    continue
+
+  effect = fromOperation(patches[i])
+
+  // Flip old/new so keep_mine engraves the original old_value into hits
+  originalOld = effect.oldValue
+  originalNew = effect.newValue
+  effect.oldValue = originalNew
+  effect.newValue = originalOld
+
+  for j = i+1 to n-1:
+    result = transform(patches[j], effect, patches[i], 'keep_mine')
+    patches[j] = result.op
+    effect = result.effect
+
+  if effect != identity:
+    cPatch = toOperation(effect)
+    cPatch.old_value = originalOld
+    cPatch.value = originalNew
+    compressed_content.push(cPatch)
+
+return [...compressed_structural, ...compressed_content]
+```
+
+**Behavior:**
+
+- Only `replace` patches become effect sources
+- Structural patches pass through to `compressed_structural` verbatim
+- Structural patches transform effect paths as effects propagate through them
+- Content conflicts resolve with `keep_mine` (absorb into later patch)
+- Surviving effects rematerialize into `compressed_content`
+- Final output: structural patches first, then compressed content patches
+
+**Runtime:** O(n²) — single forward pass, guaranteed termination.
+
+**Examples:**
+
+Sequential edits to same field:
+```
+P1: replace /blocks/0/text "a" → "b"
+P2: replace /blocks/0/text "b" → "c"
+P3: replace /blocks/0/text "c" → "d"
+```
+Compresses to:
+```
+P': replace /blocks/0/text "a" → "d"
+```
+
+Mixed structural and content:
+```
+P1: replace /blocks/1/text "a" → "b"
+P2: remove /blocks/0
+P3: replace /blocks/0/text "b" → "c"  (same block, shifted)
+```
+Compresses to:
+```
+structural: [P2: remove /blocks/0]
+content:    [P': replace /blocks/0/text "a" → "c"]
+```
+(P1's effect path shifted by P2, then absorbed by P3)
+
+Independent edits (no compression):
+```
+P1: replace /blocks/0/text "a" → "b"
+P2: replace /blocks/1/text "x" → "y"
+```
+Compresses to:
+```
+P1: replace /blocks/0/text "a" → "b"
+P2: replace /blocks/1/text "x" → "y"
+```
+(unchanged — no conflicts to absorb)
+
 ---
 
 ## 5. API Specification
@@ -265,8 +354,7 @@ Existing `.mokuro` files work without migration. Genesis patches are created laz
 
 | Operation | Path | Value Type |
 |-----------|------|------------|
-| Add Block | `/pages/{p}/blocks/-` | `UnifiedBlock` |
-| Insert Block | `/pages/{p}/blocks/{b}` | `UnifiedBlock` |
+| Add Block | `/pages/{p}/blocks/{b}` | `UnifiedBlock` |
 | Remove Block | `/pages/{p}/blocks/{b}` | N/A (`old_value` required) |
 | Reorder Blocks | `/pages/{p}/blocks` | N/A (`new_order` required) |
 | Resize Box | `/pages/{p}/blocks/{b}/box` | `Rect` |
@@ -277,14 +365,13 @@ Existing `.mokuro` files work without migration. Genesis patches are created laz
 
 | Operation | Path | Value Type |
 |-----------|------|------------|
-| Add Line | `/pages/{p}/blocks/{b}/lines/-` | `UnifiedLine` |
-| Insert Line | `/pages/{p}/blocks/{b}/lines/{l}` | `UnifiedLine` |
+| Add Line | `/pages/{p}/blocks/{b}/lines/{l}` | `UnifiedLine` |
 | Remove Line | `/pages/{p}/blocks/{b}/lines/{l}` | N/A (`old_value` required) |
 | Reorder Lines | `/pages/{p}/blocks/{b}/lines` | N/A (`new_order` required) |
 | Edit Text | `/pages/{p}/blocks/{b}/lines/{l}/text` | `string` |
 | Edit Coords | `/pages/{p}/blocks/{b}/lines/{l}/coords` | `Quad` |
 
-**Note:** Direct modification of `lines_coords` array is forbidden. Use `/lines/{l}/coords` path.
+**Note:** To append, use `{b}` or `{l}` equal to `array.length`. Direct modification of `lines_coords` array is forbidden. Use `/lines/{l}/coords` path.
 
 ---
 
@@ -292,13 +379,15 @@ Existing `.mokuro` files work without migration. Genesis patches are created laz
 
 ### B.1 Intersection Types
 
-| Type | Meaning |
-|------|---------|
-| `no_hit` | No overlap, passthrough |
-| `sibling_hit` | Same array, path transform |
-| `direct_hit` | Exact path match |
-| `ancestor_hit` | User path inside affected path |
-| `descendant_hit` | Affected path inside user path |
+| Type | Meaning | What transforms |
+|------|---------|-----------------|
+| `no_hit` | No overlap | Passthrough |
+| `direct_hit` | Exact path match | Conflict resolution |
+| `ancestor_hit` | User path inside affected path | Conflict resolution |
+| `descendant_hit` | Affected path inside user path | Conflict resolution |
+| `collateral_ancestor_hit` | Structural effect, patch inside affected array | Patch path |
+| `collateral_descendant_hit` | Any effect, structural patch in array containing effect | Effect path |
+| `sibling_hit` | Both structural, same array level | Both interact |
 
 ### B.2 Conflict Types
 
@@ -312,14 +401,45 @@ Existing `.mokuro` files work without migration. Genesis patches are created laz
 | `reorder_collision` | User choice | Both reordered same array |
 | `content_conflict` | User choice | Both edited same field |
 
-### B.3 Conflict Tables
+### B.3 Auto-Transform Tables (No Conflict)
+
+**collateral_ancestor_hit** (structural effect, patch inside array):
+
+| effect.type | userOp.op | Handling |
+|-------------|-----------|----------|
+| `shift_up` | any | Patch path: index >= effect.index gets +1 |
+| `shift_down` | any | Patch path: index > effect.index gets -1 |
+| `permute` | any | Patch path: map index through permutation |
+
+**collateral_descendant_hit** (any effect, structural patch):
+
+| effect.type | userOp.op | Handling |
+|-------------|-----------|----------|
+| any | `add` | Effect path: index >= add.index gets +1 |
+| any | `remove` | Effect path: index > remove.index gets -1 |
+| any | `reorder` | Effect path: map index through permutation |
+
+**sibling_hit** (both structural, same level):
+
+| effect.type | userOp.op | Handling |
+|-------------|-----------|----------|
+| `shift_up` | `add` | Shift add index, adjust effect index |
+| `shift_up` | `remove` | Shift remove index, adjust effect index |
+| `shift_up` | `reorder` | Expand reorder permutation, map effect index |
+| `shift_down` | `add` | Shift add index, adjust effect index |
+| `shift_down` | `remove` | Shift remove index, adjust effect index |
+| `shift_down` | `reorder` | Map effect index, shrink reorder permutation |
+| `permute` | `add` | Expand permutation, map add index |
+| `permute` | `remove` | Map remove index, shrink permutation |
+
+### B.4 Conflict Tables
 
 **direct_hit:**
 
 | effect.type | userOp.op | Conflict | Resolution |
 |-------------|-----------|----------|------------|
 | `shift_down` | `add` | `shift_down_into_add` | Auto: keep patch, bump effect index |
-| `shift_down` | `remove` | `double_delete` | Auto: discard patch |
+| `shift_down` | `remove` | `double_delete` | Auto: discard patch, effect → identity |
 | `permute` | `reorder` | `reorder_collision` | User: `keep_admin` discards, `keep_mine` transforms |
 | `content` | `replace` | `content_conflict` | User: `keep_admin` discards, `keep_mine` updates old_value |
 
@@ -335,18 +455,9 @@ Existing `.mokuro` files work without migration. Genesis patches are created laz
 |-------------|-----------|----------|------------|
 | any | `add` | `effect_shift` | Auto: shift effect path |
 | any | `reorder` | `effect_shift` | Auto: permute effect path |
-| any | `remove` | `reverse_dead_zone` | User: `keep_admin` creates shift_up, `keep_mine` keeps |
+| any | `remove` | `reverse_dead_zone` | User: `keep_admin` discards + creates shift_up, `keep_mine` keeps + updates old_value |
 
-**sibling_hit:**
-
-| effect.type | userOp.op | Handling |
-|-------------|-----------|----------|
-| `shift_up` | non-reorder | Path transform: index >= effect.index gets +1 |
-| `shift_down` | non-reorder | Path transform: index > effect.index gets -1 |
-| `permute` | non-reorder | Path transform: map index through permutation |
-| `shift_*` | `reorder` | Discard patch, accumulate permutation |
-
-### B.4 Permutation Math
+### B.5 Permutation Math
 
 For reorder conflicts:
 - `A` = Admin's permutation, `U` = User's permutation
