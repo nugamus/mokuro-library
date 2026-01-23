@@ -26,16 +26,16 @@ export interface UnifiedBlock {
   lines: UnifiedLine[];
 }
 
-export type PatchValue = FineValue | UnifiedBlock | UnifiedLine;
+export type CoarseValue = UnifiedBlock | UnifiedLine;
 
 // --- 3. The Patch Operation ---
 export type OpType = 'replace' | 'add' | 'remove' | 'reorder' | 'genesis';
 
 export type PatchOperation =
   | { op: 'genesis'; path: string }
-  | { op: 'replace'; path: string; value: PatchValue; old_value: PatchValue }
-  | { op: 'add'; path: string; value: PatchValue }
-  | { op: 'remove'; path: string; old_value: PatchValue }
+  | { op: 'replace'; path: string; value: FineValue; old_value: FineValue }
+  | { op: 'add'; path: string; value: CoarseValue }
+  | { op: 'remove'; path: string; old_value: CoarseValue }
   | { op: 'reorder'; path: string; new_order: number[] };
 
 // --- 4. Network Payload Types ---

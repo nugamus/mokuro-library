@@ -1,4 +1,4 @@
-import { PatchOperation } from '../../types/history';
+import { CoarseValue, PatchOperation } from '../../types/history';
 import {
   Effect,
   TransformResult,
@@ -9,6 +9,8 @@ import {
   ShiftDownEffect,
   PermuteEffect
 } from '../../types/rebase';
+import { EffectUtilities } from './Effect';
+import { PatchApplicator } from '../PatchApplicator';
 import { PathUtils, Permutation } from './rebaseUtils';
 
 export class PatchTransformer {
@@ -38,7 +40,19 @@ export class PatchTransformer {
       return { success: true, op: userOp, effect, hadConflict: false };
     }
 
-    // --- 4. Patch Shift: Auto-transform path ---
+    // --- 4a. Collateral Ancestor Hit: Structural effect, patch inside affected array ---
+    if (relation === 'collateral_ancestor_hit') {
+      const { op: newOp, effect: newEffect } = this.handleCollateralAncestorHit(userOp, effect as ShiftUpEffect | ShiftDownEffect | PermuteEffect);
+      return { success: true, op: newOp, effect: newEffect, hadConflict: false };
+    }
+
+    // --- 4b. Collateral Descendant Hit: Content effect, structural patch shifts effect path ---
+    if (relation === 'collateral_descendant_hit') {
+      const { op: newOp, effect: newEffect } = this.handleCollateralDescendantHit(userOp, effect);
+      return { success: true, op: newOp, effect: newEffect, hadConflict: false };
+    }
+
+    // --- 4c. Sibling Hit: Both structural, same array level ---
     if (relation === 'sibling_hit') {
       const { op: newOp, effect: newEffect } = this.handleSiblingHit(userOp, effect as ShiftUpEffect | ShiftDownEffect | PermuteEffect);
       return { success: true, op: newOp, effect: newEffect, hadConflict: false };
@@ -70,7 +84,7 @@ export class PatchTransformer {
   private static checkIntersection(
     userOp: PatchOperation,
     effect: Effect
-  ): 'no_hit' | 'sibling_hit' | 'direct_hit' | 'ancestor_hit' | 'descendant_hit' {
+  ): 'no_hit' | 'collateral_ancestor_hit' | 'collateral_descendant_hit' | 'sibling_hit' | 'direct_hit' | 'ancestor_hit' | 'descendant_hit' {
 
     if (effect.type === 'identity') return 'no_hit';
 
@@ -79,9 +93,6 @@ export class PatchTransformer {
     let affectedPath: string;
     if (effect.type === 'shift_down' || effect.type === 'shift_up') {
       let index = effect.index;
-      if (effect.permutation) {
-        index = Permutation.mapIndex(Permutation.invert(effect.permutation), index);
-      }
       affectedPath = `${effect.path}/${index}`;
     } else if (effect.type === 'permute') {
       affectedPath = `${effect.path}/-1`;
@@ -104,7 +115,7 @@ export class PatchTransformer {
     if (PathUtils.isDescendant(affectedPath, userPath)) return 'descendant_hit';
 
 
-    // Sibling hit: user is in same array (for shift/permute effects)
+    // Structural effect
     if (effect.type === 'shift_up' || effect.type === 'shift_down' || effect.type === 'permute') {
       const arrayPath = effect.path;
       if (PathUtils.isDescendant(userPath, arrayPath)) {
@@ -113,7 +124,22 @@ export class PatchTransformer {
         if (isNaN(userIndex)) {
           throw new Error(`Unexpected non-numeric path segment in ${userPath}`);
         }
-        return 'sibling_hit';
+
+        if (relative.length === 1 && (userOp.op === 'add' || userOp.op === 'remove' || userOp.op === 'reorder')) return 'sibling_hit';
+        return 'collateral_ancestor_hit';
+      }
+    }
+
+    // Structural Patch
+    if (userOp.op === 'add' || userOp.op === 'remove' || userOp.op === 'reorder') {
+      const arrayPath = PathUtils.compile(PathUtils.parse(userPath).slice(0, -1));
+      if (PathUtils.isDescendant(affectedPath, arrayPath)) {
+        const relative = PathUtils.getRelativeSegments(affectedPath, arrayPath);
+        const effectIndex = parseInt(relative[0], 10);
+        if (isNaN(effectIndex)) {
+          throw new Error(`Unexpected non-numeric path segment in ${affectedPath}`);
+        }
+        return 'collateral_descendant_hit';
       }
     }
 
@@ -164,15 +190,6 @@ export class PatchTransformer {
     if (reason === 'shift_down_into_add' && effect.type === 'shift_down') {
       const newOp = structuredClone(userOp);
       const newEffect = structuredClone(effect);
-
-      // If permutation exists, apply it to user's add path
-      if (newEffect.permutation) {
-        const segments = PathUtils.parse(userOp.path);
-        const index = parseInt(segments[segments.length - 1], 10);
-        const newIndex = Permutation.mapIndex(newEffect.permutation, index);
-        segments[segments.length - 1] = newIndex.toString();
-        newOp.path = PathUtils.compile(segments);
-      }
 
       // Bump effect index
       newEffect.index = newEffect.index + 1;
@@ -251,6 +268,31 @@ export class PatchTransformer {
   }
 
   /**
+   * Shifts a path down when a remove happens.
+   * E.g., remove at /blocks/1, effect path /blocks/2/text -> /blocks/1/text
+   */
+  private static shiftPathDown(effectPath: string, removePath: string): string {
+    const removeSegments = PathUtils.parse(removePath);
+    const removeIndex = parseInt(removeSegments[removeSegments.length - 1], 10);
+    const removeParentPath = PathUtils.compile(removeSegments.slice(0, -1));
+
+    if (!PathUtils.isDescendant(effectPath, removeParentPath)) {
+      throw new Error(`Effect path ${effectPath} is not descendant of remove parent ${removeParentPath}`);
+    }
+
+    const relative = PathUtils.getRelativeSegments(effectPath, removeParentPath);
+    const effectIndex = parseInt(relative[0], 10);
+
+    if (effectIndex > removeIndex) {
+      relative[0] = (effectIndex - 1).toString();
+    }
+
+    return removeParentPath === ''
+      ? '/' + relative.join('/')
+      : removeParentPath + '/' + relative.join('/');
+  }
+
+  /**
    * Permutes a path when a reorder happens at an ancestor.
    * E.g., reorder at /blocks with [2,0,1], effect path /blocks/0/text -> /blocks/2/text
    */
@@ -274,26 +316,18 @@ export class PatchTransformer {
       : reorderPath + '/' + relative.join('/');
   }
 
-  private static handleSiblingHit(
+  /**
+   * Handles collateral_ancestor_hit: structural effect affects an array,
+   * patch operates inside that array (but not at the same level).
+   * Transforms the patch's path.
+   */
+  private static handleCollateralAncestorHit(
     userOp: PatchOperation,
     effect: ShiftUpEffect | ShiftDownEffect | PermuteEffect
   ): { op: PatchOperation | null; effect: Effect } {
     const newOp = structuredClone(userOp);
     const newEffect = structuredClone(effect);
 
-    // reorder + shift = reorder_length_mismatch (auto-resolve)
-    // Discard user's reorder, accumulate permutation onto effect
-    if (userOp.op === 'reorder') {
-      if (!userOp.new_order) throw Error(`Invalid user patch: reorder without new_order provided.`);
-      if (newEffect.type === 'shift_up' || newEffect.type === 'shift_down') {
-        const existingPerm = newEffect.permutation ?? this.identityPermutation(userOp.new_order.length);
-        newEffect.permutation = Permutation.compose(existingPerm, userOp.new_order);
-        return { op: null, effect: newEffect };
-      }
-      throw Error(`Unexpected reorder_collision in sibling_hit.`);
-    }
-
-    // Normal path transform for shift/permute effects
     if (PathUtils.isDescendant(userOp.path, effect.path)) {
       const segments = PathUtils.getRelativeSegments(userOp.path, effect.path);
       const index = parseInt(segments[0], 10);
@@ -303,19 +337,13 @@ export class PatchTransformer {
 
       let newIndex = index;
 
-      // Apply accumulated permutation first (if exists on shift effects)
-      if (newEffect.permutation) {
-        newIndex = Permutation.mapIndex(newEffect.permutation, index);
-        if (newIndex === -1) {
-          throw new Error(`Invalid permutation ${newEffect.permutation} applied to ${index}`);
-        }
-      }
-
-      // Then apply shift (using newIndex, not index)
+      // Then apply shift
       if (effect.type === 'shift_up') {
         if (newIndex >= effect.index) newIndex = newIndex + 1;
       } else if (effect.type === 'shift_down') {
         if (newIndex > effect.index) newIndex = newIndex - 1;
+      } else if (effect.type === 'permute') {
+        newIndex = Permutation.mapIndex(effect.permutation, newIndex);
       }
 
       if (newIndex !== index) {
@@ -326,6 +354,147 @@ export class PatchTransformer {
     }
 
     return { op: newOp, effect: newEffect };
+  }
+
+  /**
+   * Handles collateral_descendant_hit: content/structural effect,
+   * structural patch operates on an array that contains the effect path.
+   * Transforms the effect's path.
+   */
+  private static handleCollateralDescendantHit(
+    userOp: PatchOperation,
+    effect: Effect
+  ): { op: PatchOperation; effect: Effect } {
+    const newEffect = structuredClone(effect);
+
+    const userPath = userOp.path;
+    const userSegments = PathUtils.parse(userPath);
+    const userIndex = parseInt(userSegments[userSegments.length - 1], 10);
+    const arrayPath = PathUtils.compile(userSegments.slice(0, -1));
+
+    const relative = PathUtils.getRelativeSegments(newEffect.path, arrayPath);
+    const effectIndex = parseInt(relative[0], 10);
+
+    let newIndex = effectIndex;
+
+    if (userOp.op === 'add') {
+      if (effectIndex >= userIndex) newIndex = effectIndex + 1;
+    } else if (userOp.op === 'remove') {
+      if (effectIndex > userIndex) newIndex = effectIndex - 1;
+    } else if (userOp.op === 'reorder' && userOp.new_order) {
+      newIndex = Permutation.mapIndex(userOp.new_order, effectIndex);
+    }
+
+    if (newIndex !== effectIndex) {
+      relative[0] = newIndex.toString();
+      newEffect.path = arrayPath === ''
+        ? '/' + relative.join('/')
+        : arrayPath + '/' + relative.join('/');
+    }
+
+    return { op: userOp, effect: newEffect };
+  }
+
+  /**
+   * Handles sibling_hit: both effect and patch are structural,
+   * operating on the same array at the same level.
+   */
+  private static handleSiblingHit(
+    userOp: PatchOperation,
+    effect: ShiftUpEffect | ShiftDownEffect | PermuteEffect
+  ): { op: PatchOperation | null; effect: Effect } {
+    const newOp = structuredClone(userOp);
+    const newEffect = structuredClone(effect);
+
+    const userSegments = PathUtils.parse(userOp.path);
+    const userIndex = parseInt(userSegments[userSegments.length - 1], 10);
+    if (isNaN(userIndex)) throw new Error(`Unexpected non-numeric path segment in ${userOp.path}`);
+
+
+    // --- User reorder + shift effect = discard reorder, accumulate permutation ---
+    // appease the linter
+    if (newOp.op === 'reorder' && userOp.op === 'reorder') {
+      if (newEffect.type === 'shift_up' && effect.type === 'shift_up') {
+        // Expand user's reorder to account for the added element
+        newOp.new_order = Permutation.expandPermutation(userOp.new_order, effect.index);
+        newEffect.index = Permutation.mapIndex(newOp.new_order, effect.index);
+        return { op: newOp, effect: newEffect };
+      }
+      if (newEffect.type === 'shift_down' && effect.type === 'shift_down') {
+        // Shrink user's reorder to account for the removed element
+        newEffect.index = Permutation.mapIndex(userOp.new_order, effect.index);
+        newOp.new_order = Permutation.shrinkPermutation(userOp.new_order, effect.index);
+        return { op: newOp, effect: newEffect };
+      }
+      throw new Error(`Unexpected reorder in sibling_hit with permute effect (should be direct_hit).`);
+    }
+
+    // --- User add/remove + shift/permute effect ---
+    if (userOp.op === 'add') {
+      // Transform user's add path
+      let newIndex = userIndex;
+
+      if (effect.type === 'shift_up') {
+        if (newIndex >= effect.index) newIndex = newIndex + 1;
+      } else if (effect.type === 'shift_down') {
+        if (newIndex > effect.index) newIndex = newIndex - 1;
+        // Equality would imply a direct_hit per checkIntersection.
+        if (newIndex === effect.index) throw new Error(`Unexpected index equivalence: should be caught by direct_hit`);
+      } else if (effect.type === 'permute' && newEffect.type === 'permute') {
+        const expanded = Permutation.expandPermutation(effect.permutation, userIndex)
+        newIndex = Permutation.mapIndex(expanded, userIndex);
+        newEffect.permutation = expanded;
+      }
+
+
+      if (newIndex !== userIndex) {
+        userSegments[userSegments.length - 1] = newIndex.toString();
+        newOp.path = PathUtils.compile(userSegments);
+      }
+
+      // User's add also affects the effect
+      if (newEffect.type === 'shift_up' || newEffect.type === 'shift_down') {
+        if (newIndex < newEffect.index) {
+          newEffect.index = newEffect.index + 1;
+        }
+      }
+
+      return { op: newOp, effect: newEffect };
+    }
+
+    if (userOp.op === 'remove') {
+      // Transform user's remove path
+      let newIndex = userIndex;
+
+      if (effect.type === 'shift_up') {
+        if (newIndex >= effect.index) newIndex = newIndex + 1;
+      } else if (effect.type === 'shift_down') {
+        if (newIndex > effect.index) newIndex = newIndex - 1;
+        // Equality would imply a direct_hit per checkIntersection.
+        if (newIndex === effect.index) throw new Error(`Unexpected index equivalence: should be caught by direct_hit`);
+      } else if (effect.type === 'permute' && newEffect.type === 'permute') {
+        const shrunk = Permutation.shrinkPermutation(effect.permutation, userIndex)
+        newIndex = Permutation.mapIndex(effect.permutation, userIndex);
+        newEffect.permutation = shrunk;
+      }
+
+
+      if (newIndex !== userIndex) {
+        userSegments[userSegments.length - 1] = newIndex.toString();
+        newOp.path = PathUtils.compile(userSegments);
+      }
+
+      // User's remove also affects the effect
+      if (newEffect.type === 'shift_up' || newEffect.type === 'shift_down') {
+        if (newIndex < newEffect.index) {
+          newEffect.index = newEffect.index - 1;
+        }
+      }
+
+      return { op: newOp, effect: newEffect };
+    }
+
+    throw new Error(`Unexpected sibling_hit: userOp=${userOp.op}, effect=${effect.type}`);
   }
 
   private static resolveConflict(
@@ -350,6 +519,8 @@ export class PatchTransformer {
 
       // Reverse Dead Zone: undo user's delete, effect becomes shift_up
       if (reason === 'reverse_dead_zone') {
+        if (userOp.op !== 'remove') throw new Error(`reverse_dead_zone can only occur if userOp type is 'remove'`);
+
         const segments = PathUtils.parse(userOp.path);
         const removeIndex = parseInt(segments.pop() || '', 10);
         const parentPath = PathUtils.compile(segments);
@@ -360,7 +531,8 @@ export class PatchTransformer {
           effect: {
             type: 'shift_up',
             path: parentPath,
-            index: removeIndex
+            index: removeIndex,
+            newValue: userOp.old_value
           },
           hadConflict: true
         };
@@ -412,11 +584,26 @@ export class PatchTransformer {
         };
       }
 
-      // Reverse Dead Zone: keep user's delete, effect absorbed
+      // Reverse Dead Zone: keep user's delete, update old_value to reflect effect, effect absorbed
       if (reason === 'reverse_dead_zone') {
+        if (userOp.op !== 'remove') throw new Error(`reverse_dead_zone can only occur if userOp type is 'remove'`);
+        const newOp = structuredClone(userOp);
+
+        // Update old_value to reflect the admin's change
+        const relativeSegments = PathUtils.getRelativeSegments(effect.path, userOp.path);
+
+        if (relativeSegments.length > 0) {
+          // Effect is inside the removed item - apply the change to old_value
+          const effectOp = EffectUtilities.toOperation(effect);
+          if (effectOp) {
+            this.applyLocalChange(newOp.old_value, relativeSegments, effectOp);
+          }
+        }
+
+
         return {
           success: true,
-          op: userOp,  // Keep user's remove
+          op: newOp,
           effect: { type: 'identity', path: '/' },
           hadConflict: true
         };
@@ -455,47 +642,70 @@ export class PatchTransformer {
     return Array.from({ length }, (_, i) => i);
   }
 
-  private static applyLocalChange(root: any, segments: string[], op: PatchOperation): void {
+  private static applyLocalChange(root: CoarseValue, segments: string[], op: PatchOperation): void {
     if (segments.length === 0) return;
 
     const targetKey = segments[segments.length - 1];
     const parentSegments = segments.slice(0, -1);
 
-    let ptr = root;
+    const asObject = (value: unknown): Record<string, unknown> | null =>
+      value && typeof value === 'object' && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : null;
+
+    let ptr: unknown = root;
     for (const seg of parentSegments) {
-      if (ptr[seg] === undefined) return;
-      ptr = ptr[seg];
+      if (Array.isArray(ptr)) {
+        const idx = parseInt(seg, 10);
+        if (isNaN(idx)) throw new Error(`Invalid array index segment: ${seg}`);
+        if (ptr[idx] === undefined) throw new Error(`Missing array element at index ${idx}`);
+        ptr = ptr[idx];
+        continue;
+      }
+
+      const obj = asObject(ptr);
+      if (!obj) throw new Error(`Cannot traverse non-object path segment: ${seg}`);
+      if (obj[seg] === undefined) throw new Error(`Missing object key: ${seg}`);
+      ptr = obj[seg];
     }
 
+    if (Array.isArray(ptr)) {
+      if (op.op === 'replace') {
+        throw new Error(`Cannot replace array elements directly`);
+      }
+      if (op.op === 'add') {
+        PatchApplicator.insertAt(ptr, targetKey, op.value, 'array');
+        return;
+      }
+      if (op.op === 'remove') {
+        PatchApplicator.removeAt(ptr, targetKey, 'array');
+        return;
+      }
+    }
+
+    const obj = asObject(ptr);
+    if (!obj) throw new Error(`Cannot apply op to non-object target: ${targetKey}`);
+
     if (op.op === 'replace') {
-      ptr[targetKey] = op.value;
-    } else if (op.op === 'add') {
-      if (Array.isArray(ptr)) {
-        if (targetKey === '-') {
-          ptr.push(op.value);
-        } else {
-          const idx = parseInt(targetKey, 10);
-          if (!isNaN(idx)) ptr.splice(idx, 0, op.value);
-        }
-      } else {
-        ptr[targetKey] = op.value;
+      obj[targetKey] = op.value;
+      return;
+    }
+    if (op.op === 'add') {
+      throw new Error(`Cannot add on object target: ${targetKey}`);
+    }
+    if (op.op === 'remove') {
+      throw new Error(`Cannot remove on object target: ${targetKey}`);
+    }
+    if (op.op === 'reorder') {
+      const arr = obj[targetKey];
+      if (!Array.isArray(arr)) {
+        throw new Error(`Cannot reorder on non-array target: ${targetKey}`);
       }
-    } else if (op.op === 'remove') {
-      if (Array.isArray(ptr)) {
-        const idx = parseInt(targetKey, 10);
-        if (!isNaN(idx)) ptr.splice(idx, 1);
-      } else {
-        delete ptr[targetKey];
+      if (arr.length !== op.new_order.length) {
+        throw new Error(`Reorder length mismatch: new_order has ${op.new_order.length} elements, but array has ${arr.length} items`);
       }
-    } else if (op.op === 'reorder') {
-      const arr = ptr[targetKey];
-      if (Array.isArray(arr) && arr.length === op.new_order.length) {
-        const newArr = new Array(arr.length);
-        op.new_order.forEach((oldIdx, newIdx) => {
-          newArr[newIdx] = arr[oldIdx];
-        });
-        ptr[targetKey] = newArr;
-      }
+      PatchApplicator.reorderArray(arr, op.new_order);
+      return;
     }
   }
 }

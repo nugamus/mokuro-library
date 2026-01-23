@@ -1,8 +1,8 @@
 import { PatchOperation } from '../../types/history';
-import { Effect } from '../../types/rebase';
+import { Effect, ShiftDownEffect, ShiftUpEffect } from '../../types/rebase';
 import { PathUtils, Permutation } from './rebaseUtils';
 
-export class EffectFactory {
+export class EffectUtilities {
   /**
    * Converts an Admin Patch Operation into a mathematical Effect (The Wave).
    * For permutations, stores A⁻¹ so transformers can accumulate without extra inversion.
@@ -23,7 +23,8 @@ export class EffectFactory {
         return {
           type: 'shift_up',
           path: parentPath,
-          index: index
+          index: index,
+          newValue: op.value
         };
       }
     }
@@ -59,7 +60,8 @@ export class EffectFactory {
       return {
         type: 'content',
         path: path,
-        newValue: op.value
+        newValue: op.value,
+        oldValue: op.old_value
       };
     }
 
@@ -68,5 +70,49 @@ export class EffectFactory {
       type: 'identity',
       path: '/'
     };
+  }
+
+  static toOperation(effect: Effect): PatchOperation | null {
+    if (effect.type === 'identity') return null;
+
+    if (effect.type === 'shift_up') {
+      return {
+        op: 'add',
+        path: this.joinPath(effect.path, effect.index),
+        value: effect.newValue
+      };
+    }
+
+    if (effect.type === 'shift_down') {
+      return {
+        op: 'remove',
+        path: this.joinPath(effect.path, effect.index),
+        old_value: effect.deletedValue
+      };
+    }
+
+    if (effect.type === 'permute') {
+      return {
+        op: 'reorder',
+        path: effect.path,
+        new_order: Permutation.invert(effect.permutation)
+      };
+    }
+
+    if (effect.type === 'content') {
+      return {
+        op: 'replace',
+        path: effect.path,
+        value: effect.newValue,
+        old_value: effect.oldValue
+      };
+    }
+
+    return null;
+  }
+
+  private static joinPath(path: string, index: number): string {
+    const prefix = path === '/' ? '' : path;
+    return `${prefix}/${index}`;
   }
 }

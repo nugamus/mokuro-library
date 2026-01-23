@@ -1,4 +1,4 @@
-import { PatchOperation, PatchValue } from './history';
+import { PatchOperation, CoarseValue, FineValue } from './history';
 
 // --- 0. Extended Patch (Database + Content) ---
 
@@ -28,14 +28,13 @@ export interface IdentityEffect extends BaseEffect {
 export interface ShiftDownEffect extends BaseEffect {
   type: 'shift_down';
   index: number;
-  deletedValue: PatchValue;
-  permutation?: number[];  // Accumulated from skipped reorders
+  deletedValue: CoarseValue;
 }
 
 export interface ShiftUpEffect extends BaseEffect {
   type: 'shift_up';
   index: number;
-  permutation?: number[];  // Accumulated from skipped reorders
+  newValue: CoarseValue;
 }
 
 export interface PermuteEffect extends BaseEffect {
@@ -45,7 +44,8 @@ export interface PermuteEffect extends BaseEffect {
 
 export interface ContentEffect extends BaseEffect {
   type: 'content';
-  newValue: PatchValue;
+  newValue: FineValue;
+  oldValue: FineValue;
 }
 
 export type Effect =

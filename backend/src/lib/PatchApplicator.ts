@@ -47,24 +47,12 @@ export class PatchApplicator {
             throw new Error(`Add operation missing value`);
           }
           const nativeBlock = this.unifiedToNativeBlock(patch.value as UnifiedBlock);
-          if (blockIndexRaw === '-') {
-            page.blocks.push(nativeBlock);
-          } else {
-            const blockIndex = parseInt(blockIndexRaw);
-            if (blockIndex < 0 || blockIndex > page.blocks.length) {
-              throw new Error(`Invalid block insert index ${blockIndex}: page has ${page.blocks.length} blocks`);
-            }
-            page.blocks.splice(blockIndex, 0, nativeBlock);
-          }
+          this.insertAt(page.blocks, blockIndexRaw, nativeBlock, 'block');
           return;
         }
 
         if (op === 'remove') {
-          const blockIndex = parseInt(blockIndexRaw);
-          if (blockIndex < 0 || blockIndex >= page.blocks.length) {
-            throw new Error(`Invalid block index ${blockIndex}: page has ${page.blocks.length} blocks`);
-          }
-          page.blocks.splice(blockIndex, 1);
+          this.removeAt(page.blocks, blockIndexRaw, 'block');
           return;
         }
       }
@@ -99,28 +87,15 @@ export class PatchApplicator {
               throw new Error(`Add operation missing value`);
             }
             const val = patch.value as UnifiedLine;
-            if (lineIndexRaw === '-') {
-              block.lines.push(val.text);
-              block.lines_coords.push(val.coords);
-            } else {
-              const lineIndex = parseInt(lineIndexRaw);
-              if (lineIndex < 0 || lineIndex > block.lines.length) {
-                throw new Error(`Invalid line insert index ${lineIndex}: block has ${block.lines.length} lines`);
-              }
-              block.lines.splice(lineIndex, 0, val.text);
-              block.lines_coords.splice(lineIndex, 0, val.coords);
-            }
+            this.insertAt(block.lines, lineIndexRaw, val.text, 'line');
+            this.insertAt(block.lines_coords, lineIndexRaw, val.coords, 'line coords');
             return;
           }
 
           // Remove Line
           if (op === 'remove') {
-            const lineIndex = parseInt(lineIndexRaw);
-            if (lineIndex < 0 || lineIndex >= block.lines.length) {
-              throw new Error(`Invalid line index ${lineIndex}: block has ${block.lines.length} lines`);
-            }
-            block.lines.splice(lineIndex, 1);
-            block.lines_coords.splice(lineIndex, 1);
+            this.removeAt(block.lines, lineIndexRaw, 'line');
+            this.removeAt(block.lines_coords, lineIndexRaw, 'line coords');
             return;
           }
 
@@ -207,7 +182,7 @@ export class PatchApplicator {
   // --- Reorder Helpers ---
 
   /** Permute a single array in place */
-  private static reorderArray<T>(arr: T[], order: number[]): void {
+  static reorderArray<T>(arr: T[], order: number[]): void {
     const temp = [...arr];
     for (let i = 0; i < order.length; i++) {
       arr[i] = temp[order[i]];
@@ -215,12 +190,36 @@ export class PatchApplicator {
   }
 
   /** Permute two arrays simultaneously (for lines + lines_coords) */
-  private static reorderParallel<T, U>(arr1: T[], arr2: U[], order: number[]): void {
+  static reorderParallel<T, U>(arr1: T[], arr2: U[], order: number[]): void {
     const temp1 = [...arr1];
     const temp2 = [...arr2];
     for (let i = 0; i < order.length; i++) {
       arr1[i] = temp1[order[i]];
       arr2[i] = temp2[order[i]];
     }
+  }
+
+  /** Insert into an array with validation and no append syntax. */
+  static insertAt<T>(arr: T[], indexRaw: string, value: T, label: string): void {
+    if (indexRaw === '-') {
+      throw new Error(`Append syntax '-' is not supported for ${label} add`);
+    }
+    const index = parseInt(indexRaw, 10);
+    if (isNaN(index) || index < 0 || index > arr.length) {
+      throw new Error(`Invalid ${label} insert index ${indexRaw}: array has ${arr.length} items`);
+    }
+    arr.splice(index, 0, value);
+  }
+
+  /** Remove from an array with validation and no append syntax. */
+  static removeAt<T>(arr: T[], indexRaw: string, label: string): void {
+    if (indexRaw === '-') {
+      throw new Error(`Append syntax '-' is not supported for ${label} remove`);
+    }
+    const index = parseInt(indexRaw, 10);
+    if (isNaN(index) || index < 0 || index >= arr.length) {
+      throw new Error(`Invalid ${label} index ${indexRaw}: array has ${arr.length} items`);
+    }
+    arr.splice(index, 1);
   }
 }

@@ -10,7 +10,7 @@ import {
 } from '../../types/rebase';
 import { PatchOperation } from '../../types/history';
 import { PatchTransformer } from './PatchTransformer';
-import { EffectFactory } from './Effect';
+import { EffectUtilities } from './Effect';
 import { fetchAncestryChain, inheritAdminSnapshot, OcrBranchWithTimestamps } from '../../utils/ocrHelpers';
 import { Prisma } from '../../generated/prisma/client';
 
@@ -189,7 +189,7 @@ export class RebaseEngine {
       // Use saved effect if resuming mid-admin-patch, otherwise compute fresh
       let currentEffect = (i === ctx.currentAdminIndex && ctx.currentUserIndex > 0)
         ? ctx.currentEffect
-        : EffectFactory.fromOperation(adminPatch.operation);
+        : EffectUtilities.fromOperation(adminPatch.operation);
 
       // Start with pending patches from partial round, or empty
       const nextPatches: ExtendedPatch[] = (i === ctx.currentAdminIndex)
