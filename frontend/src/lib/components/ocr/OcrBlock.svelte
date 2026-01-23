@@ -66,6 +66,8 @@
 
     return { x_min, y_min, width, height };
   });
+  let isHighlighted = $derived(readerState.highlightedBlocks.has(`${pageIndex}:${blockIndex}`));
+  // let isHighlighted = $derived(true);
 
   // --- Interactions ---
 
@@ -456,7 +458,7 @@
     readerState.dispatch([
       {
         op: 'add',
-        path: `/pages/${pIdx}/blocks/${blockIndex}/lines/-`,
+        path: `/pages/${pIdx}/blocks/${blockIndex}/lines/${block.lines.length}`,
         value: { text: 'New Text', coords: newBox }
       }
     ]);
@@ -513,6 +515,10 @@
 
 <div
   class="absolute group/block transition-shadow panzoom-exclude"
+  class:ring-2={isHighlighted}
+  class:ring-accent={isHighlighted}
+  class:shadow-[0_0_0.9rem_rgba(56,189,248,0.75)]={isHighlighted}
+  class:highlight-pulse={isHighlighted}
   style:left="{geometry.x_min}%"
   style:top="{geometry.y_min}%"
   style:width="{geometry.width}%"
@@ -536,7 +542,8 @@
 
   <TouchToggle
     class="relative h-full w-full"
-    forceVisible={readerState.ocrMode === 'BOX' ||
+    forceVisible={isHighlighted ||
+      readerState.ocrMode === 'BOX' ||
       (readerState.ocrMode === 'TEXT' &&
         ((readerState.focusedLineCoord[0] === pageIndex &&
           readerState.focusedLineCoord[1] === blockIndex) ||
@@ -547,6 +554,7 @@
       <div
         class="absolute top-0 left-0 h-full w-full border transition-opacity z-1"
         class:border-green-500={readerState.showTriggerOutline || readerState.ocrMode !== 'READ'}
+        class:border-accent={isHighlighted}
         class:border-transparent={!readerState.showTriggerOutline && readerState.ocrMode === 'READ'}
       ></div>
     {/snippet}
@@ -648,5 +656,30 @@
     font-feature-settings:
       'vhal' 1,
       'locl' 1;
+  }
+
+  .highlight-pulse {
+    animation: highlightPulse 1.1s ease-in-out infinite;
+  }
+
+  @keyframes highlightPulse {
+    0% {
+      box-shadow:
+        0 0 0.35rem rgba(56, 189, 248, 0.5),
+        0 0 0.9rem rgba(56, 189, 248, 0.75);
+      filter: saturate(1);
+    }
+    50% {
+      box-shadow:
+        0 0 0.6rem rgba(56, 189, 248, 0.85),
+        0 0 1.4rem rgba(56, 189, 248, 0.95);
+      filter: saturate(1.35);
+    }
+    100% {
+      box-shadow:
+        0 0 0.35rem rgba(56, 189, 248, 0.5),
+        0 0 0.9rem rgba(56, 189, 248, 0.75);
+      filter: saturate(1);
+    }
   }
 </style>

@@ -45,6 +45,7 @@ export interface AuthUser {
 
 // Create a writable store that holds an AuthUser or null
 export const user = writable<AuthUser | null | undefined>();
+export const authReady = writable(false);
 
 // Subscribe to user changes to manage token refresh
 user.subscribe((currentUser) => {
@@ -105,6 +106,8 @@ export async function checkAuth() {
     // If it fails (e.g., 401), we're not logged in
     user.set(null);
     apiCache.setUserId(null);
+  } finally {
+    authReady.set(true);
   }
 }
 

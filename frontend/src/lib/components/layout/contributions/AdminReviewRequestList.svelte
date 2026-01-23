@@ -4,7 +4,6 @@
   import { SvelteDate } from 'svelte/reactivity';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
   import { onMount } from 'svelte';
-  import { resolve } from '$app/paths';
   import RejectReviewModal from '$lib/components/modals/contributions/RejectReviewModal.svelte';
 
   import {
@@ -124,7 +123,7 @@
 
       <div class="flex flex-col gap-2 shrink-0">
         <a
-          href={resolve(`/volume/${review.volumeId}`, {})}
+          href={`#preview-${review.volumeId}`}
           class="px-3 py-1.5 rounded bg-accent text-white text-xs font-bold hover:bg-accent-hover transition-colors text-center flex items-center justify-center gap-1"
         >
           Review <ArrowRight class="w-3 h-3" />

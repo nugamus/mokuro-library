@@ -3,11 +3,11 @@
   import { setReviewStatus } from '$lib/services/reviewApi';
   import { toastStore } from '$lib/stores/toastStore.svelte';
   import { GitPullRequest, GitMerge, TriangleAlert, X } from 'lucide-svelte';
-  import type { Volume } from '$lib/types';
+  import type { RebaseQueueEntry } from '$lib/types';
   import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
 
   let { volume, on_close, onSuccess } = $props<{
-    volume: Volume;
+    volume: RebaseQueueEntry | null;
     on_close: () => void;
     onSuccess?: () => void;
   }>();
@@ -16,8 +16,8 @@
   let isSubmitting = $state(false);
 
   // Derived stats
-  let ahead = $derived(volume.versionInfo?.hasAhead || 0);
-  let behind = $derived(volume.versionInfo?.hasBehind || 0);
+  let ahead = $derived(volume?.versionInfo?.hasAhead || 0);
+  let behind = $derived(volume?.versionInfo?.hasBehind || 0);
 
   const handleClose = () => {
     if (isSubmitting) return;
@@ -89,68 +89,70 @@
     </div>
 
     <div class="flex-1 overflow-y-auto p-6 space-y-6">
-      <div
-        class="bg-gradient-to-br from-theme-surface/40 to-theme-surface/20 border-2 border-theme-border rounded-xl overflow-hidden"
-      >
-        <div class="p-4 flex items-start gap-4">
-          {#if volume.coverImageName}
-            <AuthenticatedImage
-              src="/api/files/volume/{volume.id}/image/{volume.coverImageName}?w=80&q=60&format=avif"
-              alt=""
-              class="w-12 h-16 object-cover rounded-lg border-2 border-theme-border flex-shrink-0"
-            />
-          {:else}
-            <div
-              class="w-12 h-16 rounded-lg border-2 border-theme-border bg-theme-surface flex items-center justify-center text-theme-tertiary font-bold flex-shrink-0"
-            >
-              #
+      {#if volume}
+        <div
+          class="bg-gradient-to-br from-theme-surface/40 to-theme-surface/20 border-2 border-theme-border rounded-xl overflow-hidden"
+        >
+          <div class="p-4 flex items-start gap-4">
+            {#if volume.coverImageName}
+              <AuthenticatedImage
+                src={`/api/files/volume/${volume.id}/image/${volume.coverImageName}?w=80&q=60&format=avif`}
+                alt=""
+                class="w-12 h-16 object-cover rounded-lg border-2 border-theme-border flex-shrink-0"
+              />
+            {:else}
+              <div
+                class="w-12 h-16 rounded-lg border-2 border-theme-border bg-theme-surface flex items-center justify-center text-theme-tertiary font-bold flex-shrink-0"
+              >
+                #
+              </div>
+            {/if}
+
+            <div class="flex-1 min-w-0 py-0.5">
+              <h3 class="font-bold text-theme-primary text-lg truncate mb-1">
+                {volume.title}
+              </h3>
+
+              <div class="flex items-center gap-2 text-sm">
+                <div
+                  class="px-2 py-0.5 rounded-md bg-accent/10 border border-accent/20 flex items-center gap-1.5"
+                >
+                  <GitPullRequest class="w-3.5 h-3.5 text-accent" />
+                  <span class="text-xs font-bold text-accent uppercase">+{ahead} Additions</span>
+                </div>
+
+                {#if behind > 0}
+                  <div
+                    class="px-2 py-0.5 rounded-md bg-status-warning/10 border border-status-warning/20 flex items-center gap-1.5"
+                  >
+                    <TriangleAlert class="w-3.5 h-3.5 text-status-warning" />
+                    <span class="text-xs font-bold text-status-warning uppercase"
+                      >{behind} Behind</span
+                    >
+                  </div>
+                {/if}
+              </div>
+            </div>
+          </div>
+
+          {#if behind > 0}
+            <div class="bg-status-warning/5 border-t-2 border-status-warning/20 p-4">
+              <div class="flex items-start gap-3">
+                <GitMerge class="w-5 h-5 text-status-warning shrink-0 mt-0.5" />
+                <div class="flex-1">
+                  <div class="font-bold text-sm text-status-warning mb-1">
+                    Branch Conflict Detected
+                  </div>
+                  <div class="text-xs text-theme-secondary leading-relaxed">
+                    You are behind the shared library. It is recommended to
+                    <strong class="text-theme-primary">Rebase</strong> before submitting to avoid rejection.
+                  </div>
+                </div>
+              </div>
             </div>
           {/if}
-
-          <div class="flex-1 min-w-0 py-0.5">
-            <h3 class="font-bold text-theme-primary text-lg truncate mb-1">
-              {volume.title}
-            </h3>
-
-            <div class="flex items-center gap-2 text-sm">
-              <div
-                class="px-2 py-0.5 rounded-md bg-accent/10 border border-accent/20 flex items-center gap-1.5"
-              >
-                <GitPullRequest class="w-3.5 h-3.5 text-accent" />
-                <span class="text-xs font-bold text-accent uppercase">+{ahead} Additions</span>
-              </div>
-
-              {#if behind > 0}
-                <div
-                  class="px-2 py-0.5 rounded-md bg-status-warning/10 border border-status-warning/20 flex items-center gap-1.5"
-                >
-                  <TriangleAlert class="w-3.5 h-3.5 text-status-warning" />
-                  <span class="text-xs font-bold text-status-warning uppercase"
-                    >{behind} Behind</span
-                  >
-                </div>
-              {/if}
-            </div>
-          </div>
         </div>
-
-        {#if behind > 0}
-          <div class="bg-status-warning/5 border-t-2 border-status-warning/20 p-4">
-            <div class="flex items-start gap-3">
-              <GitMerge class="w-5 h-5 text-status-warning shrink-0 mt-0.5" />
-              <div class="flex-1">
-                <div class="font-bold text-sm text-status-warning mb-1">
-                  Branch Conflict Detected
-                </div>
-                <div class="text-xs text-theme-secondary leading-relaxed">
-                  You are behind the shared library. It is recommended to
-                  <strong class="text-theme-primary">Rebase</strong> before submitting to avoid rejection.
-                </div>
-              </div>
-            </div>
-          </div>
-        {/if}
-      </div>
+      {/if}
 
       <div class="space-y-2">
         <label

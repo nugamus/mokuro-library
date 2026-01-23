@@ -14,7 +14,7 @@ import { imageStore, optimizeSrc } from '$lib/stores/cachedImageStore';
 import { apiCache } from '$lib/utils/caching/apiCache';
 import { PatchApplicator } from '$lib/utils/ocr/PatchApplicator';
 import { toastStore } from '$lib/stores/toastStore.svelte';
-import { SvelteMap, SvelteDate } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet, SvelteDate } from 'svelte/reactivity';
 
 export type LayoutMode = 'single' | 'double' | 'vertical';
 export type ReadingDirection = 'ltr' | 'rtl';
@@ -124,6 +124,8 @@ class ReaderState {
   isSaving = $state(false);
   saveSuccess = $state(false);
   jumpToPage: (pageIndex: number) => void = () => { };
+  highlightDurationMs = 1000;
+  highlightedBlocks = new SvelteSet<string>();
 
   // --- Version Control ---
   branchVersion = $state(0);
@@ -141,6 +143,7 @@ class ReaderState {
   private progressSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private settingsSaveTimer: ReturnType<typeof setTimeout> | null = null;
   private lastSaveTime: number = 0;
+  private highlightTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor() {
     // Global Watchers: These run for the lifetime of the app
@@ -271,6 +274,7 @@ class ReaderState {
     this.ocrMode = 'READ';
     this.isSmartResizeMode = false;
     this.smartFontCache = new SvelteMap();
+    this.clearHighlightedBlocks();
 
     // 4. Exit fullscreen if automated
     const handleError = (e: unknown) => console.log(`Set fullscreen state failed ${String(e)}`);
@@ -479,6 +483,7 @@ class ReaderState {
         if (op !== 'genesis') {
           const pageIndex = parseInt(parts[1]);
           this.jumpToPage(pageIndex);
+          this.highlightBlocksFromPath(res.patch.path);
         }
 
         // Apply to COMMITTED (Server Truth)
@@ -507,6 +512,38 @@ class ReaderState {
     } finally {
       this.isPatching = false;
     }
+  }
+
+  private highlightBlocksFromPath(path: string) {
+    const match = path.match(/\/pages\/(\d+)\/blocks\/(\d+)/);
+    if (!match) return;
+    const pageIndex = Number(match[1]);
+    const blockIndex = Number(match[2]);
+    if (Number.isNaN(pageIndex) || Number.isNaN(blockIndex)) return;
+    this.highlightBlocks([{ pageIndex, blockIndex }]);
+  }
+
+  private highlightBlocks(blocks: Array<{ pageIndex: number; blockIndex: number }>) {
+    if (blocks.length === 0) return;
+    for (const block of blocks) {
+      const key = `${block.pageIndex}:${block.blockIndex}`;
+      const existing = this.highlightTimers.get(key);
+      if (existing) clearTimeout(existing);
+      const timer = setTimeout(() => {
+        this.highlightedBlocks.delete(key);
+        this.highlightTimers.delete(key);
+      }, this.highlightDurationMs);
+      this.highlightTimers.set(key, timer);
+      this.highlightedBlocks.add(key);
+    }
+  }
+
+  private clearHighlightedBlocks() {
+    for (const timer of this.highlightTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.highlightTimers.clear();
+    this.highlightedBlocks.clear();
   }
 
   private async saveProgress(volumeId: string, timeSpent: number) {

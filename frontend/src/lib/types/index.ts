@@ -320,6 +320,7 @@ export interface RebaseQueueEntry {
     branchVersion: number;
     hasAhead: number;
     hasBehind: number;
+    isPendingReview: boolean;
   };
 }
 

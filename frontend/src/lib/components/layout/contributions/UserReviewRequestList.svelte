@@ -4,7 +4,6 @@
   import { SvelteDate } from 'svelte/reactivity';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
   import { onMount } from 'svelte';
-  import { resolve } from '$app/paths';
 
   import {
     Clock,
@@ -152,10 +151,10 @@
                 </button>
 
                 <a
-                  href={resolve(`/volume/${review.volumeId}`, {})}
+                  href={`#preview-${review.volumeId}`}
                   class="text-xs text-accent hover:text-accent-hover font-semibold flex items-center gap-1 mt-1"
                 >
-                  Open in Reader <ArrowRight class="w-3 h-3" />
+                  Preview <ArrowRight class="w-3 h-3" />
                 </a>
               </div>
             </div>

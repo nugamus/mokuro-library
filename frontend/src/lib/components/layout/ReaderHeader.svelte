@@ -216,6 +216,7 @@
     {/if}
 
     <button
+      type="button"
       disabled={!readerState.hasUndo || !headerIsVisible}
       onclick={(e) => {
         e.stopPropagation();
@@ -241,6 +242,7 @@
     </button>
 
     <button
+      type="button"
       disabled={!readerState.hasRedo || !headerIsVisible}
       onclick={(e) => {
         e.stopPropagation();

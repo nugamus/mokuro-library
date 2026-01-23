@@ -6,7 +6,7 @@
   import { contextMenu, type MenuOption } from '$lib/stores/contextMenuStore';
   import { onMount, onDestroy } from 'svelte';
   import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
-  import type { Series, Volume } from '$lib/types';
+  import type { RebaseQueueEntry, Series, Volume } from '$lib/types';
   import SelectionMoreMenu from '$lib/components/menu/SelectionMoreMenu.svelte';
   import BulkScrapePanel from '$lib/components/modals/scraping/BulkScrapePanel.svelte';
   import SubmitReviewModal from '$lib/components/modals/contributions/SubmitReviewModal.svelte';
@@ -57,6 +57,20 @@
       !versionInfo.isPendingReview &&
       seriesOwnerId === 'admin'
   );
+
+  const submitReviewEntry: RebaseQueueEntry | null = $derived.by(() => {
+    if (!singleSelection || !('versionInfo' in singleSelection)) return null;
+    const volume = singleSelection as Volume;
+    return {
+      id: volume.id,
+      title: volume.title,
+      seriesId: volume.seriesId,
+      seriesTitle: '',
+      pageCount: volume.pageCount,
+      coverImageName: volume.coverImageName,
+      versionInfo: volume.versionInfo
+    };
+  });
 
   // --- Hotkeys ---
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -417,9 +431,9 @@
   <BulkScrapePanel provider={scrapingState.preferredProvider} onClose={handleScrapeClose} />
 {/if}
 
-{#if showReviewModal && singleSelection}
+{#if showReviewModal && submitReviewEntry}
   <SubmitReviewModal
-    volume={singleSelection as Volume}
+    volume={submitReviewEntry}
     on_close={() => (showReviewModal = false)}
     onSuccess={handleReviewSuccess}
   />
