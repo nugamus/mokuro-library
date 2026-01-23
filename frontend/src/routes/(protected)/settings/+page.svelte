@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { user } from '$lib/stores/authStore';
   import { goto } from '$app/navigation';
   import { browser } from '$app/environment';
   import { resolve } from '$app/paths';
@@ -70,11 +69,6 @@
         activeCategory = cat;
       }
     }
-  });
-
-  // Auth check
-  $effect(() => {
-    if (browser && $user === null) goto(resolve('/login', {}));
   });
 
   // Sync category with URL

@@ -5,7 +5,6 @@
   import { resolve } from '$app/paths';
 
   // Stores & State
-  import { user } from '$lib/stores/authStore';
   import { imageStore } from '$lib/stores/cachedImageStore';
   import { confirmation } from '$lib/stores/confirmationStore';
   import { readerState } from '$lib/states/reader/ReaderState.svelte.ts';
@@ -34,13 +33,6 @@
   $effect(() => {
     if (params.id) {
       readerState.mount(params.id);
-    }
-  });
-
-  // Auth Check
-  $effect(() => {
-    if ($user === null && browser) {
-      goto(resolve('/login', {}));
     }
   });
 

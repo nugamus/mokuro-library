@@ -2,8 +2,6 @@
   import type { Series, Volume } from '$lib/types';
   import { apiFetch } from '$lib/services/api';
   import { user } from '$lib/stores/authStore';
-  import { goto } from '$app/navigation';
-  import { browser } from '$app/environment';
   import { resolve } from '$app/paths';
   import { uiState } from '$lib/states/ui/uiState.svelte.ts';
   import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
@@ -222,10 +220,6 @@
   // --- Effects ---
 
   $effect(() => {
-    if (browser && $user === null) goto(resolve('/login', {}));
-  });
-
-  $effect(() => {
     isMounted = true;
     if (seriesId && $user) fetchSeriesData(seriesId);
     // CLEANUP: Flush pending writes when leaving this page
@@ -313,7 +307,7 @@
               }}
               href={resolve(`/volume/${vol.id}`, {})}
               mainStat={`${vol.progress[0]?.page ?? 0}/${vol.pageCount} P`}
-              subStat={`▲ ${vol.versionInfo.hasAhead}  ▼ ${vol.versionInfo.hasBehind}`}
+              subStat={`▲ ${vol.versionInfo.hasAhead}  ▼ ${vol.versionInfo.hasBehind}${vol.versionInfo.isPendingReview ? ' · PR' : ''}`}
               onSelect={(e) => handleVolumeClick(e, vol)}
             >
               {#snippet circleAction()}

@@ -50,7 +50,7 @@ describe('contributions page', () => {
 
     render(Page);
 
-    expect(await screen.findByText('All caught up!')).toBeTruthy();
-    expect(apiFetchMock).toHaveBeenCalledWith('/api/library');
+    expect(await screen.findByText('All Caught Up!')).toBeTruthy();
+    expect(apiFetchMock).toHaveBeenCalledWith('/api/contributions/rebase');
   });
 });

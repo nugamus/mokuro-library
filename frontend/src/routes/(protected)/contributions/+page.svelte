@@ -4,6 +4,7 @@
   import { apiFetch } from '$lib/services/api';
   import { rebaseState } from '$lib/states/rebase/RebaseState.svelte';
   import { user as authUser } from '$lib/stores/authStore';
+  import { page } from '$app/state';
 
   import {
     Inbox,
@@ -24,6 +25,8 @@
   import BulkRejectModal from './components/modals/BulkRejectModal.svelte';
   import UserReviewRequestList from '$lib/components/layout/contributions/UserReviewRequestList.svelte';
   import AdminReviewRequestList from '$lib/components/layout/contributions/AdminReviewRequestList.svelte';
+  import SubmissionReader from '$lib/components/readers/SubmissionReader.svelte';
+  import ReviewCandidates from '$lib/components/layout/contributions/ReviewCandidates.svelte';
 
   import { sampleStats } from './lib/constants';
   import type { RebaseQueueEntry } from '$lib/types';
@@ -36,6 +39,8 @@
   let showRejectModal = $state(false);
   let rejectIds = $state<string[]>([]);
   let adminQueue: { reload: () => void } | null = $state(null);
+  let showReader = $state(false);
+  let previewVolumeId = $state<string | null>(null);
 
   // Admin check
   let isAdmin = $derived($authUser?.id === 'admin' || $authUser?.role === 'admin');
@@ -67,6 +72,26 @@
       ? `/api/files/volume/${task.id}/image/${task.coverImageName}`
       : null
   });
+
+  $effect(() => {
+    const hash = page.url.hash;
+    if (hash.startsWith('#preview-')) {
+      previewVolumeId = hash.replace('#preview-', '');
+      showReader = true;
+    } else {
+      showReader = false;
+      previewVolumeId = null;
+    }
+  });
+
+  function closePreview() {
+    if (page.url.hash.startsWith('#preview-')) {
+      history.back();
+    } else {
+      showReader = false;
+      previewVolumeId = null;
+    }
+  }
 
   onMount(() => {
     if (isAdmin) {
@@ -167,6 +192,7 @@
                 entry={getEntryData(task)}
                 type="volume"
                 viewMode="list"
+                href={`#preview-${task.id}`}
                 progress={{ percent: 0, isRead: false, hideBar: true }}
                 mainStat={`Ahead: +${task.versionInfo.hasAhead}`}
                 subStat={`Behind: -${task.versionInfo.hasBehind}`}
@@ -217,6 +243,7 @@
       {#if isAdmin}
         <AdminReviewRequestList />
       {:else}
+        <ReviewCandidates />
         <UserReviewRequestList />
       {/if}
     </div>
@@ -236,5 +263,9 @@
       onClose={() => (showActivityTimeline = false)}
       onViewVolume={() => {}}
     />
+  {/if}
+
+  {#if showReader && previewVolumeId}
+    <SubmissionReader volumeId={previewVolumeId} close={closePreview} />
   {/if}
 </div>

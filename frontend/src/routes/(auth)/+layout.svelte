@@ -13,7 +13,7 @@
     if ($user) {
       // If $user is not null, the user is logged in.
       // Redirect them away from the auth pages to the homepage.
-      goto(resolve('/'));
+      goto(resolve('/', {}));
     }
   });
 </script>

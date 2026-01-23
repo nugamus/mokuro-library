@@ -16,7 +16,6 @@
   import Button from '$lib/components/controls/Button.svelte';
   import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
   import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
-  import { browser } from '$app/environment';
   import { uiState } from '$lib/states/ui/uiState.svelte';
   import SubmissionHero from '$lib/components/library/SubmissionHero.svelte';
 
@@ -68,10 +67,6 @@
       showReader = false;
       previewVolumeId = null;
     }
-  });
-
-  $effect(() => {
-    if (browser && $user === null) goto(resolve('/login', {}));
   });
 
   $effect(() => {
