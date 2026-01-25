@@ -30,7 +30,7 @@ describe('contributions routes', () => {
     await ctx.cleanup();
   });
 
-  it('returns ahead/behind summary for the user', async () => {
+  it('returns contribution summary for the user', async () => {
     const response = await ctx.app.inject({
       method: 'GET',
       url: '/api/contributions/summary',
@@ -41,6 +41,14 @@ describe('contributions routes', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ aheadCount: 0, behindCount: 0, pendingSubmissionsCount: 0 });
+    expect(response.json()).toEqual({
+      totalEdits: 0,
+      editsMerged: 0,
+      volumesEdited: 0,
+      pendingReviewCount: 0,
+      aheadCount: 0,
+      pendingSubmissionsCount: 0,
+      lastEditAt: null
+    });
   });
 });

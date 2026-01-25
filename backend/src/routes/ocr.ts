@@ -260,6 +260,8 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
       const userId = request.user.id;
 
       try {
+        // Rebase eligibility is handled in RebaseEngine.start; non-applicable cases fast-forward
+        // or return complete rather than rejecting the request.
         const volume = await fastify.prisma.volume.findUnique({ where: { id } });
         if (!volume) return reply.status(404).send({ message: 'Volume not found' });
 
@@ -275,7 +277,8 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           });
           return reply.send({
             status: 'complete',
-            newHeadId: updatedBranch?.headPatchId
+            newHeadId: updatedBranch?.headPatchId,
+            hasAhead: result.finalPatches?.length ?? 0
           });
         } else {
           return reply.send(result);
@@ -319,7 +322,8 @@ const ocrRoutes: FastifyPluginAsync = async (fastify, opts): Promise<void> => {
           });
           return reply.send({
             status: 'complete',
-            newHeadId: updatedBranch?.headPatchId
+            newHeadId: updatedBranch?.headPatchId,
+            hasAhead: result.finalPatches?.length ?? 0
           });
         } else {
           return reply.send(result);
