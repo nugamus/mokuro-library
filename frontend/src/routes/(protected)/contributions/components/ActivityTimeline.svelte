@@ -2,6 +2,7 @@
   import type { ActivityEntry } from '../lib/types';
   import { getEditTypeIcon } from '../lib/utils';
   import { SvelteDate } from 'svelte/reactivity';
+  import { ChevronRight, X } from 'lucide-svelte';
 
   let { activityHistory, onClose, onViewVolume } = $props<{
     activityHistory: ActivityEntry[];
@@ -20,18 +21,7 @@
       class="p-1 rounded-lg hover:bg-theme-surface transition-colors text-theme-secondary hover:text-theme-primary"
       aria-label="Close recent activity"
     >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        ><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg
-      >
+      <X class="w-4 h-4" />
     </button>
   </div>
 
@@ -57,19 +47,7 @@
             <span class="capitalize">{activity.editType}</span>
           </div>
         </div>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="text-theme-secondary group-hover:text-theme-primary transition-colors"
-          ><polyline points="9 18 15 12 9 6" /></svg
-        >
+        <ChevronRight class="w-4 h-4 text-theme-secondary group-hover:text-theme-primary transition-colors" />
       </button>
     {/each}
   </div>

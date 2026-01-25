@@ -1,5 +1,4 @@
-import { SvelteMap } from 'svelte/reactivity';
-import type { Series, LibraryItem } from '$lib/types';
+import type { Series } from '$lib/types';
 
 export type AppContext = 'library' | 'series';
 export type ViewMode = 'grid' | 'list';
@@ -8,6 +7,7 @@ export type SortKey = 'title' | 'updated' | 'lastRead' | 'progress';
 export type FilterStatus = 'all' | 'reading' | 'read' | 'unread';
 export type FilterOrganization = 'all' | 'organized' | 'unorganized';
 export type FilterMissing = 'none' | 'cover' | 'description' | 'title' | 'any';
+export type FilterOwner = 'all' | 'private' | 'shared';
 
 class UiState {
   // --- Context & Navigation ---
@@ -27,14 +27,11 @@ class UiState {
   filterBookmarked = $state(false);
   filterOrganization = $state<FilterOrganization>('all');
   filterMissing = $state<FilterMissing>('none');
+  filterOwner = $state<FilterOwner>('all');
 
   // --- Data Freshness ---
   // Simple counter to force re-fetches
   libraryVersion = $state(0);
-
-  // --- Selection Mode ---
-  isSelectionMode = $state(false);
-  selection = new SvelteMap<string, LibraryItem>();
 
   // --- Modals (Global Visibility) ---
   isUploadOpen = $state(false);
@@ -60,10 +57,6 @@ class UiState {
         this.viewMode = savedView;
       }
     }
-  }
-
-  get selectedIdsArray(): string[] {
-    return Array.from(this.selection.keys());
   }
 
   // --- Actions ---
@@ -93,10 +86,9 @@ class UiState {
 
     // Reset transient states
     this.searchQuery = '';
-    this.isSelectionMode = false;
-    this.selection.clear();
     this.filterStatus = 'all';
     this.filterBookmarked = false;
+    this.filterOwner = 'all';
 
     if (ctx === 'library') {
       this.sortKey = 'title';
@@ -105,43 +97,6 @@ class UiState {
       this.sortKey = 'title';
       this.sortOrder = 'asc';
     }
-  }
-
-  enterSelectionMode(initialItem?: LibraryItem) {
-    if (this.isSelectionMode) return;
-    this.selection.clear();
-    this.isSelectionMode = true;
-    if (initialItem) this.selection.set(initialItem.id, initialItem);
-  }
-
-  exitSelectionMode() {
-    this.isSelectionMode = false;
-    this.selection.clear();
-  }
-
-  toggleSelectionMode() {
-    this.isSelectionMode = !this.isSelectionMode;
-    if (!this.isSelectionMode) {
-      this.selection.clear();
-    }
-  }
-
-  toggleSelection(item: LibraryItem) {
-    if (this.selection.has(item.id)) {
-      this.selection.delete(item.id);
-    } else {
-      this.selection.set(item.id, item);
-    }
-  }
-
-  selectAll(items: LibraryItem[]) {
-    for (const item of items) {
-      this.selection.set(item.id, item);
-    }
-  }
-
-  deselectAll() {
-    this.selection.clear();
   }
 
   toggleSortOrder() {

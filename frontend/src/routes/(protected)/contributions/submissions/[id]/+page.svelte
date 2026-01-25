@@ -191,7 +191,6 @@
                 mainStat={`${volume.pageCount} P`}
                 onSelect={() => {}}
                 onLongPress={() => {}}
-                isPrivate={true}
               ></LibraryEntry>
             {/each}
           </div>

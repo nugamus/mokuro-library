@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade } from 'svelte/transition';
-  import { submissionState } from '$lib/states/submissions/SubmissionState.svelte';
+  import { submissionState } from '$lib/states/contributions/SubmissionState.svelte';
   import { lockScroll } from '$lib/actions/lockScroll';
   import SubmitSeriesCard from './SubmitSeriesCard.svelte';
   import Button from '$lib/components/controls/Button.svelte';

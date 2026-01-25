@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
+  import { apiFetch } from '$lib/services/api';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
 
   let {
@@ -60,7 +61,14 @@
 
     processing = true;
     try {
-      const result = await contributionsStore.bulkRejectSubmissions(submissionIds, reason);
+      const result = await apiFetch<{ success: number; failed: number }>(
+        '/api/contributions/submissions/bulk-reject',
+        {
+          method: 'POST',
+          body: { submissionIds, reason }
+        }
+      );
+      await contributionsSummaryState.refresh({ force: true });
 
       if (result.failed > 0) {
         toastStore.addToast(`Rejected ${result.success}, failed ${result.failed}`, 'warning');

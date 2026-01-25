@@ -15,7 +15,6 @@ export type KeybindId =
   | 'toggleStats'
   | 'toggleAppearance'
   | 'focusSearch'
-  | 'toggleSelectionMode'
   | 'readerPrevPage'
   | 'readerNextPage'
   | 'readerFirstPage'
@@ -101,14 +100,6 @@ export const keybindDefinitions: KeybindDefinition[] = [
     defaultKeys: ['/'],
     contexts: ['library', 'series'],
     preventDefault: true
-  },
-  {
-    id: 'toggleSelectionMode',
-    label: 'Toggle selection',
-    description: 'Enter or exit selection mode',
-    category: 'Library',
-    defaultKeys: ['X'],
-    contexts: ['library', 'series']
   },
   {
     id: 'readerPrevPage',

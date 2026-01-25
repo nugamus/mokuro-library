@@ -3,7 +3,7 @@
   import { apiFetch } from '$lib/services/api';
   import { SvelteDate } from 'svelte/reactivity';
   import { resolve } from '$app/paths';
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
   import { onMount } from 'svelte';
 
@@ -49,7 +49,10 @@
     if (!confirm('Are you sure you want to cancel this submission?')) return;
 
     try {
-      await contributionsStore.cancelSubmission(submissionId);
+      await apiFetch(`/api/contributions/submissions/${submissionId}`, {
+        method: 'DELETE'
+      });
+      await contributionsSummaryState.refresh({ force: true });
       toastStore.success('Submission cancelled successfully');
       await loadSubmissions();
     } catch (e) {

@@ -1,17 +1,28 @@
 <script lang="ts">
   import type { RebaseQueueEntry } from '$lib/types';
-  import type { ActivityGraphDay } from '../lib/types';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
   import { SvelteDate } from 'svelte/reactivity';
+  import {
+    Activity,
+    ArrowUp,
+    BookOpen,
+    Check,
+    Clock,
+    Download,
+    GitMerge,
+    PenLine,
+    RefreshCw,
+    Repeat,
+    Star
+  } from 'lucide-svelte';
 
-  type SampleStats = {
-    totalEdits: number;
-    editsMerged: number;
-    volumesEdited: number;
-    lastEditAt: string;
+  type ActivityGraphDay = {
+    date: string;
+    dayName: string;
+    count: number;
   };
 
   let {
-    sampleStats,
     activityGraph,
     showQuickActions,
     volumesNeedingRebase,
@@ -22,7 +33,6 @@
     onBatchRebase,
     onExportEdits
   } = $props<{
-    sampleStats: SampleStats;
     activityGraph: ActivityGraphDay[];
     showQuickActions: boolean;
     volumesNeedingRebase: RebaseQueueEntry[];
@@ -33,6 +43,7 @@
     onBatchRebase: () => void;
     onExportEdits: () => void;
   }>();
+
 </script>
 
 <div class="mb-8">
@@ -53,22 +64,7 @@
         <div
           class="p-2 sm:p-3 rounded-lg sm:rounded-xl bg-accent/20 border-2 border-accent/40 shadow-lg flex-shrink-0"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="24"
-            height="24"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            class="sm:w-8 sm:h-8 text-accent"
-          >
-            <polygon
-              points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"
-            />
-          </svg>
+          <Star class="sm:w-8 sm:h-8 text-accent" />
         </div>
         <div class="flex-1 min-w-0">
           <h1
@@ -88,8 +84,8 @@
   <div class="flex flex-col lg:flex-row gap-6">
     <!-- Left: Stats Dashboard -->
     <div class="flex flex-col gap-4 lg:flex-1">
-      <!-- Stats Grid (3 cards) -->
-      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+      <!-- Stats Grid -->
+      <div class="grid grid-cols-2 min-[520px]:grid-cols-3 gap-3 sm:gap-4">
         <!-- Total Edits -->
         <div
           class="group relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-theme-main to-theme-surface border-2 border-theme-border hover:border-accent/50 p-4 sm:p-5 transition-all duration-300 hover:scale-105 hover:shadow-2xl overflow-hidden"
@@ -100,26 +96,12 @@
           <div class="relative z-10">
             <div class="flex items-center justify-between mb-2 sm:mb-3">
               <div class="p-1.5 sm:p-2 rounded-lg bg-accent/10 border border-accent/30">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="sm:w-5 sm:h-5 text-accent"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                </svg>
+                <PenLine class="sm:w-5 sm:h-5 text-accent" />
               </div>
               <div
                 class="text-2xl sm:text-3xl font-black text-accent group-hover:scale-110 transition-transform"
               >
-                {sampleStats.totalEdits}
+                {contributionsSummaryState.totalEdits}
               </div>
             </div>
             <div
@@ -142,25 +124,12 @@
               <div
                 class="p-1.5 sm:p-2 rounded-lg bg-status-success/10 border border-status-success/30"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="sm:w-5 sm:h-5 text-status-success"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
+                <Check class="sm:w-5 sm:h-5 text-status-success" />
               </div>
               <div
                 class="text-2xl sm:text-3xl font-black text-status-success group-hover:scale-110 transition-transform"
               >
-                {sampleStats.editsMerged}
+                {contributionsSummaryState.editsMerged}
               </div>
             </div>
             <div
@@ -183,32 +152,100 @@
               <div
                 class="p-1.5 sm:p-2 rounded-lg bg-theme-primary/10 border border-theme-primary/30"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2.5"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="sm:w-5 sm:h-5 text-theme-primary"
-                >
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
+                <BookOpen class="sm:w-5 sm:h-5 text-theme-primary" />
               </div>
               <div
                 class="text-2xl sm:text-3xl font-black text-theme-primary group-hover:scale-110 transition-transform"
               >
-                {sampleStats.volumesEdited}
+                {contributionsSummaryState.volumesEdited}
               </div>
             </div>
             <div
               class="text-[10px] sm:text-xs font-bold text-theme-secondary uppercase tracking-wider"
             >
               Volumes Edited
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending Reviews -->
+        <div
+          class="group relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-theme-main to-theme-surface border-2 border-theme-border hover:border-status-warning/50 p-4 sm:p-5 transition-all duration-300 hover:scale-105 hover:shadow-2xl overflow-hidden"
+        >
+          <div
+            class="absolute inset-0 bg-gradient-to-br from-status-warning/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+          ></div>
+          <div class="relative z-10">
+            <div class="flex items-center justify-between mb-2 sm:mb-3">
+              <div
+                class="p-1.5 sm:p-2 rounded-lg bg-status-warning/10 border border-status-warning/30"
+              >
+                <GitMerge class="sm:w-5 sm:h-5 text-status-warning" />
+              </div>
+              <div
+                class="text-2xl sm:text-3xl font-black text-status-warning group-hover:scale-110 transition-transform"
+              >
+                {contributionsSummaryState.pendingReviewCount}
+              </div>
+            </div>
+            <div
+              class="text-[10px] sm:text-xs font-bold text-theme-secondary uppercase tracking-wider"
+            >
+              Pending Reviews
+            </div>
+          </div>
+        </div>
+
+        <!-- Ahead Edits -->
+        <div
+          class="group relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-theme-main to-theme-surface border-2 border-theme-border hover:border-accent/50 p-4 sm:p-5 transition-all duration-300 hover:scale-105 hover:shadow-2xl overflow-hidden"
+        >
+          <div
+            class="absolute inset-0 bg-gradient-to-br from-accent/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+          ></div>
+          <div class="relative z-10">
+            <div class="flex items-center justify-between mb-2 sm:mb-3">
+              <div class="p-1.5 sm:p-2 rounded-lg bg-accent/10 border border-accent/30">
+                <ArrowUp class="sm:w-5 sm:h-5 text-accent" />
+              </div>
+              <div
+                class="text-2xl sm:text-3xl font-black text-accent group-hover:scale-110 transition-transform"
+              >
+                {contributionsSummaryState.aheadCount}
+              </div>
+            </div>
+            <div
+              class="text-[10px] sm:text-xs font-bold text-theme-secondary uppercase tracking-wider"
+            >
+              Ahead Edits
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending Submissions -->
+        <div
+          class="group relative rounded-xl sm:rounded-2xl bg-gradient-to-br from-theme-main to-theme-surface border-2 border-theme-border hover:border-orange-400/50 p-4 sm:p-5 transition-all duration-300 hover:scale-105 hover:shadow-2xl overflow-hidden"
+        >
+          <div
+            class="absolute inset-0 bg-gradient-to-br from-orange-400/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"
+          ></div>
+          <div class="relative z-10">
+            <div class="flex items-center justify-between mb-2 sm:mb-3">
+              <div
+                class="p-1.5 sm:p-2 rounded-lg bg-orange-400/10 border border-orange-400/30"
+              >
+                <Clock class="sm:w-5 sm:h-5 text-orange-400" />
+              </div>
+              <div
+                class="text-2xl sm:text-3xl font-black text-orange-400 group-hover:scale-110 transition-transform"
+              >
+                {contributionsSummaryState.pendingSubmissionsCount}
+              </div>
+            </div>
+            <div
+              class="text-[10px] sm:text-xs font-bold text-theme-secondary uppercase tracking-wider"
+            >
+              Pending Submissions
             </div>
           </div>
         </div>
@@ -357,21 +394,7 @@
               <div
                 class="p-1.5 sm:p-2 rounded-lg bg-status-warning/20 group-hover:bg-status-warning/30 transition-colors flex-shrink-0"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="sm:w-5 sm:h-5 text-status-warning"
-                  ><path
-                    d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"
-                  /></svg
-                >
+                <RefreshCw class="sm:w-5 sm:h-5 text-status-warning" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="text-[10px] sm:text-xs font-bold text-status-warning mb-0.5 sm:mb-1">
@@ -393,19 +416,7 @@
               <div
                 class="p-1.5 sm:p-2 rounded-lg bg-theme-primary/20 group-hover:bg-theme-primary/30 transition-colors flex-shrink-0"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="sm:w-5 sm:h-5 text-theme-primary"
-                  ><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg
-                >
+                <Activity class="sm:w-5 sm:h-5 text-theme-primary" />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="text-[10px] sm:text-xs font-bold text-theme-primary mb-0.5 sm:mb-1">
@@ -431,21 +442,7 @@
             <div
               class="p-1.5 sm:p-2 rounded-lg bg-status-warning/20 group-hover:bg-status-warning/30 transition-colors flex-shrink-0"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="sm:w-5 sm:h-5 text-status-warning"
-                ><path
-                  d="M3 2v6h6M21 12A9 9 0 0 0 6 5.3L3 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"
-                /></svg
-              >
+              <Repeat class="sm:w-5 sm:h-5 text-status-warning" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-[10px] sm:text-xs font-bold text-status-warning mb-0.5 sm:mb-1">
@@ -467,21 +464,7 @@
             <div
               class="p-1.5 sm:p-2 rounded-lg bg-emerald-500/20 group-hover:bg-emerald-500/30 transition-colors flex-shrink-0"
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                class="sm:w-5 sm:h-5 text-emerald-400"
-                ><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline
-                  points="7 10 12 15 17 10"
-                /><line x1="12" y1="15" x2="12" y2="3" /></svg
-              >
+              <Download class="sm:w-5 sm:h-5 text-emerald-400" />
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-[10px] sm:text-xs font-bold text-emerald-400 mb-0.5 sm:mb-1">

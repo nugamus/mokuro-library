@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { submissionState } from '$lib/states/submissions/SubmissionState.svelte';
-  import type { SubmissionItem } from '$lib/states/submissions/SubmissionSession.svelte';
+  import { submissionState } from '$lib/states/contributions/SubmissionState.svelte';
+  import type { SubmissionItem } from '$lib/states/contributions/SubmissionSession.svelte';
   import Button from '$lib/components/controls/Button.svelte';
   import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
   import type { Series } from '$lib/types';

@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Series } from '$lib/types';
   import { apiFetch } from '$lib/services/api';
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
   import AuthenticatedImage from '$lib/components/common/AuthenticatedImage.svelte';
   import { SvelteMap, SvelteSet } from 'svelte/reactivity';
@@ -277,12 +277,17 @@
 
         const targetSeriesId = mergeDecisions.get(series.id);
 
-        await contributionsStore.submitVolumes(
-          Array.from(selectedVolumes),
-          targetSeriesId === null || targetSeriesId === undefined ? undefined : targetSeriesId
-        );
+        await apiFetch('/api/contributions/submissions', {
+          method: 'POST',
+          body: {
+            volumeIds: Array.from(selectedVolumes),
+            targetSeriesId:
+              targetSeriesId === null || targetSeriesId === undefined ? undefined : targetSeriesId
+          }
+        });
       }
 
+      await contributionsSummaryState.refresh({ force: true });
       toastStore.success(`Submitted ${totalSelectedVolumes} volume(s) successfully`);
       close();
     } catch (err: unknown) {

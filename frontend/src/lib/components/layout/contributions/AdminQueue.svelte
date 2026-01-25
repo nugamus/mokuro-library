@@ -3,7 +3,7 @@
   import { apiFetch } from '$lib/services/api';
   import { resolve } from '$app/paths';
   import { SvelteDate, SvelteSet } from 'svelte/reactivity';
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
   import { toastStore } from '$lib/stores/toastStore.svelte.ts';
   import { onMount } from 'svelte';
   import { ArrowRight, ClipboardList, FileText, LoaderCircle, TriangleAlert } from 'lucide-svelte';
@@ -57,7 +57,10 @@
     if (!confirm('Accept this submission? Files will be moved to the admin library.')) return;
 
     try {
-      await contributionsStore.acceptSubmission(submissionId);
+      await apiFetch(`/api/contributions/submissions/${submissionId}/accept`, {
+        method: 'POST'
+      });
+      await contributionsSummaryState.refresh({ force: true });
       toastStore.addToast('Submission accepted successfully', 'success');
       await loadSubmissions();
       selectedIds.delete(submissionId);
@@ -82,7 +85,14 @@
       return;
 
     try {
-      const result = await contributionsStore.bulkAcceptSubmissions(Array.from(selectedIds));
+      const result = await apiFetch<{ success: number; failed: number }>(
+        '/api/contributions/submissions/bulk-accept',
+        {
+          method: 'POST',
+          body: { submissionIds: Array.from(selectedIds) }
+        }
+      );
+      await contributionsSummaryState.refresh({ force: true });
 
       if (result.failed > 0) {
         toastStore.addToast(`Accepted ${result.success}, failed ${result.failed}`, 'warning');

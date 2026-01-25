@@ -16,7 +16,7 @@
   } from 'lucide-svelte';
 
   // Components
-  import ContributionsHeader from './components/ContributionsHeader.svelte';
+  import ContributionsHeader from '$lib/components/layout/contributions/ContributionsHeader.svelte';
   import ActivityTimeline from './components/ActivityTimeline.svelte';
   import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
   import LoadingState from './components/LoadingState.svelte';
@@ -28,8 +28,9 @@
   import SubmissionReader from '$lib/components/readers/SubmissionReader.svelte';
   import ReviewCandidates from '$lib/components/layout/contributions/ReviewCandidates.svelte';
 
-  import { sampleStats } from './lib/constants';
   import type { RebaseQueueEntry } from '$lib/types';
+  import { uiState } from '$lib/states/ui/uiState.svelte';
+  import { SelectionState } from '$lib/states/selection/SelectionState.svelte';
 
   // --- Local State ---
   let isLoading = $state(true);
@@ -41,11 +42,14 @@
   let adminQueue: { reload: () => void } | null = $state(null);
   let showReader = $state(false);
   let previewVolumeId = $state<string | null>(null);
+  let wasRebaseOpen = $state(false);
+  let rebaseSelection = new SelectionState<RebaseQueueEntry>();
 
   // Admin check
   let isAdmin = $derived($authUser?.id === 'admin' || $authUser?.role === 'admin');
 
   // --- Actions ---
+  /** Fetch the current rebase queue from the API. */
   const loadQueue = async () => {
     isLoading = true;
     try {
@@ -58,21 +62,43 @@
     }
   };
 
+  /** Launch a rebase session for every queue entry. */
   const handleRebaseAll = () => {
     if (rebaseQueue.length === 0) return;
-    const ids = rebaseQueue.map((v) => v.id);
-    rebaseState.open(ids);
+    rebaseState.open(
+      rebaseQueue.map((task) => ({
+        volumeId: task.id,
+        volumeTitle: task.title,
+        seriesTitle: task.seriesTitle
+      }))
+    );
   };
 
+  /** Launch a rebase session for only the selected entries. */
+  const handleBatchRebase = () => {
+    if (rebaseSelection.selection.size === 0) return;
+    // Only batch the currently selected queue entries.
+    console.log(rebaseSelection.selection);
+    const targets = Array.from(rebaseSelection.selection.values()).map((task) => ({
+      volumeId: task.id,
+      volumeTitle: task.title,
+      seriesTitle: task.seriesTitle
+    }));
+    if (targets.length === 0) return;
+    rebaseState.open(targets);
+  };
+
+  /** Adapt a queue entry to the LibraryEntry data shape. */
   const getEntryData = (task: RebaseQueueEntry) => ({
     id: task.id,
-    title: task.title,
-    folderName: task.title,
+    title: task.seriesTitle,
+    folderName: task.seriesTitle,
     coverUrl: task.coverImageName
       ? `/api/files/volume/${task.id}/image/${task.coverImageName}`
       : null
   });
 
+  /** Open or close the preview reader based on the URL hash. */
   $effect(() => {
     const hash = page.url.hash;
     if (hash.startsWith('#preview-')) {
@@ -84,6 +110,24 @@
     }
   });
 
+  /** Clear selection when leaving the rebase tab. */
+  $effect(() => {
+    if (activeTab !== 'rebase' && rebaseSelection.isSelectionMode) {
+      // Exit selection when leaving the rebase tab to avoid stale UI state.
+      rebaseSelection.exitSelectionMode();
+    }
+  });
+
+  /** Refresh the queue after the rebase modal closes. */
+  $effect(() => {
+    if (!isAdmin && wasRebaseOpen && !rebaseState.isModalOpen) {
+      rebaseSelection.exitSelectionMode();
+      loadQueue();
+    }
+    wasRebaseOpen = rebaseState.isModalOpen;
+  });
+
+  /** Close the preview reader and clear hash state. */
   function closePreview() {
     if (page.url.hash.startsWith('#preview-')) {
       history.back();
@@ -93,7 +137,9 @@
     }
   }
 
+  /** Initialize page state and load the queue for non-admin users. */
   onMount(() => {
+    uiState.setSubtext('contributions', 'Contributions');
     if (isAdmin) {
       activeTab = 'submissions';
       return;
@@ -104,15 +150,14 @@
 
 <div class="max-w-5xl mx-auto p-4 space-y-6 pb-20">
   <ContributionsHeader
-    {sampleStats}
     activityGraph={[]}
     showQuickActions={true}
     volumesNeedingRebase={rebaseQueue}
     activityHistoryCount={0}
-    selectedItemsCount={0}
+    selectedItemsCount={!isAdmin && activeTab === 'rebase' ? rebaseSelection.selection.size : 0}
     onRebaseAll={handleRebaseAll}
     onToggleActivityTimeline={() => (showActivityTimeline = !showActivityTimeline)}
-    onBatchRebase={() => {}}
+    onBatchRebase={handleBatchRebase}
     onExportEdits={() => {}}
   />
 
@@ -194,8 +239,22 @@
                 viewMode="list"
                 href={`#preview-${task.id}`}
                 progress={{ percent: 0, isRead: false, hideBar: true }}
-                mainStat={`Ahead: +${task.versionInfo.hasAhead}`}
-                subStat={`Behind: -${task.versionInfo.hasBehind}`}
+                mainStat={task.title}
+                badge={{
+                  text: `▲ ${task.versionInfo.hasAhead}  ▼ ${task.versionInfo.hasBehind}`,
+                  status: 'warning'
+                }}
+                isSelected={rebaseSelection.selection.has(task.id)}
+                isSelectionMode={rebaseSelection.isSelectionMode}
+                onLongPress={() => {
+                  rebaseSelection.enterSelectionMode(task);
+                }}
+                onSelect={(e) => {
+                  if (!rebaseSelection.isSelectionMode) return;
+                  e.preventDefault();
+                  e.stopPropagation();
+                  rebaseSelection.toggleSelection(task);
+                }}
               >
                 {#snippet listActions()}
                   <button
@@ -203,7 +262,13 @@
                     onclick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      rebaseState.open([task.id]);
+                      rebaseState.open([
+                        {
+                          volumeId: task.id,
+                          volumeTitle: task.title,
+                          seriesTitle: task.seriesTitle
+                        }
+                      ]);
                     }}
                   >
                     <GitMerge class="w-4 h-4" />

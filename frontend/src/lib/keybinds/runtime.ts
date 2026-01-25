@@ -86,7 +86,6 @@ const actions: Record<KeybindId, () => void> = {
     contextMenu.close();
   },
   focusSearch: () => focusSearch(),
-  toggleSelectionMode: () => uiState.toggleSelectionMode(),
   readerPrevPage: () => readerPrev(),
   readerNextPage: () => readerNext(),
   readerFirstPage: () => readerState.setPage(0),

@@ -268,8 +268,12 @@ export interface SubmissionEntry {
 
 export interface ContributionsSummary {
   aheadCount: number;
-  behindCount: number;
   pendingSubmissionsCount: number;
+  pendingReviewCount: number;
+  totalEdits: number;
+  editsMerged: number;
+  volumesEdited: number;
+  lastEditAt: string | null;
 }
 
 // --- Rebase Types ---
