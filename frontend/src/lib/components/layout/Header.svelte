@@ -6,7 +6,7 @@
   import { resolve } from '$app/paths';
   import { contextMenu } from '$lib/stores/contextMenuStore';
   import { fade, scale } from 'svelte/transition';
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
   import { user } from '$lib/stores/authStore';
 
   import FilterMenu from '$lib/components/menu/FilterMenu.svelte';
@@ -86,14 +86,6 @@
   $effect(() => {
     if (uiState.searchQuery !== untrack(() => searchValue)) {
       searchValue = uiState.searchQuery;
-    }
-  });
-
-  // Close menus when selection mode activates
-  $effect(() => {
-    if (uiState.isSelectionMode) {
-      isMobileSearchOpen = false;
-      contextMenu.close();
     }
   });
 
@@ -290,7 +282,7 @@
 
           <button
             onclick={toggleFilterMenu}
-            class="absolute top-1/2 -translate-y-1/2 right-3 flex items-center justify-center w-9 h-9 rounded-lg transition-colors text-theme-secondary hover:text-white hover:bg-theme-surface-hover"
+            class="absolute top-1/2 -translate-y-1/2 right-3 flex items-center justify-center w-9 h-9 rounded-lg transition-colors text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-hover"
             title="Filter & Sort"
             aria-label="Filter and Sort Options"
           >
@@ -327,9 +319,9 @@
     {/if}
 
     <div class="flex flex-shrink-0 items-center gap-2 z-10">
-      {#if uiState.context === null}
+    {#if uiState.subtext === null}
         <button
-          class="md:hidden p-2 text-theme-secondary hover:text-white"
+          class="md:hidden p-2 text-theme-secondary hover:text-theme-primary"
           onclick={() => (isMobileSearchOpen = !isMobileSearchOpen)}
           aria-label="Toggle Search"
         >
@@ -348,7 +340,7 @@
 
         <button
           onclick={toggleFilterMenu}
-          class="md:hidden p-2 rounded-lg transition-colors text-theme-secondary hover:text-white hover:bg-theme-surface-hover hover:border-theme-border-light border border-transparent"
+          class="md:hidden p-2 rounded-lg transition-colors text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-hover hover:border-theme-border-light border border-transparent"
           title="Filter & Sort"
           aria-label="Filter and Sort Options"
         >
@@ -478,7 +470,7 @@
 
       <button
         onclick={toggleAppMenu}
-        class="w-12 h-12 flex items-center justify-center rounded-2xl border-2 border-theme-border-light transition-all duration-200 text-theme-secondary hover:text-white hover:border-theme-primary/50 relative"
+        class="w-12 h-12 flex items-center justify-center rounded-2xl border-2 border-theme-border-light transition-all duration-200 text-theme-secondary hover:text-theme-primary hover:border-theme-primary/50 relative"
         title="Menu"
         aria-label="Main Menu"
       >
@@ -500,24 +492,13 @@
             y2="18"
           /></svg
         >
-        {#if $contributionsStore.behind > 0}
-          <span
-            class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
-            in:scale={{ duration: 200, start: 0.5 }}
-            title={$contributionsStore.behind > 1
-              ? `${$contributionsStore.behind} volumes need rebasing`
-              : `${$contributionsStore.behind} volume needs rebasing`}
-          >
-            {$contributionsStore.behind}
-          </span>
-        {/if}
-        {#if isAdmin && $contributionsStore.pendingSubmissionsCount > 0}
+        {#if isAdmin && contributionsSummaryState.pendingSubmissionsCount > 0}
           <span
             class="absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 text-[10px] font-bold rounded-full bg-orange-500 text-white min-w-[20px] text-center shadow-lg border-2 border-theme-main"
             in:scale={{ duration: 200, start: 0.5 }}
-            title={`${$contributionsStore.pendingSubmissionsCount} pending submissions`}
+            title={`${contributionsSummaryState.pendingSubmissionsCount} pending submissions`}
           >
-            {$contributionsStore.pendingSubmissionsCount}
+            {contributionsSummaryState.pendingSubmissionsCount}
           </span>
         {/if}
       </button>

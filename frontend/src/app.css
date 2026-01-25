@@ -104,6 +104,11 @@ body {
     drop-shadow(0 0 6px color-mix(in srgb, currentColor, transparent 60%));
 }
 
+.subtle-neon-glow {
+  filter: drop-shadow(0 0 1px color-mix(in srgb, currentColor, transparent 50%))
+    drop-shadow(0 0 2px color-mix(in srgb, currentColor, transparent 70%));
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 8px;

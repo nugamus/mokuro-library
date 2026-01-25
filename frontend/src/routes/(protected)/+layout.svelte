@@ -3,7 +3,7 @@
   import { goto } from '$app/navigation';
   import { authReady, user } from '$lib/stores/authStore';
   import { uiState } from '$lib/states/ui/uiState.svelte.ts';
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
   import { keybindStore } from '$lib/stores/keybindStore';
   import { handleGlobalKeydown } from '$lib/keybinds/runtime';
   import { prefetchAppData } from '$lib/utils/caching/eagercache';
@@ -95,7 +95,7 @@
     if (!$user || didPrefetch) return;
     didPrefetch = true;
 
-    contributionsStore.refresh();
+    contributionsSummaryState.refresh();
 
     // Prefetch app data after login
     prefetchAppData();
