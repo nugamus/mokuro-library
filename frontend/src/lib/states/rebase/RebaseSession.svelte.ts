@@ -10,6 +10,7 @@ export class RebaseSession {
   volumeId: string;
   volumeTitle: string;
   seriesTitle: string;
+  hasAhead: number | null = null;
 
   // State Properties
   currentConflict = $state<RebaseConflict | null>(null);
@@ -45,6 +46,7 @@ export class RebaseSession {
       if (result.status === 'complete') {
         this.status = 'complete';
         this.currentConflict = null;
+        this.hasAhead = result.hasAhead ?? 0;
         toastStore.success(`Rebase complete for ${this.volumeTitle}`);
         return true; // Finished
       }

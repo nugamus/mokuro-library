@@ -31,35 +31,22 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
 
   /**
    * GET /api/contributions/summary
-   * Returns counts of volumes with local edits (ahead) or behind admin,
-   * plus pending submissions count (admin only).
+   * Returns user edit stats against admin-owned content plus pending submissions.
    */
   fastify.get('/summary', async (request, reply) => {
     const userId = request.user.id;
     const isAdmin = userId === 'admin';
 
-    // Calculate pending submissions count (admin sees all pending, users see 0)
-    // This is cheap and can stay as a standard Prisma count
     const pendingSubmissionsCount = isAdmin
       ? await fastify.prisma.submission.count({ where: { status: 'pending' } })
-      : await fastify.prisma.submission.count({ where: { status: 'pending', userId: userId } });
+      : await fastify.prisma.submission.count({ where: { status: 'pending', userId } });
 
-    // 1. Count AHEAD (User has private patches)
-    // Simple check: rootPatchId is NOT NULL on an Admin-owned series
-    const aheadCount = await fastify.prisma.ocrBranch.count({
-      where: {
-        userId,
-        volume: { series: { ownerId: 'admin' } },
-        rootPatchId: { not: null }
-      }
+    const summary = await fastify.prisma.ocrBranch.getContributionSummary(userId);
+
+    return reply.send({
+      ...summary,
+      pendingSubmissionsCount
     });
-
-    // 2. Count BEHIND (Admin Head Sequence > User Fork Point)
-    // Complex check comparing sequences across joined branches
-    const behindCount = await fastify.prisma.ocrBranch.countBehind(userId);
-
-
-    return reply.send({ aheadCount, behindCount, pendingSubmissionsCount });
   });
 
   /**

@@ -1,5 +1,11 @@
 <script lang="ts">
   import { rebaseState } from '$lib/states/rebase/RebaseState.svelte';
+  import { X } from 'lucide-svelte';
+  import type { RebaseSession } from '$lib/states/rebase/RebaseSession.svelte';
+
+  let { onReviewRequest } = $props<{
+    onReviewRequest?: (session: RebaseSession) => void;
+  }>();
 
   // Helper to format the time since update
   const formatTime = (date: Date) => {
@@ -67,20 +73,7 @@
             rebaseState.abortSession(session.id);
           }}
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
+          <X class="w-3.5 h-3.5" />
         </button>
       </div>
     {/each}
@@ -88,6 +81,38 @@
     {#if rebaseState.sessions.length === 0}
       <div class="p-4 text-center text-theme-secondary text-sm italic">
         No active rebase sessions.
+      </div>
+    {/if}
+
+    {#if rebaseState.completedSessionCount > 0}
+      <div class="px-3 pt-3 text-[10px] font-bold uppercase tracking-wider text-theme-secondary">
+        Completed ({rebaseState.completedSessionCount})
+      </div>
+      <div class="space-y-2 pt-2">
+        {#each rebaseState.completedSessions as session (session.id)}
+          <button
+            onclick={() => onReviewRequest?.(session)}
+            class="w-full text-left p-3 rounded-lg border border-theme-border bg-theme-surface/50 opacity-80 hover:opacity-100 hover:border-theme-primary/40 transition-all"
+          >
+            <div class="flex justify-between items-start mb-1">
+              <span
+                class="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-status-success/20 text-status-success"
+              >
+                completed
+              </span>
+              <span class="text-[10px] text-theme-secondary">
+                {formatTime(session.updatedAt)}
+              </span>
+            </div>
+
+            <div class="font-medium text-sm text-theme-primary truncate" title={session.seriesTitle}>
+              {session.seriesTitle}
+            </div>
+            <div class="text-xs text-theme-secondary truncate" title={session.volumeTitle}>
+              {session.volumeTitle}
+            </div>
+          </button>
+        {/each}
       </div>
     {/if}
   </div>

@@ -15,6 +15,7 @@ export interface RebaseResult {
   rebaseId?: string;
   conflict?: RebaseConflict;
   newHeadId?: string;
+  hasAhead?: number;
 }
 
 export const rebaseApi = {

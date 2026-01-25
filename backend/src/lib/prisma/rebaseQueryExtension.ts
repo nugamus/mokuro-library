@@ -16,6 +16,24 @@ interface RebaseQueueRawRow {
   isPendingReview?: boolean;
 }
 
+interface ContributionSummaryRawRow {
+  totalEdits: bigint | number;
+  editsMerged: bigint | number;
+  volumesEdited: bigint | number;
+  pendingReviewCount: bigint | number;
+  aheadCount: bigint | number;
+  lastEditAt: Date | null;
+}
+
+export interface ContributionSummary {
+  totalEdits: number;
+  editsMerged: number;
+  volumesEdited: number;
+  pendingReviewCount: number;
+  aheadCount: number;
+  lastEditAt: string | null;
+}
+
 // Clean Output Object (Nested, pure Numbers)
 export interface RebaseQueueEntry {
   id: string;
@@ -77,6 +95,25 @@ export const rebaseQueryExtension = Prisma.defineExtension((client) => {
   const rootPatchJoinOptional = Prisma.sql`
     LEFT JOIN "Patch" ur ON ub."rootPatchId" = ur.id
   `;
+
+  const mapContributionSummary = (row: ContributionSummaryRawRow | undefined): ContributionSummary => {
+    const lastEditRaw = row?.lastEditAt ?? null;
+    const lastEditAt =
+      lastEditRaw instanceof Date
+        ? lastEditRaw.toISOString()
+        : lastEditRaw
+          ? new Date(lastEditRaw).toISOString()
+          : null;
+
+    return {
+      totalEdits: Number(row?.totalEdits ?? 0),
+      editsMerged: Number(row?.editsMerged ?? 0),
+      volumesEdited: Number(row?.volumesEdited ?? 0),
+      pendingReviewCount: Number(row?.pendingReviewCount ?? 0),
+      aheadCount: Number(row?.aheadCount ?? 0),
+      lastEditAt
+    };
+  };
 
   const mapRebaseQueueRows = (rows: RebaseQueueRawRow[]): RebaseQueueEntry[] => {
     return rows.map(r => ({
@@ -175,6 +212,67 @@ export const rebaseQueryExtension = Prisma.defineExtension((client) => {
           // Centralized BigInt safety handling
           const count = result[0]?.count ?? 0n;
           return Number(count);
+        },
+        async getContributionSummary(userId: string): Promise<ContributionSummary> {
+          const result = await client.$queryRaw<ContributionSummaryRawRow[]>`
+            WITH user_patches AS (
+              SELECT p.id, p."volumeId", p.sequence, p."nextPatchId", p."createdAt"
+              FROM "Patch" p
+              JOIN "Volume" v ON p."volumeId" = v.id
+              JOIN "Series" s ON v."seriesId" = s.id
+              WHERE p."userId" = ${userId}
+                AND s."ownerId" = 'admin'
+            ),
+            admin_heads AS (
+              SELECT ab."volumeId", ab."headPatchId", ah.sequence as "headSequence"
+              FROM "OcrBranch" ab
+              JOIN "Patch" ah ON ah.id = ab."headPatchId"
+              WHERE ab."userId" = 'admin'
+            ),
+            merged_edits AS (
+              SELECT COUNT(*) as count
+              FROM user_patches up
+              JOIN admin_heads ah ON ah."volumeId" = up."volumeId"
+              WHERE (up."nextPatchId" IS NOT NULL OR up.id = ah."headPatchId")
+                AND up.sequence <= ah."headSequence"
+            ),
+            total_edits AS (
+              SELECT COUNT(*) as count FROM user_patches
+            ),
+            volumes_edited AS (
+              SELECT COUNT(DISTINCT "volumeId") as count FROM user_patches
+            ),
+            last_edit AS (
+              SELECT MAX("createdAt") as "lastEditAt" FROM user_patches
+            ),
+            pending_reviews AS (
+              SELECT COUNT(*) as count
+              FROM "OcrBranch" ub
+              JOIN "Volume" v ON ub."volumeId" = v.id
+              JOIN "Series" s ON v."seriesId" = s.id
+              WHERE ub."userId" = ${userId}
+                AND ub."isPendingReview" = true
+                AND s."ownerId" = 'admin'
+            ),
+            ahead_count AS (
+              SELECT COUNT(*) as count
+              FROM "OcrBranch" ub
+              JOIN "Volume" v ON ub."volumeId" = v.id
+              JOIN "Series" s ON v."seriesId" = s.id
+              WHERE ub."userId" = ${userId}
+                AND ub."rootPatchId" IS NOT NULL
+                AND s."ownerId" = 'admin'
+            )
+            SELECT
+              (SELECT count FROM total_edits) as "totalEdits",
+              (SELECT count FROM merged_edits) as "editsMerged",
+              (SELECT count FROM volumes_edited) as "volumesEdited",
+              (SELECT count FROM pending_reviews) as "pendingReviewCount",
+              (SELECT count FROM ahead_count) as "aheadCount",
+              (SELECT "lastEditAt" FROM last_edit) as "lastEditAt";
+          `;
+
+          return mapContributionSummary(result[0]);
         },
       },
     },

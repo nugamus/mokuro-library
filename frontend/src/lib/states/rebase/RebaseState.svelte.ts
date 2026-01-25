@@ -13,6 +13,8 @@ class RebaseState {
 
   // The list of all active sessions for this user
   sessions = $state<RebaseSession[]>([]);
+  // Completed sessions kept while the modal is open
+  completedSessions = $state<RebaseSession[]>([]);
 
   // The ID of the session currently being viewed in the modal
   selectedSessionId = $state<string | null>(null);
@@ -23,6 +25,7 @@ class RebaseState {
   );
 
   activeSessionCount = $derived(this.sessions.length);
+  completedSessionCount = $derived(this.completedSessions.length);
   canStartNewSession = $derived(this.sessions.length < MAX_ACTIVE_SESSIONS);
 
   constructor() {
@@ -34,7 +37,7 @@ class RebaseState {
    * @param targetVolumeIds - (Optional) If provided, ensures sessions exist for these volumes
    * and selects the first one.
    */
-  async open(targetVolumeIds?: string[]) {
+  async open(targets?: { volumeId: string; volumeTitle: string; seriesTitle: string }[]) {
     this.isModalOpen = true;
     this.isLoading = true;
 
@@ -43,8 +46,8 @@ class RebaseState {
       await this.refreshSessions();
 
       // 2. Handle specific targets if requested
-      if (targetVolumeIds && targetVolumeIds.length > 0) {
-        await this.ensureSessionsFor(targetVolumeIds);
+      if (targets && targets.length > 0) {
+        await this.ensureSessionsFor(targets);
       }
 
       // 3. Set default selection if nothing selected yet
@@ -62,6 +65,7 @@ class RebaseState {
   close() {
     this.isModalOpen = false;
     this.selectedSessionId = null;
+    this.completedSessions = [];
   }
 
   selectSession(sessionId: string) {
@@ -83,8 +87,9 @@ class RebaseState {
     }
   }
 
-  private async ensureSessionsFor(volumeIds: string[]) {
-    for (const volId of volumeIds) {
+  private async ensureSessionsFor(targets: { volumeId: string; volumeTitle: string; seriesTitle: string }[]) {
+    for (const target of targets) {
+      const volId = target.volumeId;
       // Check if we already have a session for this volume
       const existing = this.sessions.find(s => s.volumeId === volId);
       if (existing) {
@@ -99,21 +104,38 @@ class RebaseState {
       }
 
       // Start new session
-      await this.startSession(volId);
+      await this.startSession(target);
     }
   }
 
-  async startSession(volumeId: string) {
+  async startSession(target: { volumeId: string; volumeTitle: string; seriesTitle: string }) {
     try {
-      await rebaseApi.start(volumeId);
+      // Backend handles eligibility and may fast-forward/complete immediately.
+      const result = await rebaseApi.start(target.volumeId);
+      if (result.status === 'complete') {
+        const completed = new RebaseSession({
+          sessionId: `completed-${target.volumeId}-${Date.now()}`,
+          volumeId: target.volumeId,
+          volumeTitle: target.volumeTitle,
+          seriesTitle: target.seriesTitle,
+          currentConflict: null,
+          updatedAt: new Date().toISOString()
+        });
+        completed.status = 'complete';
+        completed.hasAhead = result.hasAhead ?? 0;
+        this.completedSessions = [completed, ...this.completedSessions];
+        toastStore.success(`Rebase complete for ${target.volumeTitle}`);
+        return;
+      }
+
       await this.refreshSessions();
 
-      const newSession = this.sessions.find(s => s.volumeId === volumeId);
+      const newSession = this.sessions.find(s => s.volumeId === target.volumeId);
       if (newSession) {
         this.selectedSessionId = newSession.id;
       }
     } catch (err: any) {
-      console.error(`Failed to start session for volume ${volumeId}:`, err);
+      console.error(`Failed to start session for volume ${target.volumeId}:`, err);
       toastStore.error(err.message || 'Failed to start rebase');
     }
   }
@@ -125,6 +147,7 @@ class RebaseState {
     const isComplete = await session.resolve(resolution);
 
     if (isComplete) {
+      this.completedSessions = [session, ...this.completedSessions];
       // Remove from local list immediately
       this.sessions = this.sessions.filter(s => s.id !== sessionId);
 

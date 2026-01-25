@@ -3,12 +3,52 @@
   import { rebaseState } from '$lib/states/rebase/RebaseState.svelte';
   import SessionList from './SessionList.svelte';
   import ConflictResolver from './ConflictResolver.svelte';
+  import { PenLine, X } from 'lucide-svelte';
+  import SubmitReviewModal from '$lib/components/modals/contributions/SubmitReviewModal.svelte';
+  import { apiFetch } from '$lib/services/api';
+  import { toastStore } from '$lib/stores/toastStore.svelte.ts';
+  import type { RebaseQueueEntry, Volume } from '$lib/types';
+  import type { RebaseSession } from '$lib/states/rebase/RebaseSession.svelte';
 
   // We use the global state directly
   // Just close the modal via state
   const close = () => {
     rebaseState.close();
   };
+
+  let showReviewModal = $state(false);
+  let reviewVolume = $state<RebaseQueueEntry | null>(null);
+
+  async function handleReviewRequest(session: RebaseSession) {
+    const hasAhead = session.hasAhead ?? 0;
+    if (hasAhead <= 0) {
+      toastStore.info('No edits ahead to submit for review.');
+      return;
+    }
+
+    try {
+      const volume = await apiFetch<Volume>(`/api/library/volume/${session.volumeId}`, {
+        showErrorToast: false
+      });
+      if (volume.versionInfo.hasAhead <= 0) {
+        toastStore.info('No edits ahead to submit for review.');
+        return;
+      }
+      reviewVolume = {
+        id: volume.id,
+        title: volume.title,
+        seriesId: volume.seriesId,
+        seriesTitle: session.seriesTitle,
+        pageCount: volume.pageCount,
+        coverImageName: volume.coverImageName,
+        versionInfo: volume.versionInfo
+      };
+      showReviewModal = true;
+    } catch (err) {
+      console.error('Failed to load volume for review', err);
+      toastStore.error('Failed to load volume details.');
+    }
+  }
 </script>
 
 {#if rebaseState.isModalOpen}
@@ -38,12 +78,12 @@
           class="p-2 rounded-lg text-theme-secondary hover:text-theme-primary hover:bg-theme-surface-hover"
           aria-label="Close"
         >
-          <span aria-hidden="true" class="text-xl leading-none">&times;</span>
+          <X class="w-5 h-5" />
         </button>
       </div>
 
       <div class="flex flex-1 overflow-hidden">
-        <SessionList />
+        <SessionList onReviewRequest={handleReviewRequest} />
 
         <div class="flex-1 bg-theme-main h-full overflow-hidden relative">
           {#if rebaseState.isLoading}
@@ -63,21 +103,7 @@
               <div
                 class="w-16 h-16 bg-theme-surface-highlight rounded-full flex items-center justify-center mb-4"
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="32"
-                  height="32"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  class="opacity-50"
-                >
-                  <path d="M12 20h9"></path>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-                </svg>
+                <PenLine class="w-8 h-8 opacity-50" />
               </div>
               <h3 class="text-lg font-bold text-theme-primary mb-2">No Session Selected</h3>
               <p class="max-w-md">
@@ -90,4 +116,8 @@
       </div>
     </div>
   </div>
+{/if}
+
+{#if showReviewModal && reviewVolume}
+  <SubmitReviewModal volume={reviewVolume} on_close={() => (showReviewModal = false)} />
 {/if}
