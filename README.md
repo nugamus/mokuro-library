@@ -91,6 +91,8 @@ The recommended way to run Mokuro Library is with Docker Compose, which handles 
     This starts the container in detached (`-d`) mode. The `docker-compose.yml` file defines the service. On the first run, the entrypoint script will automatically create and migrate your database.
     ```bash
     docker compose up -d
+    # Or use the wrapper:
+    npm run prod:docker
     ```
 
 Your library is now accessible at `http://localhost:3001`.
