@@ -394,12 +394,12 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
   );
 
   /**
-   * POST /api/contributions/submissions/bulk-accept
+   * POST /api/contributions/submissions/accept
    * Bulk accept multiple submissions.
    * Admin-only: Process multiple submissions sequentially.
    */
   fastify.post<{ Body: BulkAcceptBody }>(
-    '/submissions/bulk-accept',
+    '/submissions/accept',
     async (request, reply) => {
       const { submissionIds } = request.body;
 
@@ -433,12 +433,12 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
   );
 
   /**
-   * POST /api/contributions/submissions/bulk-reject
+   * POST /api/contributions/submissions/reject
    * Bulk reject multiple submissions with a shared reason.
    * Admin-only: Apply same reason to all selected submissions.
    */
   fastify.post<{ Body: BulkRejectBody }>(
-    '/submissions/bulk-reject',
+    '/submissions/reject',
     async (request, reply) => {
       const { submissionIds, reason } = request.body;
 
@@ -475,156 +475,6 @@ const contributionsRoutes: FastifyPluginAsync = async (fastify): Promise<void> =
     }
   );
 
-  /**
-   * POST /api/contributions/check-duplicates
-   * Checks a list of volume IDs for potential duplicates in the admin library.
-   */
-  fastify.post<{ Body: { volumeIds: string[] } }>(
-    '/check-duplicates',
-    async (request, reply) => {
-      const { volumeIds } = request.body;
-      const userId = request.user.id;
-
-      if (!volumeIds || volumeIds.length === 0) {
-        return reply.status(400).send({ error: 'No volume IDs provided' });
-      }
-
-      try {
-        // 1. Get the details of the user's volumes being submitted
-        const userVolumes = await fastify.prisma.volume.findMany({
-          where: {
-            id: { in: volumeIds },
-            series: {
-              ownerId: userId,
-            },
-          },
-          select: {
-            id: true,
-            title: true,
-            series: { select: { title: true } },
-          },
-        });
-
-        // 2. Get all admin volumes to compare against
-        const adminVolumes = await fastify.prisma.volume.findMany({
-          where: {
-            series: {
-              ownerId: 'admin',
-            },
-          },
-          select: {
-            id: true,
-            title: true,
-            series: { select: { title: true } },
-          },
-        });
-
-        const duplicates = [];
-
-        for (const userVolume of userVolumes) {
-          const userSeriesTitle = userVolume.series.title ?? '';
-          const userVolumeTitle = userVolume.title ?? '';
-
-          for (const adminVolume of adminVolumes) {
-            const adminSeriesTitle = adminVolume.series.title ?? '';
-            const adminVolumeTitle = adminVolume.title ?? '';
-
-            // Compare series and volume titles
-            const seriesSimilarity = similarity.compareTwoStrings(userSeriesTitle.toLowerCase(), adminSeriesTitle.toLowerCase());
-            const volumeSimilarity = similarity.compareTwoStrings(userVolumeTitle.toLowerCase(), adminVolumeTitle.toLowerCase());
-
-            // Define a threshold for what constitutes a potential duplicate
-            const confidence = (seriesSimilarity * 0.4) + (volumeSimilarity * 0.6);
-            if (confidence > 0.85) {
-              duplicates.push({
-                submittedVolumeId: userVolume.id,
-                submittedVolumeTitle: userVolume.title,
-                submittedSeriesTitle: userVolume.series.title,
-                existingAdminVolumeId: adminVolume.id,
-                existingAdminVolumeTitle: adminVolume.title,
-                existingAdminSeriesTitle: adminVolume.series.title,
-                confidence,
-              });
-            }
-          }
-        }
-
-        // Sort by confidence descending
-        duplicates.sort((a, b) => b.confidence - a.confidence);
-
-        return reply.send({ duplicates });
-
-      } catch (e: any) {
-        fastify.log.error(e, 'Failed to check for duplicates');
-        return reply.status(500).send({ error: 'An error occurred while checking for duplicates.' });
-      }
-    }
-  );
-
-  /**
-   * GET /api/contributions/stats
-   * Gathers statistics about all submissions for the admin dashboard.
-   */
-  fastify.get('/stats', async (request, reply) => {
-    if (request.user.id !== 'admin') {
-      return reply.status(403).send({ error: 'Not authorized' });
-    }
-
-    try {
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-      const [totalCounts, recentSubmissions, reviewedSubmissions] = await fastify.prisma.$transaction([
-        fastify.prisma.submission.groupBy({
-          by: ['status'],
-          _count: {
-            id: true,
-          },
-        }),
-        fastify.prisma.submission.count({
-          where: {
-            submittedAt: {
-              gte: sevenDaysAgo,
-            },
-          },
-        }),
-        fastify.prisma.submission.findMany({
-          where: {
-            status: { in: ['accepted', 'rejected'] },
-            reviewedAt: { not: null },
-          },
-          select: {
-            submittedAt: true,
-            reviewedAt: true,
-          },
-        }),
-      ]);
-
-      const stats = {
-        pending: totalCounts.find(c => c.status === 'pending')?._count.id || 0,
-        accepted: totalCounts.find(c => c.status === 'accepted')?._count.id || 0,
-        rejected: totalCounts.find(c => c.status === 'rejected')?._count.id || 0,
-        last7Days: recentSubmissions,
-        averageReviewTime: 0,
-      };
-
-      if (reviewedSubmissions.length > 0) {
-        const totalReviewTime = reviewedSubmissions.reduce((acc, s) => {
-          // 'reviewedAt' can be null, so we need a type guard, but the query filters for not null.
-          const reviewTime = (s.reviewedAt as Date).getTime() - s.submittedAt.getTime();
-          return acc + reviewTime;
-        }, 0);
-        const avgMilliseconds = totalReviewTime / reviewedSubmissions.length;
-        // Convert to hours for easier display
-        stats.averageReviewTime = Math.round(avgMilliseconds / (1000 * 60 * 60));
-      }
-
-      return reply.send(stats);
-
-    } catch (e: any) {
-      fastify.log.error(e, 'Failed to get submission stats');
-      return reply.status(500).send({ error: 'An error occurred while fetching statistics.' });
-    }
-  });
 };
 
 export default contributionsRoutes;
