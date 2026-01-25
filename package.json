@@ -13,7 +13,8 @@
     "test:frontend": "cd frontend && npm test",
     "lint": "npm run lint:backend && npm run lint:frontend",
     "lint:backend": "cd backend && npx eslint src --ext .ts",
-    "lint:frontend": "cd frontend && npx eslint src --ext .ts,.svelte"
+    "lint:frontend": "cd frontend && npx eslint src --ext .ts,.svelte",
+    "dev:docker": "node scripts/dev-docker.mjs"
   },
   "lint-staged": {
     "backend/**/*.ts": [

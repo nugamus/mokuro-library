@@ -6,8 +6,8 @@ RUN npm ci
 
 # --- Stage 2: Build Frontend ---
 FROM frontend-deps AS frontend-builder
-ARG COMMIT_HASH
-ENV VITE_COMMIT_HASH=$COMMIT_HASH
+ARG VITE_COMMIT_HASH
+ENV VITE_COMMIT_HASH=$VITE_COMMIT_HASH
 COPY frontend/ .
 RUN npm run build
 
