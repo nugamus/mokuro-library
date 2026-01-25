@@ -8,17 +8,18 @@
   import { apiFetch } from '$lib/services/api';
   import type { Series, PaginationData } from '$lib/types';
   import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+  import { SelectionState } from '$lib/states/selection/SelectionState.svelte';
   import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
   import Footer from '$lib/components/layout/Footer.svelte';
   import LibraryActionBar from '$lib/components/library/LibraryActionBar.svelte';
   import LibraryEntry from '$lib/components/library/LibraryEntry.svelte';
   import EditSeriesModal from '$lib/components/modals/EditSeriesModal.svelte';
   import LibraryListWrapper from '$lib/components/library/LibraryListWrapper.svelte';
-  import type { FilterStatus, FilterMissing } from '$lib/states/ui/uiState.svelte.ts';
+  import type { FilterStatus, FilterMissing, FilterOwner } from '$lib/states/ui/uiState.svelte.ts';
   import { formatLastReadDate } from '$lib/utils/helpers/date';
   import { SvelteMap } from 'svelte/reactivity';
   import SubmitSeriesPanel from '$lib/components/modals/submissions/SubmitSeriesPanel.svelte';
-  import { submissionState } from '$lib/states/submissions/SubmissionState.svelte';
+  import { submissionState } from '$lib/states/contributions/SubmissionState.svelte';
 
   let library = $state<Series[]>([]);
   let meta = $state({ total: 0, page: 1, limit: 24, totalPages: 1 });
@@ -31,6 +32,7 @@
   let touchStartY = $state(0);
   let isRefreshing = $state(false);
   let filterDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  let selectionState = new SelectionState<Series>();
 
   const computeSeriesProgress = (series: Series) => {
     if (series.totalPageCount === 0) return { percent: 0, isRead: false };
@@ -95,6 +97,11 @@
     if (missing) {
       uiState.filterMissing = missing as FilterMissing;
     }
+
+    const owner = params.get('owner');
+    if (owner === 'user') uiState.filterOwner = 'private';
+    else if (owner === 'admin') uiState.filterOwner = 'shared';
+    else uiState.filterOwner = 'all';
   });
 
   let isFirstLoad = true;
@@ -138,6 +145,12 @@
       newParams.set('filter_missing', uiState.filterMissing);
     } else {
       newParams.delete('filter_missing');
+    }
+
+    if (uiState.filterOwner !== 'all') {
+      newParams.set('owner', uiState.filterOwner === 'private' ? 'user' : 'admin');
+    } else {
+      newParams.delete('owner');
     }
 
     const criteriaChanged =
@@ -215,7 +228,7 @@
   };
 
   const handleOpenEdit = () => {
-    const series = Array.from(uiState.selection.values())[0] as Series;
+    const series = Array.from(selectionState.selection.values())[0];
     if (series) {
       editModalTarget = series;
       isEditModalOpen = true;
@@ -224,7 +237,7 @@
 
   const handleOpenSubmit = () => {
     // 1. Resolve IDs to actual Series objects
-    const selectedSeries = Array.from(uiState.selection.values()) as Series[];
+    const selectedSeries = Array.from(selectionState.selection.values());
 
     if (selectedSeries.length === 0) return;
 
@@ -232,14 +245,14 @@
     submissionState.startSession(selectedSeries);
 
     // 3. Clear selection after starting
-    uiState.exitSelectionMode();
+    selectionState.exitSelectionMode();
   };
 
   const handleCardClick = (e: MouseEvent, series: Series) => {
-    if (uiState.isSelectionMode) {
+    if (selectionState.isSelectionMode) {
       e.preventDefault();
       e.stopPropagation();
-      uiState.toggleSelection(series);
+      selectionState.toggleSelection(series);
     }
   };
 
@@ -369,11 +382,11 @@
         >
           {#each library as series (series.id)}
             {@const { percent, isRead } = getSeriesProgress(series)}
-            {@const isSelected = uiState.selection.has(series.id)}
+            {@const isSelected = selectionState.selection.has(series.id)}
 
             <LibraryEntry
               onLongPress={() => {
-                uiState.enterSelectionMode(series);
+                selectionState.enterSelectionMode(series);
               }}
               entry={{
                 id: series.id,
@@ -386,8 +399,15 @@
               type="series"
               viewMode={uiState.viewMode}
               {isSelected}
-              isSelectionMode={uiState.isSelectionMode}
-              isPrivate={series.canEdit ?? false}
+              isSelectionMode={selectionState.isSelectionMode}
+              badge={
+                series.canEdit
+                  ? undefined
+                  : {
+                      text: 'Shared',
+                      status: 'success'
+                    }
+              }
               progress={{
                 percent: percent,
                 isRead: isRead
@@ -460,9 +480,11 @@
     <LibraryActionBar
       type="series"
       onRefresh={handleRefresh}
-      onSelectAll={() => uiState.selectAll(library)}
+      onSelectAll={() => selectionState.selectAll(library)}
       onRename={handleOpenEdit}
       onSubmit={handleOpenSubmit}
+      offset={72}
+      {selectionState}
     />
 
     <EditSeriesModal
@@ -470,7 +492,7 @@
       isOpen={isEditModalOpen}
       onClose={() => {
         isEditModalOpen = false;
-        uiState.exitSelectionMode();
+        selectionState.exitSelectionMode();
       }}
       onRefresh={handleRefresh}
     />

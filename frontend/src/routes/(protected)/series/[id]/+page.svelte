@@ -4,6 +4,7 @@
   import { user } from '$lib/stores/authStore';
   import { resolve } from '$app/paths';
   import { uiState } from '$lib/states/ui/uiState.svelte.ts';
+  import { SelectionState } from '$lib/states/selection/SelectionState.svelte';
   import { metadataOps } from '$lib/states/metadata/metadataOperations.svelte.ts';
   import { formatLastReadDate } from '$lib/utils/helpers/date';
   import { SvelteMap, SvelteDate } from 'svelte/reactivity';
@@ -26,12 +27,14 @@
   let error = $state<string | null>(null);
 
   let seriesId = $derived(params.id);
+  const isPrivateSeries = $derived(series?.ownerId === $user?.id);
 
   let coverRefreshTrigger = $state(0);
 
   let isEditSeriesOpen = $state(false);
   let isEditVolumeOpen = $state(false);
   let editVolumeTarget = $state<{ id: string; title: string | null } | null>(null);
+  let selectionState = new SelectionState<Volume>();
 
   // --- Helpers ---
   const getVolumeStats = (vol: Volume) => {
@@ -136,7 +139,7 @@
             { key: 'title', label: 'Number' },
             { key: 'updated', label: 'Date Added' },
             { key: 'lastRead', label: 'Recent' },
-            { key: 'progress', label: '% Progress' }
+            { key: 'progress', label: 'Progress' }
           ],
           series.id
         );
@@ -163,7 +166,7 @@
   };
 
   const handleOpenVolumeEdit = () => {
-    const volume = Array.from(uiState.selection.values())[0];
+    const volume = Array.from(selectionState.selection.values())[0];
     if (volume) {
       editVolumeTarget = volume;
       isEditVolumeOpen = true;
@@ -196,10 +199,10 @@
   };
 
   const handleVolumeClick = (e: MouseEvent, vol: Volume) => {
-    if (uiState.isSelectionMode) {
+    if (selectionState.isSelectionMode) {
       e.preventDefault();
       e.stopPropagation();
-      uiState.toggleSelection(vol);
+      selectionState.toggleSelection(vol);
     }
   };
 
@@ -283,11 +286,11 @@
         >
           {#each processedVolumes as vol (vol.id)}
             {@const stats = volumeStatsMap.get(vol.id) ?? defaultVolumeStats}
-            {@const isSelected = uiState.selection.has(vol.id)}
+            {@const isSelected = selectionState.selection.has(vol.id)}
 
             <LibraryEntry
               onLongPress={() => {
-                uiState.enterSelectionMode(vol);
+                selectionState.enterSelectionMode(vol);
               }}
               entry={{
                 id: vol.id,
@@ -300,14 +303,20 @@
               type="volume"
               viewMode={uiState.viewMode}
               {isSelected}
-              isSelectionMode={uiState.isSelectionMode}
+              isSelectionMode={selectionState.isSelectionMode}
               progress={{
                 percent: stats.percent,
                 isRead: stats.isRead
               }}
               href={resolve(`/volume/${vol.id}`, {})}
               mainStat={`${vol.progress[0]?.page ?? 0}/${vol.pageCount} P`}
-              subStat={`▲ ${vol.versionInfo.hasAhead}  ▼ ${vol.versionInfo.hasBehind}${vol.versionInfo.isPendingReview ? ' · PR' : ''}`}
+              subStat={formatLastReadDate(vol.progress[0]?.lastReadAt)}
+              badge={{
+                text: isPrivateSeries
+                  ? `${vol.versionInfo.hasAhead}`
+                  : `▲ ${vol.versionInfo.hasAhead}  ▼ ${vol.versionInfo.hasBehind}`,
+                status: vol.versionInfo.isPendingReview ? 'warning' : 'none'
+              }}
               onSelect={(e) => handleVolumeClick(e, vol)}
             >
               {#snippet circleAction()}
@@ -400,16 +409,17 @@
   <LibraryActionBar
     type="volume"
     onRefresh={handleRefresh}
-    onSelectAll={() => uiState.selectAll(processedVolumes)}
+    onSelectAll={() => selectionState.selectAll(processedVolumes)}
     onRename={handleOpenVolumeEdit}
     seriesOwnerId={series?.ownerId}
+    {selectionState}
   />
   <EditSeriesModal
     {series}
     isOpen={isEditSeriesOpen}
     onClose={() => {
       isEditSeriesOpen = false;
-      uiState.exitSelectionMode();
+      selectionState.exitSelectionMode();
     }}
     onRefresh={handleRefresh}
   />

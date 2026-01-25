@@ -48,6 +48,14 @@
       uiState.filterMissing = target;
     }
   }
+
+  function toggleOwner(target: 'private' | 'shared') {
+    if (uiState.filterOwner === target) {
+      uiState.filterOwner = 'all';
+    } else {
+      uiState.filterOwner = target;
+    }
+  }
 </script>
 
 <MenuWrapper className="w-80 !bg-theme-surface !border-theme-border shadow-2xl">
@@ -145,7 +153,7 @@
                     ${
                       isActive
                         ? 'bg-accent-surface text-accent border-2 border-accent/70 shadow-lg shadow-accent/40'
-                        : 'bg-theme-main/70 text-theme-primary hover:bg-theme-surface-hover/70 hover:text-white border-2 border-theme-border-light hover:border-theme-border'
+                        : 'bg-theme-main/70 text-theme-primary hover:bg-theme-surface-hover/70 hover:text-theme-primary border-2 border-theme-border-light hover:border-theme-border'
                     }`}
         >
           <span class="capitalize">{sort.label}</span>
@@ -185,7 +193,7 @@
 
           {@const activeClass = isActive
             ? `${styles.activeBg} ${styles.activeColor} ${styles.activeBorder} shadow-lg ${styles.shadow}`
-            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}
+            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}
 
           <button
             onclick={() =>
@@ -250,7 +258,7 @@
 
       {@const bmActiveClass = isBookmarked
         ? `${bmStyles.activeBg} ${bmStyles.activeColor} ${bmStyles.activeBorder} shadow-lg ${bmStyles.shadow}`
-        : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}
+        : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}
 
       <button
         onclick={() => (uiState.filterBookmarked = !uiState.filterBookmarked)}
@@ -288,6 +296,30 @@
   </div>
 
   {#if uiState.context === 'library'}
+    <MenuGroup title="Library Type">
+      <div class="flex gap-2">
+        <button
+          onclick={() => toggleOwner('private')}
+          class="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
+					{uiState.filterOwner === 'private'
+            ? 'border-accent/70 bg-accent/20 text-accent shadow-lg shadow-accent/30'
+            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}"
+        >
+          Private
+        </button>
+
+        <button
+          onclick={() => toggleOwner('shared')}
+          class="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
+					{uiState.filterOwner === 'shared'
+            ? 'border-status-success/70 bg-status-success/20 text-status-success shadow-lg shadow-status-success/30'
+            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}"
+        >
+          Shared
+        </button>
+      </div>
+    </MenuGroup>
+
     <MenuGroup title="Organization">
       <div class="flex gap-2">
         <button
@@ -295,7 +327,7 @@
           class="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
 					{uiState.filterOrganization === 'unorganized'
             ? 'border-blue-500/70 bg-blue-500/20 text-blue-400 shadow-lg shadow-blue-500/30'
-            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
+            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}"
         >
           Unorganized
         </button>
@@ -305,7 +337,7 @@
           class="flex-1 py-2.5 rounded-xl border-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
 					{uiState.filterOrganization === 'organized'
             ? 'border-purple-500/70 bg-purple-500/20 text-purple-400 shadow-lg shadow-purple-500/30'
-            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
+            : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}"
         >
           Organized
         </button>
@@ -321,7 +353,7 @@
             class="px-3 py-2.5 rounded-xl text-xs font-bold border-2 uppercase transition-all duration-200
 						{uiState.filterMissing === k
               ? 'border-status-danger/70 bg-status-danger/20 text-status-danger shadow-lg shadow-status-danger/30'
-              : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-white'}"
+              : 'bg-theme-surface-hover/50 border-theme-border text-theme-primary hover:bg-theme-surface-hover/80 hover:text-theme-primary'}"
           >
             {item.label}
           </button>

@@ -1,22 +1,25 @@
 <script lang="ts">
   import { contextMenu } from '$lib/stores/contextMenuStore';
-  import { uiState } from '$lib/states/ui/uiState.svelte.ts';
   import { apiFetch } from '$lib/services/api';
   import { type MenuOption } from '$lib/stores/contextMenuStore';
   import { apiCache } from '$lib/utils/caching/apiCache';
 
   let {
     selectionCount,
+    selectedIds,
     onScrape,
-    onRefresh
+    onRefresh,
+    onExitSelection
   }: {
     selectionCount: number;
+    selectedIds: string[];
     onScrape?: () => void;
     onRefresh: () => void;
+    onExitSelection?: () => void;
   } = $props();
 
   async function handleOrganize(value: boolean) {
-    const ids = uiState.selectedIdsArray;
+    const ids = selectedIds;
     try {
       await apiFetch('/api/metadata/batch/organize', {
         method: 'POST',
@@ -26,7 +29,7 @@
         apiCache.invalidateSeriesCache({ seriesId: id });
       }
       apiCache.invalidateLibraryCache(true);
-      uiState.exitSelectionMode();
+      onExitSelection?.();
       onRefresh();
     } catch (e) {
       console.error(e);

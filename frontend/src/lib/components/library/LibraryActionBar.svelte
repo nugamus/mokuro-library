@@ -7,6 +7,7 @@
   import { onMount, onDestroy } from 'svelte';
   import { scrapingState } from '$lib/states/scraping/ScrapingState.svelte.ts';
   import type { RebaseQueueEntry, Series, Volume } from '$lib/types';
+  import type { SelectionState } from '$lib/states/selection/SelectionState.svelte';
   import SelectionMoreMenu from '$lib/components/menu/SelectionMoreMenu.svelte';
   import BulkScrapePanel from '$lib/components/modals/scraping/BulkScrapePanel.svelte';
   import SubmitReviewModal from '$lib/components/modals/contributions/SubmitReviewModal.svelte';
@@ -14,8 +15,6 @@
 
   // Review workflow
   import { GitPullRequest, GitMerge } from 'lucide-svelte';
-  import { setReviewStatus } from '$lib/services/reviewApi';
-  import { toastStore } from '$lib/stores/toastStore.svelte';
 
   let {
     type = 'series',
@@ -23,31 +22,35 @@
     onRefresh,
     onSelectAll,
     onSubmit,
-    seriesOwnerId
-  } = $props<{
+    seriesOwnerId,
+    selectionState,
+    offset = 0
+  }: {
     type: 'series' | 'volume';
     onRename: () => void;
     onRefresh: () => void;
     onSelectAll?: () => void;
     onSubmit?: () => void;
     seriesOwnerId?: string | null;
-  }>();
+    selectionState: SelectionState<Series | Volume>;
+    offset?: number;
+  } = $props();
 
   const SCRAPE_LIMIT = 100;
   let isProcessing = $state(false);
   let showScrapeModal = $state(false);
   let showReviewModal = $state(false);
-  let selectionCount = $derived(uiState.selection.size);
+  const selectionMap = $derived(selectionState.selection);
+  const isSelectionMode = $derived(selectionState.isSelectionMode);
+  const selectedIds = $derived(Array.from(selectionMap.keys()));
+  const selectedItems = $derived(Array.from(selectionMap.values()));
+  let selectionCount = $derived(selectionMap.size);
 
   // --- Review submission ---
-  const singleSelection = $derived(
-    selectionCount === 1 ? Array.from(uiState.selection.values())[0] : null
-  );
+  const singleSelection = $derived(selectionCount === 1 ? selectedItems[0] : null);
 
   const versionInfo = $derived(
-    singleSelection && 'versionInfo' in singleSelection
-      ? (singleSelection as any).versionInfo
-      : null
+    singleSelection && 'versionInfo' in singleSelection ? singleSelection.versionInfo : null
   );
 
   const canSubmitReview = $derived(
@@ -76,11 +79,11 @@
   const handleKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
       if (showScrapeModal) return;
-      if (uiState.isSelectionMode) uiState.exitSelectionMode();
+      if (isSelectionMode) selectionState.exitSelectionMode();
     }
 
     if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
-      if (uiState.isSelectionMode && onSelectAll) {
+      if (isSelectionMode && onSelectAll) {
         e.preventDefault();
         onSelectAll();
       }
@@ -98,7 +101,7 @@
   // --- Actions ---
   const executeBatchDownload = async (includeImages: boolean) => {
     if (selectionCount === 0) return;
-    const ids = Array.from(uiState.selection.keys());
+    const ids = selectedIds;
 
     try {
       isProcessing = true;
@@ -121,10 +124,10 @@
   };
 
   const executePdfDownload = () => {
-    const id = Array.from(uiState.selection.keys())[0];
+    const id = selectedIds[0];
     if (!id) return;
     triggerDownload(`/api/export/${type}/${id}/pdf`);
-    uiState.exitSelectionMode();
+    selectionState.exitSelectionMode();
   };
 
   const openDownloadMenu = (e: MouseEvent) => {
@@ -156,7 +159,7 @@
   };
 
   const handleDelete = () => {
-    const ids = Array.from(uiState.selection.keys());
+    const ids = selectedIds;
     confirmation.open(
       `Delete ${selectionCount} item${selectionCount > 1 ? 's' : ''}?`,
       'This action cannot be undone. Files and progress will be permanently removed.',
@@ -170,7 +173,7 @@
           apiCache.invalidateSeriesCache({ seriesId: uiState.activeId ?? undefined });
           apiCache.invalidateLibraryCache(true);
 
-          uiState.exitSelectionMode();
+          selectionState.exitSelectionMode();
           onRefresh();
         } catch (e) {
           console.error(e);
@@ -184,15 +187,15 @@
 
   async function startScrapeSession() {
     if (type !== 'series') return;
-    const selectedItems = Array.from(uiState.selection.values()) as Series[];
-    scrapingState.initSession(selectedItems);
+    const selectedSeries = selectedItems as Series[];
+    scrapingState.initSession(selectedSeries);
     showScrapeModal = true;
   }
 
   function handleScrapeClose() {
     showScrapeModal = false;
     onRefresh();
-    uiState.exitSelectionMode();
+    selectionState.exitSelectionMode();
   }
 
   function handleOpenReviewModal() {
@@ -203,13 +206,14 @@
 
   function handleReviewSuccess() {
     onRefresh();
-    uiState.exitSelectionMode();
+    selectionState.exitSelectionMode();
   }
 </script>
 
-{#if uiState.isSelectionMode}
+{#if isSelectionMode}
   <div
-    class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center p-2 rounded-2xl bg-theme-surface/90 backdrop-blur-xl border border-theme-primary/20 shadow-2xl animate-in slide-in-from-bottom-10"
+    class="fixed left-1/2 -translate-x-1/2 z-50 flex items-center p-2 rounded-2xl bg-theme-surface/90 backdrop-blur-xl border border-theme-primary/20 shadow-2xl animate-in slide-in-from-bottom-10"
+    style={`bottom: calc(1.5rem + ${offset}px);`}
   >
     <div class="flex-shrink px-3 font-bold text-theme-primary flex items-center gap-3">
       <span
@@ -230,7 +234,7 @@
             </button>
           {/if}
           <button
-            onclick={() => uiState.deselectAll()}
+            onclick={() => selectionState.deselectAll()}
             class="text-[10px] font-bold text-theme-tertiary hover:text-theme-primary hover:underline"
             title="Clear selection"
           >
@@ -396,7 +400,13 @@
         </button>
 
         {#if type === 'series'}
-          <SelectionMoreMenu {selectionCount} onScrape={undefined} {onRefresh} />
+          <SelectionMoreMenu
+            {selectionCount}
+            {selectedIds}
+            onScrape={undefined}
+            {onRefresh}
+            onExitSelection={() => selectionState.exitSelectionMode()}
+          />
         {/if}
       </div>
     {/if}
@@ -404,7 +414,7 @@
     <div class="w-[2px] h-8 bg-theme-tertiary/70 mx-1"></div>
     <div class="ml-1">
       <button
-        onclick={() => uiState.exitSelectionMode()}
+        onclick={() => selectionState.exitSelectionMode()}
         class="p-2 rounded-full hover:bg-white/20 text-theme-secondary hover:text-white transition-colors"
         title="exit selection"
       >

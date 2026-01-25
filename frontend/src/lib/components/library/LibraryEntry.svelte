@@ -19,6 +19,11 @@
     hideBar?: boolean;
   }
 
+  interface BadgeData {
+    text: string;
+    status: 'success' | 'warning' | 'danger' | 'none';
+  }
+
   // --- Props ---
   let {
     entry,
@@ -36,7 +41,7 @@
     secondaryCircleAction,
     titleAction,
     listActions,
-    isPrivate = false
+    badge
   }: {
     entry: EntryData;
     type?: 'series' | 'volume';
@@ -53,7 +58,7 @@
     secondaryCircleAction?: Snippet;
     titleAction?: Snippet;
     listActions?: Snippet;
-    isPrivate?: boolean;
+    badge?: BadgeData;
   } = $props();
 
   // Determine read status for badge
@@ -66,6 +71,20 @@
   const status = $derived(getStatusBadge());
 
   const gridAspectClass = $derived(type === 'series' ? 'aspect-[7/11]' : 'aspect-[2/3]');
+
+  const badgeToneClass = (value: BadgeData['status']) => {
+    if (value === 'success') return 'bg-status-success';
+    if (value === 'warning') return 'bg-status-warning';
+    if (value === 'danger') return 'bg-status-danger';
+    return 'bg-theme-secondary';
+  };
+
+  const badgeTextClass = (value: BadgeData['status']) => {
+    if (value === 'success') return 'text-status-success';
+    if (value === 'warning') return 'text-status-warning';
+    if (value === 'danger') return 'text-status-danger';
+    return 'text-theme-secondary';
+  };
 </script>
 
 {#if viewMode === 'grid'}
@@ -117,17 +136,25 @@
         class="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-transparent opacity-40 h-20"
       ></div>
 
-      <!-- P/S Badge -->
-      <div class="absolute top-2 left-2 z-20">
-        <span
-          class="px-2 py-1 rounded-md text-[10px] font-bold backdrop-blur-sm {isPrivate
-            ? 'bg-blue-500/80 text-white border border-blue-400/50'
-            : 'bg-emerald-500/80 text-white border border-emerald-400/50'}"
-          title={isPrivate ? 'Private Library' : 'Shared Library'}
-        >
-          {isPrivate ? 'P' : 'S'}
-        </span>
-      </div>
+      {#if badge}
+        <div class="absolute top-3 right-0 z-20">
+          <span
+            class="relative inline-flex items-center justify-center text-center min-w-[44px] pl-5 pr-2 py-1 text-[10px] font-black uppercase tracking-[0.22em]
+            text-accent bg-gradient-to-b from-theme-surface via-theme-main to-theme-surface
+            border border-theme-border/60 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_6px_12px_rgba(15,23,42,0.4)]
+            rounded-l-md rounded-r-none"
+            title={badge.text}
+          >
+            <span class="subtle-neon-glow">{badge.text}</span>
+          </span>
+          <span
+            class={`absolute left-2 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full ${badgeTextClass(
+              badge.status
+            )} ${badgeToneClass(badge.status)} ${badge.status === 'none' ? '' : 'neon-glow'}`}
+            aria-hidden="true"
+          ></span>
+        </div>
+      {/if}
 
       <div
         class="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/90 via-black/60 to-transparent z-10"
@@ -205,7 +232,8 @@
                   stroke="currentColor"
                   stroke-width="3.5"
                   fill="none"
-                  class="neon-glow transition-all duration-700 {status.color === 'bg-status-success'
+                  class="intense-neon-glow transition-all duration-700 {status.color ===
+                  'bg-status-success'
                     ? 'text-status-success'
                     : status.color === 'bg-accent'
                       ? 'text-accent'
@@ -271,6 +299,26 @@
         class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60"
       ></div>
     </div>
+    {#if badge}
+      <div class="absolute z-20" style="top: -3px; left: calc(81.5px + 1rem);">
+        <span
+          class="relative inline-flex items-center justify-center text-center min-w-[48px] pl-5 pr-2 py-1 text-[11px] font-black uppercase tracking-[0.2em]
+          text-accent bg-gradient-to-b from-theme-surface via-theme-main to-theme-surface
+          border border-theme-border/60 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.35),0_6px_12px_rgba(15,23,42,0.4)]
+          shadow-theme-secondary/10 shadow-[0_8px_16px_-13px_rgba(148,163,184,0.35)]
+          rounded-b-md rounded-t-none"
+          title={badge.text}
+        >
+          <span class="subtle-neon-glow">{badge.text}</span>
+        </span>
+        <span
+          class={`absolute left-2 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full ${badgeTextClass(
+            badge.status
+          )} ${badgeToneClass(badge.status)} ${badge.status === 'none' ? '' : 'neon-glow'}`}
+          aria-hidden="true"
+        ></span>
+      </div>
+    {/if}
 
     <div
       class="flex-grow min-w-0 py-4 px-4 sm:px-6 pointer-events-none z-10 flex flex-col justify-center"
@@ -318,9 +366,9 @@
     </div>
 
     {#if !progress.hideBar}
-      <div class="absolute bottom-0 left-[81.5px] right-0 h-1 bg-theme-surface/50 z-20">
+      <div class="absolute bottom-0 left-[81.5px] right-0 -ml-[4px] h-1 bg-theme-surface/50 z-20">
         <div
-          class="neon-glow h-full transition-all duration-700 {progress.isRead
+          class="intense-neon-glow h-full transition-all duration-700 {progress.isRead
             ? 'bg-status-success text-status-success'
             : 'bg-accent text-accent'}"
           style="width: {progress.isRead ? 100 : progress.percent}%"
@@ -341,7 +389,7 @@
     contain-intrinsic-size: auto 128px;
   }
 
-  .neon-glow {
+  .intense-neon-glow {
     /* Layer 1: Sharp definition (The "hot" edge) */
     filter: drop-shadow(0 0 1px currentColor) /* Layer 2: Immediate bloom */
       drop-shadow(0 0 3px currentColor)

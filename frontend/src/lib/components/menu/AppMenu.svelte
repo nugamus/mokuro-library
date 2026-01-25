@@ -12,7 +12,7 @@
   import MenuGrid from '$lib/components/menu/MenuGrid.svelte';
   import MenuGroup from './MenuGroup.svelte';
   import MenuGridItem from '$lib/components/menu/MenuGridItem.svelte';
-  import { contributionsStore } from '$lib/stores/contributionsStore';
+  import { contributionsSummaryState } from '$lib/states/contributions/ContributionsSummaryState.svelte';
 
   let isDownloadOpen = $state(false);
   let isAdmin = $derived($user?.id === 'admin');
@@ -264,24 +264,15 @@
       {#snippet badge()}
         <div class="ml-auto flex items-center gap-1.5">
           <!-- Submissions Badge (admin-only) -->
-          {#if isAdmin && $contributionsStore.pendingSubmissionsCount > 0}
+          {#if isAdmin && contributionsSummaryState.pendingSubmissionsCount > 0}
             <span
               class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-orange-500 text-white min-w-[20px] text-center"
-              title={`${$contributionsStore.pendingSubmissionsCount} pending submissions`}
+              title={`${contributionsSummaryState.pendingSubmissionsCount} pending submissions`}
             >
-              {$contributionsStore.pendingSubmissionsCount}
+              {contributionsSummaryState.pendingSubmissionsCount}
             </span>
           {/if}
 
-          <!-- OCR Edits Badge -->
-          {#if $contributionsStore.behind > 0}
-            <span
-              class="px-2 py-0.5 text-[10px] font-bold rounded-full bg-accent text-white min-w-[20px] text-center"
-              title={`${$contributionsStore.behind} volumes need rebasing`}
-            >
-              {$contributionsStore.behind}
-            </span>
-          {/if}
         </div>
       {/snippet}
     </MenuItem>
