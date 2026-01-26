@@ -19,6 +19,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=3001
+      # Default to HTTP for LAN/NAS; remove this line if you terminate HTTPS upstream.
+      - MOKURO_DISABLE_HTTPS_REDIRECT=true
       # Ensure the DB file is stored in the mounted /app/data volume
       - DATABASE_URL=file:/app/data/library.db
       # Security secrets - REQUIRED for production

@@ -97,6 +97,16 @@ The recommended way to run Mokuro Library is with Docker Compose, which handles 
 
 Your library is now accessible at `http://localhost:3001`.
 
+### HTTP Without Reverse Proxy
+
+HTTPS redirects are disabled by default for LAN/NAS usage. If you are deploying publicly behind HTTPS, remove this env var to re-enable the HTTPS guard:
+
+```
+MOKURO_DISABLE_HTTPS_REDIRECT=true
+```
+
+`docker-compose.yml` includes this by default. Remove/comment it out when HTTPS is terminated upstream.
+
 Based on the `docker-compose.yml` configuration, the following persistent data folders will be created in your project directory:
 * `./data`: Stores your `library.db` database file.
 * `./data/uploads`: Stores all your uploaded manga and series files.

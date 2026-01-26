@@ -34,6 +34,8 @@ services:
 
     environment:
       - NODE_ENV=development
+      # Default to HTTP for LAN/NAS; remove this line if you terminate HTTPS upstream.
+      - MOKURO_DISABLE_HTTPS_REDIRECT=true
       # This ensures the DATABASE_URL points to your persistent volume.
       - DATABASE_URL=file:/app/data/library.db
       # This polling setting is often required for file watching

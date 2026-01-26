@@ -4,6 +4,9 @@ import tailwindcss from '@tailwindcss/vite';
 import { execSync } from 'node:child_process';
 
 // Check Env Var (Docker) -> Check Git Command (Local) -> Default to 'unknown'
+/**
+ * Resolve the build commit hash without relying on shell-specific redirects.
+ */
 const getVersion = () => {
   // 1. Check if Docker passed it via ENV
   if (process.env.VITE_COMMIT_HASH) {
@@ -11,13 +14,21 @@ const getVersion = () => {
   }
   // 2. If not, try to get it from local git (for local dev)
   try {
-    return execSync(
-      'git describe --tags --exact-match HEAD 2>/dev/null || git rev-parse --short HEAD'
-    )
+    return execSync('git describe --tags --exact-match HEAD', {
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
       .toString()
       .trim();
   } catch {
-    return 'unknown';
+    try {
+      return execSync('git rev-parse --short HEAD', {
+        stdio: ['ignore', 'pipe', 'ignore']
+      })
+        .toString()
+        .trim();
+    } catch {
+      return 'unknown';
+    }
   }
 };
 

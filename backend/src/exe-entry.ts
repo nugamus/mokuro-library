@@ -10,6 +10,7 @@ const dbPath = path.join(dataDir, 'library.db');
 // 2. Configure Environment Variables
 process.env.MOKURO_DATA_DIR = executableDir;
 process.env.NODE_ENV = 'production';
+process.env.MOKURO_DISABLE_HTTPS_REDIRECT = 'true';
 process.env.DATABASE_URL = `file:${dbPath.replace(/\\/g, '/')}`;
 
 // Default port

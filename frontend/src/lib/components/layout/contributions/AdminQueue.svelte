@@ -15,7 +15,7 @@
   let submissions = $state<SubmissionDetail[]>([]);
   let loading = $state(false);
   let error = $state<string | null>(null);
-  let selectedIds = new SvelteSet<string>();
+  let selectedIds = $state(new SvelteSet<string>());
 
   // Load pending submissions (admin view)
   async function loadSubmissions() {

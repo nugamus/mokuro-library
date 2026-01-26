@@ -65,9 +65,16 @@ export function buildServer(options: BuildOptions = {}) {
   });
 
   // HTTPS enforcement for production
-  if (process.env.NODE_ENV === 'production') {
+  const disableHttpsRedirect = process.env.MOKURO_DISABLE_HTTPS_REDIRECT === 'true';
+  if (process.env.NODE_ENV === 'production' && !disableHttpsRedirect) {
     fastify.addHook('onRequest', async (request, reply) => {
       const socket = request.raw.socket as { encrypted?: boolean };
+      const host = request.hostname?.toLowerCase() ?? '';
+      const isLocalhost =
+        host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1';
+      if (isLocalhost) {
+        return;
+      }
       if (!socket.encrypted && request.headers['x-forwarded-proto'] !== 'https') {
         return reply.redirect(`https://${request.hostname}${request.url}`);
       }

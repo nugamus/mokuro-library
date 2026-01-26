@@ -11,9 +11,9 @@
   let lastResults = $state<TestResult[]>([]);
   let lastSuccess = $state<boolean | null>(null);
   let errorMessage = $state<string | null>(null);
-  let expandedResults = new SvelteSet<string>();
-  let expandedSuites = new SvelteSet<string>();
-  let showRawOutput = new SvelteSet<string>();
+  let expandedResults = $state(new SvelteSet<string>());
+  let expandedSuites = $state(new SvelteSet<string>());
+  let showRawOutput = $state(new SvelteSet<string>());
 
   const runTests = async (target: 'backend' | 'frontend' | 'all') => {
     if (isRunning) return;

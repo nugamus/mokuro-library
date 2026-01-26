@@ -84,3 +84,23 @@ If you prefer to run the frontend on your host machine (for faster hot-reloading
 3.  **Access Your App:**
     * Open `http://localhost:5173` in your browser.
     * Your `vite.config.ts` will not find the `VITE_PROXY_TARGET` environment variable, so it will correctly default to proxying API requests to `http://localhost:3001` (the port exposed by your backend container).
+
+## Production Wrapper
+
+Recommended production launch:
+
+```bash
+npm run prod:docker
+```
+
+Manual alternative:
+
+```bash
+docker compose up -d
+```
+
+HTTPS redirects are disabled by default for LAN/NAS usage. If you deploy behind HTTPS, remove this env var to re-enable the HTTPS guard:
+
+```bash
+MOKURO_DISABLE_HTTPS_REDIRECT=true
+```
